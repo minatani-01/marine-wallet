@@ -70,6 +70,23 @@ export function homeAwayLabel(id: HomeAway): string {
 }
 
 /**
+ * カウントダウンの「あと◯◯」に付ける単位。
+ *
+ * 記録名の単位をそのまま使うと「あと8試合出場」となって読みにくい。
+ * 試合に出ることは1日1試合なので「あと8日」と数える。
+ *
+ * ここに無い単位は記録名のまま出す（本塁打・セーブ・死球 など、
+ * そのままで意味が通るもの）。
+ */
+const COUNTDOWN_UNIT: Record<string, string> = {
+  試合出場: '日',
+}
+
+export function countdownUnit(unit: string): string {
+  return COUNTDOWN_UNIT[unit] ?? unit
+}
+
+/**
  * 先発ハイライトは最上位のみ加算する（セーブのみ独立）。
  *
  * 表示用の全一覧。過去の記録のラベルを引くのに使う。

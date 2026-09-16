@@ -19,7 +19,7 @@ import {
   streakDays,
 } from '@/lib/insights'
 import { currentMonth, isMonthClosed, monthLabel, shortDate, today, yen } from '@/lib/format'
-import { MONTHLY_STATUS_LABEL } from '@/lib/constants'
+import { MONTHLY_STATUS_LABEL, countdownUnit } from '@/lib/constants'
 import { familyName } from '@/lib/npb/milestones'
 import type { MonthlyStatus } from '@/types'
 
@@ -214,7 +214,9 @@ export default async function HomePage() {
                 </div>
                 <div className="tnum shrink-0 text-lg font-semibold text-marine">
                   あと{item.remaining.toLocaleString()}
-                  <span className="ml-0.5 text-[11px] font-normal text-fg-mute">{item.unit}</span>
+                  <span className="ml-0.5 text-[11px] font-normal text-fg-mute">
+                    {countdownUnit(item.unit)}
+                  </span>
                 </div>
               </div>
             ))}
