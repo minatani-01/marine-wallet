@@ -185,6 +185,7 @@ export default function SavingsClient({
         skipped?: number
         remaining?: number
         collected?: { saved?: number; remaining?: number }
+        boxes?: { saved?: number; remaining?: number }
         repaired?: { updated?: number; mismatches?: { game_date: string }[] }
       }
       if (!res.ok) {
@@ -205,13 +206,16 @@ export default function SavingsClient({
         const restMonths = body.collected?.remaining ?? 0
         if (restMonths > 0) parts.push(`未取得の月が ${restMonths} か月`)
 
+        const restBoxes = body.boxes?.remaining ?? 0
+        if (restBoxes > 0) parts.push(`ボックススコア未取得が ${restBoxes} 試合`)
+
         const restGames = body.remaining ?? 0
         if (restGames > 0) parts.push(`未登録の試合が ${restGames} 件`)
 
         const mismatches = body.repaired?.mismatches ?? []
         if (mismatches.length > 0) {
-          // 勝敗は金額そのものなので、こちらでは直さない
-          parts.push(`勝敗が食い違う試合が ${mismatches.length} 件（直していません）`)
+          // 勝敗・本塁打・セーブは金額そのものなので、こちらでは直さない
+          parts.push(`npb.jp と食い違う項目が ${mismatches.length} 件（直していません）`)
         }
 
         setBackfillNote(parts.length > 0 ? parts.join(' / ') : '直すところはありませんでした')
@@ -448,8 +452,10 @@ export default function SavingsClient({
               <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
                 毎朝の取り込みは前日ぶんだけです。それ以前の試合が抜けているときに使います。
                 すでにある試合も、ホーム・ビジターや得点を npb.jp
-                に合わせて直します。勝敗とフェーズは触らないので、金額は変わりません。
-                古い月は1回につき3か月ぶんずつ取りに行くので、残っていれば続けて押してください。
+                に合わせて直します。勝敗・フェーズ・本塁打は触らないので、金額は変わりません。
+                食い違っていれば件数だけ知らせます。
+                古い月は3か月ぶん、ボックススコアは8試合ぶんずつ取りに行くので、
+                残っていれば続けて押してください。
               </p>
               {backfillNote ? (
                 <p className="mt-2 text-[12px] text-teal">{backfillNote}</p>
