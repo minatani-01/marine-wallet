@@ -12,6 +12,7 @@ import {
   splitRecordLabel,
   uniformNumberOf,
 } from '../milestones'
+import { countdownUnit } from '../../constants'
 import type { StatSnapshot } from '../stats'
 
 /**
@@ -349,4 +350,13 @@ test('記録名から目標の数と単位を取り出す', () => {
   assert.deepEqual(splitRecordLabel('500二塁打'), { target: 500, unit: '二塁打' })
   assert.deepEqual(splitRecordLabel('4000塁打'), { target: 4000, unit: '塁打' })
   assert.equal(splitRecordLabel('サイクルヒット'), null)
+})
+
+test('カウントダウンの単位は読みやすい言い方に直す', () => {
+  // 「あと8試合出場」では読みにくい。1日1試合なので「あと8日」
+  assert.equal(countdownUnit('試合出場'), '日')
+  // そのままで意味が通るものは記録名のまま
+  assert.equal(countdownUnit('本塁打'), '本塁打')
+  assert.equal(countdownUnit('セーブ'), 'セーブ')
+  assert.equal(countdownUnit('死球'), '死球')
 })
