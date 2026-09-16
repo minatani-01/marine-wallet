@@ -1,4 +1,5 @@
 import type { PushMessage } from '@/lib/push'
+import type { GameResult } from '@/types'
 
 /**
  * 通知の文面。
@@ -71,18 +72,33 @@ export function messageForKind(kind: NotifyKind, actorName: string): PushMessage
   }
 }
 
-/** 毎朝の試合取得の知らせ */
-export function messageForGames(count: number, latest: string | null): PushMessage {
-  const body =
-    count === 0
-      ? '昨日までの試合を確認しました。新しい試合はありません。'
-      : latest
-        ? `${latest} まで取り込みました。貯金タブで確認できます。`
-        : `${count} 件の試合を取り込みました。`
-
+/**
+ * 前日の試合を貯金に入れたときの知らせ。
+ *
+ * 「取り込んだ」だけでは、貯金に反映されたのかどうかが分からない。
+ * 実際に積立まで作れたときにだけ、そう言い切る。
+ */
+export function messageForGameImported(opponent: string, result: GameResult): PushMessage {
+  const word = result === 'win' ? '勝利' : result === 'lose' ? '敗戦' : '引き分け'
   return {
     title: '試合を取り込みました',
-    body,
+    body: `${opponent}戦（${word}）を貯金に追加しました。`,
+    category: 'games',
+    url: '/savings',
+    tag: 'games',
+  }
+}
+
+/**
+ * 取り込めなかったので、手で入れてほしい知らせ。
+ *
+ * 黙って見送ると、その日の貯金がまるごと抜けたことに気付けない。
+ * 試合の無い日・中止・登録済みは普通のことなので、これは送らない。
+ */
+export function messageForGameNeedsManual(reason: string): PushMessage {
+  return {
+    title: '試合を取り込めませんでした',
+    body: `${reason}。貯金タブから手で登録してください。`,
     category: 'games',
     url: '/savings',
     tag: 'games',
