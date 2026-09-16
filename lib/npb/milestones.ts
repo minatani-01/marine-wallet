@@ -135,14 +135,31 @@ function tierOf(recordLabel: string): MilestoneTier {
 
 type Table = { headers: string[]; rows: string[][] }
 
+/** colspan="2" なら2列ぶん。属性が無ければ1列 */
+function colspanOf(attrs: string | undefined): number {
+  const n = Number.parseInt(attrs?.match(/colspan="?(\d+)"?/)?.[1] ?? '1', 10)
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
+
 /**
  * 表を1つ読む。1列目は <th>、残りは <td>。
+ *
  * 見出しと列数が合わない行は捨てる。別の行のセルが混ざるのを防ぐため。
+ * ただし npb.jp はセルを横につなぐことがある。
+ *
+ *   <td colspan="2">走者・源田壮亮の盗塁刺</td>   （打者と結果をまとめた）
+ *
+ * つないだぶんを数えないと列数が合わず、行ごと落としてしまう。
+ * 実際それで小島の通算1000投球回を取りこぼした。つないだ列は
+ * 空文字で埋めて、位置がずれないようにする。
  */
 function parseTable(tableHtml: string): Table {
   const headers: string[] = []
   const thead = tableHtml.match(/<thead[^>]*>([\s\S]*?)<\/thead>/)?.[1] ?? ''
-  for (const m of thead.matchAll(/<th(?:\s[^>]*)?>([\s\S]*?)<\/th>/g)) headers.push(text(m[1]))
+  for (const m of thead.matchAll(/<th(\s[^>]*)?>([\s\S]*?)<\/th>/g)) {
+    headers.push(text(m[2]))
+    for (let i = 1; i < colspanOf(m[1]); i += 1) headers.push('')
+  }
 
   const tbody = tableHtml.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/)?.[1] ?? ''
   const rows: string[][] = []
@@ -150,8 +167,13 @@ function parseTable(tableHtml: string): Table {
   for (const rowHtml of tbody.split(/<tr[^>]*>/).slice(1)) {
     const head = rowHtml.match(/<th(?:\s[^>]*)?>([\s\S]*?)<\/th>/)?.[1]
     if (head === undefined) continue
+
     const cells = [text(head)]
-    for (const m of rowHtml.matchAll(/<td(?:\s[^>]*)?>([\s\S]*?)<\/td>/g)) cells.push(text(m[1]))
+    for (const m of rowHtml.matchAll(/<td(\s[^>]*)?>([\s\S]*?)<\/td>/g)) {
+      cells.push(text(m[2]))
+      for (let i = 1; i < colspanOf(m[1]); i += 1) cells.push('')
+    }
+
     if (cells.length !== headers.length) continue
     rows.push(cells)
   }

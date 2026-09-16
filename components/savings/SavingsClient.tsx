@@ -331,7 +331,10 @@ export default function SavingsClient({
   }
 
   const removeEntry = async (entry: SavingEntryRow) => {
-    if (!window.confirm(`${shortDate(entry.entry_date)} の記録を削除しますか？`)) return
+    // カスタム登録は全員で共有している。自分の行を消すと全員から消える
+    const scope =
+      entry.kind === 'custom' ? '（一緒に貯めているメンバー全員から消えます）' : ''
+    if (!window.confirm(`${shortDate(entry.entry_date)} の記録を削除しますか？${scope}`)) return
     setBusy(true)
     const supabase = createClient()
     await supabase.from('saving_entries').delete().eq('id', entry.id)

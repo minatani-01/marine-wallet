@@ -17,6 +17,11 @@ const QUICK_AMOUNTS = [300, 500, 1000, 3000]
  * NPB 公式から取得できない項目はここで登録する。
  * 定型を選ぶと、その名前と金額が入る。定型は貯金ルールの画面で増やせる。
  * 珍記録のように決まった金額が無いものは、そのまま手で入力する。
+ *
+ * 中身はチームの出来事そのものなので、一緒に貯めている人と共有する。
+ * ここで書くのは自分の行だけだが、DB のトリガー（saving_entries_share_custom）が
+ * 同じ内容を全員ぶんに広げる。編集も削除も同じように全員に届く。
+ * 誰が登録してもよく、マスターかどうかは関係しない。
  */
 
 export default function CustomSavingSheet({
@@ -180,8 +185,10 @@ export default function CustomSavingSheet({
           <div className="mt-2">
             <Amount value={parsedAmount} size="lg" tone="marine" />
           </div>
-          <p className="mt-2 text-[11px] text-fg-mute">
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
             カスタム登録にフェーズ倍率は適用されません。
+            <br />
+            内容と金額は一緒に貯めているメンバー全員に反映されます。
           </p>
         </div>
       </div>
