@@ -211,7 +211,7 @@ export default function SavingsClient({
     setFetchingMilestones(true)
     setMilestoneNote(null)
     try {
-      const res = await fetch('/api/npb/milestones', { method: 'POST' })
+      const res = await fetch('/api/npb/pages', { method: 'POST' })
       const body = (await res.json()) as { error?: string; saved?: number }
       setMilestoneNote(
         res.ok ? `${body.saved ?? 0} ページを取り込みました` : (body.error ?? '取り込めませんでした')
