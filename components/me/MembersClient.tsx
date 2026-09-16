@@ -54,6 +54,7 @@ const sameId = (a: string | null, b: string | null) =>
  */
 export default function MembersClient({
   userId,
+  ownerId,
   marineId,
   isMaster,
   members,
@@ -64,6 +65,8 @@ export default function MembersClient({
   goals,
 }: {
   userId: string
+  /** 共有の割り勘・メンバーの持ち主。書き込みはこの人の持ち物として行う */
+  ownerId: string
   /** 自分の Marine ID */
   marineId: string
   /** マスター権限。自分が送ったリクエストは承認を待たずに接続される */
@@ -342,7 +345,7 @@ export default function MembersClient({
     setError(null)
     const supabase = createClient()
     const { error } = await supabase.from('split_members').insert({
-      user_id: userId,
+      user_id: ownerId,
       name: trimmed,
       marine_id: marine,
       sort_order: members.length,
@@ -356,11 +359,18 @@ export default function MembersClient({
     router.refresh()
   }
 
+  /**
+   * 「あなた」の印を付け替える。
+   *
+   * メンバーは全員で共有しているので（0037）、この印は Marine ID を
+   * 入れていないメンバーのための控えになる。Marine ID が入っていれば、
+   * 見ている人の Marine ID と突き合わせた結果が優先される。
+   */
   const markSelf = async (member: SplitMemberView) => {
     setBusy(true)
     const supabase = createClient()
     // 「あなた」は1人だけ。まず全員を解除してから対象だけ立てる
-    await supabase.from('split_members').update({ is_self: false }).eq('user_id', userId)
+    await supabase.from('split_members').update({ is_self: false }).eq('user_id', ownerId)
     if (!member.is_self) {
       await supabase.from('split_members').update({ is_self: true }).eq('id', member.id)
     }
