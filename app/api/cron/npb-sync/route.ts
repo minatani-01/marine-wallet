@@ -8,7 +8,7 @@ import {
   messageForMonthEnd,
 } from '@/lib/notifications'
 import { registerYesterdayGame } from '@/lib/npb/register'
-import { snapshotMilestonePages } from '@/lib/npb/milestones'
+import { snapshotSourcePages } from '@/lib/npb/pages'
 import { jstDate } from '@/lib/jst'
 import { opponentLabel } from '@/lib/constants'
 import { sendPushToAll } from '@/lib/push'
@@ -112,14 +112,14 @@ export async function GET(request: Request) {
       notified.games = await sendPushToAll(messageForGameNeedsManual(registered.reason))
     }
 
-    // 「今季達成が予想される記録」のページを取って置くだけ。
+    // 記録達成の判定に使うページを取って置くだけ。
     // 読み取り方はまだ決めていないので、ここでは金額を動かさない。
     // 失敗しても取り込み全体は止めない（試合の登録のほうが大事）
-    let milestones: unknown = null
+    let sourcePages: unknown = null
     try {
-      milestones = await snapshotMilestonePages(supabase, Number(jstDate(now).slice(0, 4)))
+      sourcePages = await snapshotSourcePages(supabase, Number(jstDate(now).slice(0, 4)))
     } catch (cause) {
-      milestones = { error: cause instanceof Error ? cause.message : String(cause) }
+      sourcePages = { error: cause instanceof Error ? cause.message : String(cause) }
     }
 
     // 月末の確定と入金のリマインド。日本時間で月の最終日にだけ送る
@@ -135,7 +135,7 @@ export async function GET(request: Request) {
       pitchingAsOf: result.pitchingAsOf,
       warnings: result.warnings,
       registered,
-      milestones,
+      sourcePages,
       notified,
     }
 

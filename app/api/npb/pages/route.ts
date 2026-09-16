@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 
 import { getProfile, getSessionUser } from '@/lib/queries'
-import { snapshotMilestonePages } from '@/lib/npb/milestones'
+import { snapshotSourcePages } from '@/lib/npb/pages'
 import { jstDate } from '@/lib/jst'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
- * 「今季達成が予想される記録」のページを、今すぐ取りに行く。
+ * 記録達成の判定に使うページを、今すぐ取りに行く。
  *
  * 毎朝の取り込みでも同じことをしている。こちらは、仕込んだ直後や
  * npb.jp の作りが変わったときに、翌朝を待たずに取り直すための口。
@@ -37,7 +37,7 @@ export async function POST() {
 
   try {
     const season = Number(jstDate(new Date()).slice(0, 4))
-    const result = await snapshotMilestonePages(admin, season)
+    const result = await snapshotSourcePages(admin, season)
     return NextResponse.json({ ok: true, ...result })
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)
