@@ -1,12 +1,9 @@
-import { calcSaving } from '@/lib/savings'
-import { DEFAULT_SAVING_RULES } from '@/lib/savings'
 import { gameFromNpb } from '@/lib/npb/import'
 import type { NpbGameSource } from '@/lib/npb/import'
-import type { SavingRules } from '@/types'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
- * 前日に終わった試合を、貯金が見る `games` と各自の積立へ入れる。
+ * 前日に終わった試合を、貯金が見る `games` へ入れる。
  *
  * 前日の1日ぶんだけを見る。過去分をまとめて作り直すと、想定しない
  * 書き換えが起きたときに追えなくなるため。
@@ -14,6 +11,11 @@ import type { createAdminClient } from '@/lib/supabase/admin'
  * 追加しかしない。すでに `games` にその日の試合があれば、手で登録した
  * ものか編集したものなので、何もせずに見送る。毎朝走る処理が既存の
  * 記録を上書きしないようにしておく。
+ *
+ * 積立はここでは作らない。`games` に行が入ると DB のトリガー
+ * （games_sync_saving_entries → sync_saving_entries_for_game）が
+ * 対象者ぶんをまとめて作る。金額の計算を2か所に置くと必ず食い違うので、
+ * 試合を入れるところまでで手を止める。
  */
 
 type Admin = ReturnType<typeof createAdminClient>
@@ -33,21 +35,8 @@ export type RegisterResult = {
   needsManual?: boolean
   opponent?: string
   result?: string
-  amount?: number
-  /** 積立を作った人数 */
-  users?: number
-}
-
-/** numeric 型は文字列で返るため数値に直す */
-function toRules(row: Record<string, unknown> | null): SavingRules {
-  if (!row) return { ...DEFAULT_SAVING_RULES }
-  return {
-    ...(row as unknown as SavingRules),
-    multiplier_regular: Number(row.multiplier_regular),
-    multiplier_interleague: Number(row.multiplier_interleague),
-    multiplier_cs: Number(row.multiplier_cs),
-    multiplier_nippon_series: Number(row.multiplier_nippon_series),
-  }
+  /** トリガーが作った積立の数。0なら対象者が居ない */
+  entries?: number
 }
 
 export async function registerYesterdayGame(
@@ -122,57 +111,17 @@ export async function registerYesterdayGame(
     throw new Error(`試合を登録できませんでした: ${insertError?.message ?? '不明'}`)
   }
 
-  // 貯金ルールは全員で共通の1行
-  const { data: ruleRow } = await supabase
-    .from('saving_rule_settings')
-    .select('*')
-    .eq('id', true)
-    .maybeSingle()
-  const rules = toRules(ruleRow as Record<string, unknown> | null)
-
-  // 確定と同じ顔ぶれにする（マスターと、貯金に参加している接続済みメンバー）
-  const { data: targets, error: targetError } = await supabase.rpc('saving_target_users')
-  if (targetError) {
-    throw new Error(`積立の対象を取得できませんでした: ${targetError.message}`)
-  }
-
-  const userIds = [
-    ...new Set(
-      (targets ?? []).map((row: unknown) =>
-        typeof row === 'string' ? row : ((row as { saving_target_users?: string }).saving_target_users ?? '')
-      )
-    ),
-  ].filter(Boolean) as string[]
-
-  const calc = calcSaving(game, rules, game.other_amount)
-
-  if (userIds.length > 0) {
-    const { error: entryError } = await supabase.from('saving_entries').upsert(
-      userIds.map((userId) => ({
-        user_id: userId,
-        game_id: created.id,
-        kind: 'game' as const,
-        title: '',
-        entry_date: game.game_date,
-        amount: calc.amount,
-        breakdown: calc.lines,
-        other_amount: game.other_amount,
-        other_note: game.other_note,
-      })),
-      // 既にある積立は触らない。手で直した金額を毎朝戻さないため
-      { onConflict: 'user_id,game_id', ignoreDuplicates: true }
-    )
-    if (entryError) {
-      throw new Error(`積立を登録できませんでした: ${entryError.message}`)
-    }
-  }
+  // トリガーが作った積立を数えて、実行ログに残す
+  const { count } = await supabase
+    .from('saving_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', created.id)
 
   return {
     status: 'created',
     game_date: game.game_date,
     opponent: game.opponent,
     result: game.result,
-    amount: calc.amount,
-    users: userIds.length,
+    entries: count ?? 0,
   }
 }

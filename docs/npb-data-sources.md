@@ -417,8 +417,13 @@ QS などが漏れなく計上される。
 
 ## 7. 貯金への取り込み（2026-09-16 反映）
 
-取得した `npb_games` のうち、**前日に終わった1試合だけ**を `games` と各自の
-積立へ入れる（`lib/npb/import.ts` / `lib/npb/register.ts`）。
+取得した `npb_games` のうち、**前日に終わった1試合だけ**を `games` へ入れる
+（`lib/npb/import.ts` / `lib/npb/register.ts`）。
+
+積立はアプリ側では作らない。`games` に行が入ると DB のトリガー
+（`games_sync_saving_entries` → `sync_saving_entries_for_game`）が対象者ぶんを
+まとめて作る。金額の計算を2か所に置くと必ず食い違うので、試合を入れるところで
+手を止めている。
 
 ### 7.1 前日分だけにする理由
 
