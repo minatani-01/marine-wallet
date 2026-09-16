@@ -1,5 +1,18 @@
-import { FETCH_INTERVAL_MS, MARINES_TEAM_LABEL, fetchNpbPage, scheduleUrl, sleep } from '@/lib/npb/fetch'
-import { factsFromNpb, type GameFacts, type NpbGameSource } from '@/lib/npb/import'
+import {
+  FETCH_INTERVAL_MS,
+  MARINES_TEAM_LABEL,
+  boxScoreUrl,
+  fetchNpbPage,
+  scheduleUrl,
+  sleep,
+} from '@/lib/npb/fetch'
+import { parseBoxScore } from '@/lib/npb/boxscore'
+import {
+  countMarinesHomeRuns,
+  factsFromNpb,
+  type GameFacts,
+  type NpbGameSource,
+} from '@/lib/npb/import'
 import { gamesOf, losePitcherOf, parseSchedule, winPitcherOf } from '@/lib/npb/schedule'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
@@ -26,6 +39,9 @@ type Admin = ReturnType<typeof createAdminClient>
 /** 1回で取りに行く月の上限。Vercel の実行時間に収まる範囲にする */
 export const MONTH_LIMIT = 3
 
+/** 1回で取りに行くボックススコアの上限。1試合1ページなので月より小さくする */
+export const BOX_LIMIT = 8
+
 export type CollectResult = {
   /** 取りに行った月（YYYY-MM） */
   months: string[]
@@ -43,10 +59,16 @@ export type RepairChange = {
   after: string | number
 }
 
+/**
+ * 金額に関わるので直さない項目の食い違い。人が見て決める。
+ *
+ *   result     勝敗。日程表から分かる
+ *   home_runs / grand_slams / has_save
+ *              ボックススコアを取っている試合だけ見られる
+ */
 export type RepairMismatch = {
   game_date: string
-  /** 金額に関わるので直さない。人が見て決める */
-  field: 'result'
+  field: 'result' | 'home_runs' | 'grand_slams' | 'has_save'
   current: string
   npb: string
 }
@@ -71,6 +93,9 @@ type GameRow = {
   marines_score: number | null
   opponent_score: number | null
   result: string
+  home_runs: number
+  grand_slams: number
+  has_save: boolean
 }
 
 type NpbRow = {
@@ -83,6 +108,7 @@ type NpbRow = {
   phase: string
   status: string
   save_pitcher: string
+  raw: unknown
 }
 
 // ----------------------------------------------------------------------------
@@ -181,6 +207,131 @@ export async function collectMissingMonths(
 }
 
 // ----------------------------------------------------------------------------
+// ボックススコアを取ってくる
+// ----------------------------------------------------------------------------
+
+export type BoxCollectResult = {
+  /** npb_games に入れた試合数 */
+  saved: number
+  /** まだ取れていない試合数 */
+  remaining: number
+  warnings: string[]
+}
+
+/** 取得データにボックススコアが入っているか */
+function hasBox(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false
+  const box = (raw as { box?: unknown }).box
+  return Boolean(box && typeof box === 'object')
+}
+
+/** 取得データの本塁打欄から、自軍の本数を数える。取れていなければ null */
+export function marinesHomeRunsOf(raw: unknown): { home_runs: number; grand_slams: number } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const box = (raw as { box?: unknown }).box
+  if (!box || typeof box !== 'object') return null
+  const list = (box as { homeRuns?: unknown }).homeRuns
+  if (!Array.isArray(list)) return null
+
+  return countMarinesHomeRuns(
+    list.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const { team, batter, detail } = item as Record<string, unknown>
+      if (typeof team !== 'string' || typeof detail !== 'string') return []
+      return [{ team, batter: typeof batter === 'string' ? batter : '', detail }]
+    })
+  )
+}
+
+/**
+ * ボックススコアをまだ取っていない試合を取りに行く。
+ *
+ * 日程・結果のページには本塁打もセーブ投手も載らない。金額に関わる項目を
+ * npb.jp と突き合わせるには、1試合ごとのボックススコアが要る。
+ *
+ * ここでは取得データ（npb_games）に貯めるだけで、`games` には触らない。
+ * 本塁打の数は金額そのものなので、突き合わせた結果をどうするかは人が決める。
+ *
+ * 1ページ1試合なので、1回で取る数に上限を置く。足りなければもう一度押せばよい。
+ */
+export async function collectBoxScores(
+  supabase: Admin,
+  season: number,
+  fetchPage: (url: string) => Promise<string> = fetchNpbPage
+): Promise<BoxCollectResult> {
+  const warnings: string[] = []
+
+  const { data, error } = await supabase
+    .from('npb_games')
+    .select('game_date, home_team, away_team, box_score_path, raw')
+    .eq('status', 'finished')
+    .gte('game_date', `${season}-01-01`)
+    .lte('game_date', `${season}-12-31`)
+    .order('game_date', { ascending: true })
+
+  if (error) throw new Error(`取得データを読めませんでした: ${error.message}`)
+
+  type Row = {
+    game_date: string
+    home_team: string
+    away_team: string
+    box_score_path: string
+    raw: unknown
+  }
+
+  const pending = ((data ?? []) as Row[]).filter(
+    (row) => row.box_score_path && !hasBox(row.raw)
+  )
+  const targets = pending.slice(0, BOX_LIMIT)
+
+  let saved = 0
+
+  for (const [index, row] of targets.entries()) {
+    if (index > 0) await sleep(FETCH_INTERVAL_MS)
+
+    try {
+      const box = parseBoxScore(await fetchPage(boxScoreUrl(row.box_score_path)))
+
+      // 取りに行った日付と中身が食い違うなら使わない。別の試合を入れてしまう
+      if (box.gameDate && box.gameDate !== row.game_date) {
+        warnings.push(`${row.game_date} のボックススコアの日付が違います（${box.gameDate}）`)
+        continue
+      }
+
+      const { error: saveError } = await supabase
+        .from('npb_games')
+        .update({
+          phase: box.phase,
+          win_pitcher: box.winPitcher,
+          lose_pitcher: box.losePitcher,
+          save_pitcher: box.savePitcher,
+          raw: {
+            ...(typeof row.raw === 'object' && row.raw ? row.raw : {}),
+            box: { seriesLabel: box.seriesLabel, state: box.state, homeRuns: box.homeRuns },
+          },
+        })
+        .eq('game_date', row.game_date)
+        .eq('home_team', row.home_team)
+        .eq('away_team', row.away_team)
+
+      if (saveError) {
+        warnings.push(`${row.game_date} を保存できませんでした: ${saveError.message}`)
+        continue
+      }
+      saved += 1
+    } catch (cause) {
+      warnings.push(
+        `${row.game_date} を取得できませんでした: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`
+      )
+    }
+  }
+
+  return { saved, remaining: Math.max(0, pending.length - saved), warnings }
+}
+
+// ----------------------------------------------------------------------------
 // 直す
 // ----------------------------------------------------------------------------
 
@@ -196,7 +347,9 @@ const REPAIRABLE: (keyof GameFacts)[] = [
 export async function repairGames(supabase: Admin, season: number): Promise<RepairResult> {
   const { data: games, error: gamesError } = await supabase
     .from('games')
-    .select('id, game_date, opponent, home_away, stadium, marines_score, opponent_score, result')
+    .select(
+      'id, game_date, opponent, home_away, stadium, marines_score, opponent_score, result, home_runs, grand_slams, has_save'
+    )
     .gte('game_date', `${season}-01-01`)
     .lte('game_date', `${season}-12-31`)
     .order('game_date', { ascending: true })
@@ -205,7 +358,9 @@ export async function repairGames(supabase: Admin, season: number): Promise<Repa
 
   const { data: npb, error: npbError } = await supabase
     .from('npb_games')
-    .select('game_date, home_team, away_team, home_score, away_score, place, phase, status, save_pitcher')
+    .select(
+      'game_date, home_team, away_team, home_score, away_score, place, phase, status, save_pitcher, raw'
+    )
     .eq('status', 'finished')
     .gte('game_date', `${season}-01-01`)
     .lte('game_date', `${season}-12-31`)
@@ -240,7 +395,7 @@ export async function repairGames(supabase: Admin, season: number): Promise<Repa
       continue
     }
 
-    const source: NpbGameSource = { ...candidates[0], raw: null }
+    const source: NpbGameSource = { ...candidates[0] }
     const facts = factsFromNpb(source)
     if (!facts.ok) {
       skipped.push({ game_date: game.game_date, reason: facts.reason })
@@ -255,6 +410,39 @@ export async function repairGames(supabase: Admin, season: number): Promise<Repa
         current: game.result,
         npb: facts.facts.result,
       })
+    }
+
+    // 本塁打とセーブはボックススコアを取っている試合だけ見られる。
+    // どちらも金額に効くので、ここでも書き換えず知らせるだけにする
+    const homeRuns = marinesHomeRunsOf(source.raw)
+    if (homeRuns) {
+      if (homeRuns.home_runs !== game.home_runs) {
+        mismatches.push({
+          game_date: game.game_date,
+          field: 'home_runs',
+          current: String(game.home_runs),
+          npb: String(homeRuns.home_runs),
+        })
+      }
+      if (homeRuns.grand_slams !== game.grand_slams) {
+        mismatches.push({
+          game_date: game.game_date,
+          field: 'grand_slams',
+          current: String(game.grand_slams),
+          npb: String(homeRuns.grand_slams),
+        })
+      }
+
+      // セーブは勝った試合にしか付かない。負け試合の相手のセーブを拾わない
+      const npbSave = facts.facts.result === 'win' && source.save_pitcher.trim().length > 0
+      if (npbSave !== game.has_save) {
+        mismatches.push({
+          game_date: game.game_date,
+          field: 'has_save',
+          current: game.has_save ? 'あり' : 'なし',
+          npb: npbSave ? 'あり' : 'なし',
+        })
+      }
     }
 
     const patch: Record<string, string | number> = {}

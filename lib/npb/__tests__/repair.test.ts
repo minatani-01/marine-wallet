@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { repairGames } from '../repair'
+import { marinesHomeRunsOf, repairGames } from '../repair'
 
 /**
  * Supabase の代わり。games と npb_games を読ませ、
@@ -62,7 +62,15 @@ const gameRow = (over: Record<string, unknown> = {}) => ({
   marines_score: null,
   opponent_score: null,
   result: 'win',
+  home_runs: 0,
+  grand_slams: 0,
+  has_save: false,
   ...over,
+})
+
+/** ボックススコアを取っている取得データ */
+const withBox = (homeRuns: Record<string, string>[]) => ({
+  raw: { box: { homeRuns } },
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -164,4 +172,73 @@ test('対戦相手が違っていれば直す（金額には関わらない）',
   const { patches } = await run([wrong], [npbRow()])
 
   assert.deepEqual(patches[0].patch, { opponent: 'lions' })
+})
+
+test('取得データの本塁打欄から自軍の本数を数える', () => {
+  const counted = marinesHomeRunsOf({
+    box: {
+      homeRuns: [
+        { team: 'ロッテ', batter: '山口', detail: '山口 29号（6回2ラン 田中）' },
+        { team: 'ロッテ', batter: 'ソト', detail: 'ソト 10号（8回満塁 柳川）' },
+        { team: '西武', batter: '外崎', detail: '外崎 5号（3回ソロ 種市）' },
+      ],
+    },
+  })
+
+  // 満塁は別枠。相手の本塁打は数えない
+  assert.deepEqual(counted, { home_runs: 1, grand_slams: 1 })
+})
+
+test('ボックススコアを取っていなければ数えない', () => {
+  assert.equal(marinesHomeRunsOf({ schedule: {} }), null)
+  assert.equal(marinesHomeRunsOf(null), null)
+})
+
+test('本塁打が食い違っても書き換えず、知らせるだけにする', async () => {
+  const done = gameRow({
+    home_away: 'away',
+    stadium: 'ベルーナドーム',
+    marines_score: 5,
+    opponent_score: 2,
+    home_runs: 0,
+  })
+  const npb = npbRow(
+    withBox([{ team: 'ロッテ', batter: '山口', detail: '山口 29号（6回2ラン 田中）' }])
+  )
+  const { result, patches } = await run([done], [npb])
+
+  assert.equal(patches.length, 0)
+  assert.deepEqual(result.mismatches, [
+    { game_date: '2026-04-10', field: 'home_runs', current: '0', npb: '1' },
+  ])
+})
+
+test('ボックススコアが無ければ本塁打は比べない', async () => {
+  const done = gameRow({
+    home_away: 'away',
+    stadium: 'ベルーナドーム',
+    marines_score: 5,
+    opponent_score: 2,
+    home_runs: 3,
+  })
+  const { result } = await run([done], [npbRow()])
+
+  assert.deepEqual(result.mismatches, [])
+})
+
+test('勝った試合にセーブ投手が居ればセーブありとして比べる', async () => {
+  const done = gameRow({
+    home_away: 'away',
+    stadium: 'ベルーナドーム',
+    marines_score: 5,
+    opponent_score: 2,
+    has_save: false,
+  })
+  const npb = npbRow({ save_pitcher: '横山', ...withBox([]) })
+  const { result, patches } = await run([done], [npb])
+
+  assert.equal(patches.length, 0)
+  assert.deepEqual(result.mismatches, [
+    { game_date: '2026-04-10', field: 'has_save', current: 'なし', npb: 'あり' },
+  ])
 })
