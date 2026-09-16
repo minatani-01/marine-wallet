@@ -87,6 +87,10 @@ export default function SavingsClient({
   const [editing, setEditing] = useState<SavingEntryRow | null>(null)
   const [addMode, setAddMode] = useState<SheetMode>('game')
   const [busy, setBusy] = useState(false)
+  // 取りこぼした試合の取り込み。押した直後だけ結果を出す
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillNote, setBackfillNote] = useState<string | null>(null)
+
   // 確定が何人に反映されたか。押した直後だけ出す
   const [sharedCount, setSharedCount] = useState<number | null>(null)
   const [monthError, setMonthError] = useState<string | null>(null)
@@ -158,6 +162,40 @@ export default function SavingsClient({
   const status: MonthlyStatus = monthly?.status ?? 'calculating'
   const confirmed = monthly?.confirmed_amount ?? null
   const displayAmount = status === 'calculating' || confirmed === null ? monthTotal : confirmed
+
+  /**
+   * まだ貯金に入っていない試合をまとめて取り込む。
+   *
+   * 毎朝の取り込みは前日の1試合だけを見るので、仕組みを作る前に終わった
+   * 試合や、取り込みに失敗した試合は残る。それを拾うための手動の操作。
+   * npb.jp へ出られるのはサーバーだけなので、取得はサーバーで行う。
+   */
+  const backfill = async () => {
+    setBackfilling(true)
+    setBackfillNote(null)
+    try {
+      const res = await fetch('/api/games/backfill', { method: 'POST' })
+      const body = (await res.json()) as {
+        error?: string
+        created?: number
+        skipped?: number
+        remaining?: number
+      }
+      if (!res.ok) {
+        setBackfillNote(body.error ?? '取り込めませんでした')
+      } else if ((body.created ?? 0) === 0 && (body.skipped ?? 0) === 0) {
+        setBackfillNote('取り込む試合はありませんでした')
+      } else {
+        const rest = (body.remaining ?? 0) > 0 ? `。残り ${body.remaining} 試合` : ''
+        const skipped = (body.skipped ?? 0) > 0 ? `（見送り ${body.skipped}）` : ''
+        setBackfillNote(`${body.created ?? 0} 試合を取り込みました${skipped}${rest}`)
+      }
+    } catch {
+      setBackfillNote('取り込めませんでした')
+    }
+    setBackfilling(false)
+    router.refresh()
+  }
 
   /**
    * 月末の確定と取り消し。
@@ -332,6 +370,26 @@ export default function SavingsClient({
             {addMode === 'game' ? '試合を登録する' : 'カスタム登録を追加する'}
             <IconChevronRight size={16} />
           </Button>
+
+          {/* 取りこぼしの拾い直し。試合は全員で共有するのでマスターだけが押せる */}
+          {addMode === 'game' && isMaster ? (
+            <div className="mt-3 border-t border-line pt-3">
+              <button
+                type="button"
+                onClick={backfill}
+                disabled={backfilling}
+                className="text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine disabled:opacity-40"
+              >
+                {backfilling ? '取り込んでいます' : '未登録の試合をまとめて取り込む'}
+              </button>
+              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+                毎朝の取り込みは前日ぶんだけです。それ以前の試合が抜けているときに使います。
+              </p>
+              {backfillNote ? (
+                <p className="mt-2 text-[12px] text-teal">{backfillNote}</p>
+              ) : null}
+            </div>
+          ) : null}
         </Card>
       </div>
 
