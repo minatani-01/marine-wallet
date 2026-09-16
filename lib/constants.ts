@@ -64,6 +64,11 @@ export const HOME_AWAY: { id: HomeAway; label: string }[] = [
   { id: 'away', label: 'ビジター' },
 ]
 
+/** 開催地の表示名。登録の画面と履歴で同じ言い方にする */
+export function homeAwayLabel(id: HomeAway): string {
+  return HOME_AWAY.find((h) => h.id === id)?.label ?? id
+}
+
 /**
  * 先発ハイライトは最上位のみ加算する（セーブのみ独立）。
  *
