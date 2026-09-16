@@ -151,13 +151,13 @@ export function Chip({
         onClick()
       }}
       aria-pressed={selected}
-      className={`min-h-[44px] rounded-xl border px-3 py-2 text-sm transition-colors ${
+      className={`min-w-0 min-h-[44px] rounded-xl border px-3 py-2 text-sm transition-colors ${
         selected
           ? 'border-marine/70 bg-marine/10 text-marine font-medium'
           : 'border-line bg-white/[0.02] text-fg-dim hover:border-line hover:text-fg'
       } ${className}`}
     >
-      <span className="block leading-tight">{children}</span>
+      <span className="block truncate leading-tight">{children}</span>
       {sub ? <span className="mt-0.5 block text-[10px] leading-tight opacity-70">{sub}</span> : null}
     </button>
   )
@@ -183,7 +183,7 @@ export function Segmented<T extends string>({
             onChange(o.id)
           }}
           aria-pressed={value === o.id}
-          className={`min-h-[38px] flex-1 rounded-lg px-2 text-[13px] transition-colors ${
+          className={`min-h-[38px] min-w-0 flex-1 truncate rounded-lg px-2 text-[13px] transition-colors ${
             value === o.id ? 'bg-marine/15 text-marine font-medium' : 'text-fg-mute hover:text-fg'
           }`}
         >
@@ -224,12 +224,19 @@ export function Field({
   )
 }
 
+/**
+ * 入力欄の共通クラス。
+ *
+ * 文字は必ず 16px 以上にする。iOS は 16px 未満の入力欄をタップすると
+ * 勝手に拡大し、そのまま画面全体が横にずれて端が切れる。
+ * viewport の maximum-scale では止められない（読みやすさのため無視される）。
+ */
 export const inputClass =
-  'w-full rounded-xl border border-line bg-ink-2/80 px-3.5 py-2.5 text-fg outline-none transition-colors placeholder:text-fg-mute focus:border-marine/70'
+  'w-full rounded-xl border border-line bg-ink-2/80 px-3.5 py-2.5 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-mute focus:border-marine/70'
 
-/** inputClass の高さを詰めたもの。入力欄が続く画面で使う */
+/** inputClass の高さを詰めたもの。入力欄が続く画面で使う（文字は 16px のまま） */
 export const inputClassCompact =
-  'w-full rounded-lg border border-line bg-ink-2/80 px-3 py-2 text-[14px] text-fg outline-none transition-colors placeholder:text-fg-mute focus:border-marine/70'
+  'w-full rounded-lg border border-line bg-ink-2/80 px-3 py-2 text-[16px] text-fg outline-none transition-colors placeholder:text-fg-mute focus:border-marine/70'
 
 /**
  * ラベルと操作を1行に収める行。
@@ -399,8 +406,13 @@ export function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <span className={`text-[13px] ${strong ? 'text-fg' : 'text-fg-mute'}`}>{label}</span>
-      <span className={`tnum text-sm ${strong ? 'font-semibold text-fg' : 'text-fg-dim'}`}>
+      {/* 長いラベルで金額が押し出されないよう、縮むのはラベル側だけにする */}
+      <span className={`min-w-0 truncate text-[13px] ${strong ? 'text-fg' : 'text-fg-mute'}`}>
+        {label}
+      </span>
+      <span
+        className={`tnum shrink-0 text-sm ${strong ? 'font-semibold text-fg' : 'text-fg-dim'}`}
+      >
         {value}
       </span>
     </div>

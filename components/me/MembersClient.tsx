@@ -538,7 +538,7 @@ export default function MembersClient({
                           placeholder="Marine ID（未登録）"
                           autoCapitalize="characters"
                           spellCheck={false}
-                          className={`${inputClass} tnum !py-1.5 text-[13px] tracking-[0.1em]`}
+                          className={`${inputClass} tnum !py-1.5 tracking-[0.08em]`}
                         />
                         {draft !== (member.marine_id ?? '') ? (
                           <Button
