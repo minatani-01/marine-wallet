@@ -35,6 +35,7 @@ import { notifyMonthConfirmed } from '@/lib/notify-client'
 import { currentMonth, monthLabel, monthLabelEn, shortDate, yen } from '@/lib/format'
 import {
   MONTHLY_STATUS_LABEL,
+  homeAwayLabel,
   opponentLabel,
   phaseLabel,
   pitchingHighlightLabel,
@@ -487,7 +488,8 @@ export default function SavingsClient({
                         <span className="tnum">{shortDate(entry.entry_date)}</span>
                         {g && g.phase !== 'regular' ? <span>{phaseLabel(g.phase)}</span> : null}
                         {g ? (
-                          g.home_away ? <span>{g.home_away === 'home' ? 'H' : 'A'}</span> : null
+                          // 旧アプリから移行した試合は開催地が分からないので出さない
+                          g.home_away ? <span>{homeAwayLabel(g.home_away)}</span> : null
                         ) : (
                           <span>カスタム</span>
                         )}
