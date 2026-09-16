@@ -91,6 +91,10 @@ export default function SavingsClient({
   const [backfilling, setBackfilling] = useState(false)
   const [backfillNote, setBackfillNote] = useState<string | null>(null)
 
+  // 「達成が予想される記録」のページの取り込み
+  const [fetchingMilestones, setFetchingMilestones] = useState(false)
+  const [milestoneNote, setMilestoneNote] = useState<string | null>(null)
+
   // 確定が何人に反映されたか。押した直後だけ出す
   const [sharedCount, setSharedCount] = useState<number | null>(null)
   const [monthError, setMonthError] = useState<string | null>(null)
@@ -195,6 +199,27 @@ export default function SavingsClient({
     }
     setBackfilling(false)
     router.refresh()
+  }
+
+  /**
+   * 「今季達成が予想される記録」のページを取り直す。
+   *
+   * 毎朝の取り込みでも同じことをしている。npb.jp の作りが変わったときに、
+   * 翌朝を待たずに取り直すための操作。
+   */
+  const fetchMilestones = async () => {
+    setFetchingMilestones(true)
+    setMilestoneNote(null)
+    try {
+      const res = await fetch('/api/npb/milestones', { method: 'POST' })
+      const body = (await res.json()) as { error?: string; saved?: number }
+      setMilestoneNote(
+        res.ok ? `${body.saved ?? 0} ページを取り込みました` : (body.error ?? '取り込めませんでした')
+      )
+    } catch {
+      setMilestoneNote('取り込めませんでした')
+    }
+    setFetchingMilestones(false)
   }
 
   /**
@@ -387,6 +412,21 @@ export default function SavingsClient({
               </p>
               {backfillNote ? (
                 <p className="mt-2 text-[12px] text-teal">{backfillNote}</p>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={fetchMilestones}
+                disabled={fetchingMilestones}
+                className="mt-3 block text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine disabled:opacity-40"
+              >
+                {fetchingMilestones ? '取り込んでいます' : '記録達成の一覧を取り込む'}
+              </button>
+              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+                「今季達成が予想される記録」のページを取り直します。まだ貯金には反映しません。
+              </p>
+              {milestoneNote ? (
+                <p className="mt-2 text-[12px] text-teal">{milestoneNote}</p>
               ) : null}
             </div>
           ) : null}
