@@ -152,12 +152,12 @@ export default async function HomePage() {
         ) : null}
 
         <div className="mt-4 grid grid-cols-2 gap-2 border-t border-line pt-4">
-          <div>
-            <div className="text-[10px] tracking-wider text-fg-mute">今月のつみたて額</div>
+          <div className="min-w-0">
+            <div className="truncate text-[10px] tracking-wider text-fg-mute">今月のつみたて額</div>
             <div className="tnum mt-1 text-lg font-semibold">{yen(monthTotal)}</div>
           </div>
-          <div>
-            <div className="text-[10px] tracking-wider text-fg-mute">継続日数</div>
+          <div className="min-w-0">
+            <div className="truncate text-[10px] tracking-wider text-fg-mute">継続日数</div>
             <div className="tnum mt-1 text-lg font-semibold">{streak}日</div>
           </div>
         </div>

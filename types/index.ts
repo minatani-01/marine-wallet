@@ -211,12 +211,6 @@ export type SplitMember = {
  */
 export type SplitMemberView = SplitMember & { avatar_url: string | null }
 
-/** 相手から共有されている割り勘。誰のものかを表示するため所有者情報を添える */
-export type SharedSplitRecord = SplitRecord & {
-  owner_name: string
-  owner_marine_id: string
-}
-
 export type Share = {
   member: string
   /** 比率指定時の比率、金額指定時の入力金額。均等割の場合は null */

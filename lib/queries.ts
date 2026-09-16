@@ -21,7 +21,6 @@ import type {
   SharedGoalMemberProgress,
   SharedGoalRow,
   SharedGoalView,
-  SharedSplitRecord,
   SplitMember,
   SplitMemberView,
   SplitRecord,
@@ -281,30 +280,61 @@ export async function getMonthlySavings(userId: string): Promise<MonthlySaving[]
   return data ?? []
 }
 
-export async function getSplitRecords(userId: string): Promise<SplitRecord[]> {
+/**
+ * 共有の割り勘の持ち主。
+ *
+ * 割り勘は「その場に居た全員の話」なので、輪で1つのデータを見る（0037）。
+ * 持ち主はマスターで、割り勘の共有を許可された接続相手が読み書きする。
+ * 許可されていない人には RLS が何も返さないので、その人は自分の分だけを見る。
+ */
+export async function getSplitOwnerId(fallback: string): Promise<string> {
+  const supabase = await createClient()
+  const data = await read<{ id: string }[]>('profiles', () =>
+    supabase.from('profiles').select('id').eq('is_master', true).order('id').limit(1)
+  )
+  return data?.[0]?.id ?? fallback
+}
+
+export async function getSplitRecords(ownerId: string): Promise<SplitRecord[]> {
   const supabase = await createClient()
   const data = await read<SplitRecord[]>('records', () =>
     supabase
       .from('records')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', ownerId)
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
   )
   return data ?? []
 }
 
-export async function getSplitMembers(userId: string): Promise<SplitMemberView[]> {
+/**
+ * 共有の割り勘のメンバー。
+ *
+ * 「あなた」が誰かは見る人によって変わるので、DB の is_self をそのまま使わない。
+ * メンバーに登録された Marine ID と、見ている人の Marine ID を突き合わせる。
+ * 突き合わない（Marine ID を入れていない）ときだけ、持ち主の is_self に戻す。
+ */
+export async function getSplitMembers(
+  ownerId: string,
+  viewerMarineId: string | null = null
+): Promise<SplitMemberView[]> {
   const supabase = await createClient()
   const data = await read<SplitMember[]>('split_members', () =>
     supabase
       .from('split_members')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', ownerId)
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true })
   )
-  const members = data ?? []
+  const key = (value: string | null) => (value ?? '').trim().toUpperCase()
+  const mine = key(viewerMarineId)
+  const matched = mine !== '' && (data ?? []).some((m) => key(m.marine_id) === mine)
+
+  const members = (data ?? []).map((m) =>
+    matched ? { ...m, is_self: key(m.marine_id) === mine } : m
+  )
 
   // 写真は非公開バケットに置いてあるので、表示のたびに署名付きURLを発行する。
   // 1枚も無ければ Storage には触らない（写真を使っていない人にコストを増やさない）。
@@ -469,38 +499,6 @@ export async function getMonthSavingTotal(userId: string, month: string): Promis
   return (rows ?? []).reduce((sum, row) => sum + row.amount, 0)
 }
 
-/**
- * 相手から共有されている割り勘（0007）。
- *
- * 見えるのは「自分の Marine ID が登録されたメンバーとして参加している割り勘」だけで、
- * その絞り込みは RLS が行う。ここでは自分以外の行を取りに行くだけでよい。
- * 所有者の表示名は接続済みなら profiles から読める。
- */
-export async function getSharedSplitRecords(userId: string): Promise<SharedSplitRecord[]> {
-  const supabase = await createClient()
-
-  const rows = await read<SplitRecord[]>('records', () =>
-    supabase
-      .from('records')
-      .select('*')
-      .neq('user_id', userId)
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-  )
-  if (!rows || rows.length === 0) return []
-
-  const ownerIds = [...new Set(rows.map((r) => r.user_id))]
-  const owners = await read<Profile[]>('profiles', () =>
-    supabase.from('profiles').select('*').in('id', ownerIds)
-  )
-  const ownerById = new Map((owners ?? []).map((p) => [p.id, p]))
-
-  return rows.map((row) => ({
-    ...row,
-    owner_name: ownerById.get(row.user_id)?.display_name ?? '',
-    owner_marine_id: ownerById.get(row.user_id)?.marine_id ?? '',
-  }))
-}
 
 /**
  * 貯金の参加者ごとの累計（自分＋貯金に参加している接続済みメンバー）。

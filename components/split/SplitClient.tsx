@@ -27,7 +27,6 @@ import { categoryLabel } from '@/lib/constants'
 import type {
   Share,
   MarineLinkView,
-  SharedSplitRecord,
   SortOrder,
   SplitFilter,
   SplitMemberView,
@@ -42,20 +41,21 @@ function sharesOf(record: SplitRecord, fallbackNames: string[]): Share[] {
 }
 
 export default function SplitClient({
-  userId,
+  ownerId,
   records,
   members,
   links,
-  shared,
   openNew = false,
 }: {
-  userId: string
   records: SplitRecord[]
   members: SplitMemberView[]
   /** 接続している相手。登録したことを知らせる先を引くのに使う */
   links: MarineLinkView[]
-  /** 相手から共有されている割り勘。閲覧のみで編集はできない */
-  shared: SharedSplitRecord[]
+  /**
+   * 共有の割り勘の持ち主。書き込みはこの人の持ち物として行う。
+   * 自分が持ち主のときは自分の id が入る。
+   */
+  ownerId: string
   /** ホームの「割り勘を作成」から来たか。真なら登録シートを開いて始める */
   openNew?: boolean
 }) {
@@ -438,46 +438,12 @@ export default function SplitClient({
         )}
       </div>
 
-      {/* 相手から共有されている割り勘（Marine ID をメンバーに登録してもらうと届く） */}
-      {shared.length > 0 ? (
-        <div>
-          <SectionLabel>共有されている割り勘</SectionLabel>
-          <p className="mb-2.5 text-[11px] leading-relaxed text-fg-mute">
-            あなたの Marine ID がメンバーとして登録されている割り勘です。閲覧のみで、
-            編集や精算は記録した本人が行います。
-          </p>
-          <div className="flex flex-col gap-2">
-            {shared.map((record) => (
-              <Card key={record.id} className="!p-3">
-                <div className="flex items-center gap-3">
-                  <CategoryIcon category={record.category} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm">{record.content}</div>
-                    <div className="text-[11px] text-fg-mute">
-                      {shortDate(record.date)} / {record.owner_name || record.owner_marine_id} の記録
-                      {' / '}
-                      {record.payer} が立替
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="tnum text-sm font-semibold">{yen(record.amount)}</div>
-                    <div className="mt-0.5 text-[10px] tracking-wider text-fg-mute">
-                      {record.status === 'unpaid' ? '未精算' : '完了'}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       {sheetOpen ? (
         <SplitSheet
           record={editing}
           members={selectableMembers}
           links={links}
-          userId={userId}
+          userId={ownerId}
           onClose={() => {
             setSheetOpen(false)
             setEditing(null)
