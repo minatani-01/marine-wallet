@@ -195,6 +195,15 @@ export function Segmented<T extends string>({
 }
 
 // --------------------------------------------------------------- Field ----
+/**
+ * ラベルと入力欄の組。
+ *
+ * min-w-0 を必ず付ける。grid や flex の中の要素は既定で min-width:auto なので、
+ * <select> のように「一番長い選択肢の幅」を要求する入力が入ると、
+ * 列が 1fr を越えて広がり、隣の列へはみ出す。
+ * iPhone は選択肢の幅をそのまま使うので、日本シリーズ・ソフトバンクのような
+ * 長い選択肢で必ず崩れた。
+ */
 export function Field({
   label,
   hint,
@@ -205,10 +214,10 @@ export function Field({
   children: ReactNode
 }) {
   return (
-    <div>
-      <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-[13px] font-medium text-fg-dim">{label}</span>
-        {hint ? <span className="text-[11px] text-fg-mute">{hint}</span> : null}
+    <div className="min-w-0">
+      <div className="mb-2 flex min-w-0 items-baseline gap-2">
+        <span className="truncate text-[13px] font-medium text-fg-dim">{label}</span>
+        {hint ? <span className="shrink-0 text-[11px] text-fg-mute">{hint}</span> : null}
       </div>
       {children}
     </div>
@@ -362,7 +371,7 @@ export function Sheet({
             <IconClose size={18} />
           </IconButton>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">{children}</div>
         {footer ? <div className="border-t border-line px-4 py-3">{footer}</div> : null}
       </div>
     </div>
