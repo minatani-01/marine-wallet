@@ -5,10 +5,12 @@ import { isJstMonthEnd, jstMonth, jstYesterday } from '@/lib/jst'
 import {
   messageForGameImported,
   messageForGameNeedsManual,
+  messageForMilestones,
   messageForMonthEnd,
 } from '@/lib/notifications'
 import { registerYesterdayGame } from '@/lib/npb/register'
 import { snapshotSourcePages } from '@/lib/npb/pages'
+import { registerMilestones } from '@/lib/npb/milestone-register'
 import { jstDate } from '@/lib/jst'
 import { opponentLabel } from '@/lib/constants'
 import { sendPushToAll } from '@/lib/push'
@@ -112,14 +114,22 @@ export async function GET(request: Request) {
       notified.games = await sendPushToAll(messageForGameNeedsManual(registered.reason))
     }
 
-    // 記録達成の判定に使うページを取って置くだけ。
-    // 読み取り方はまだ決めていないので、ここでは金額を動かさない。
+    // 記録達成。ページを取り直してから読み取り、達成していれば積立まで作る。
     // 失敗しても取り込み全体は止めない（試合の登録のほうが大事）
+    const season = Number(jstDate(now).slice(0, 4))
     let sourcePages: unknown = null
+    let milestones: unknown = null
     try {
-      sourcePages = await snapshotSourcePages(supabase, Number(jstDate(now).slice(0, 4)))
+      sourcePages = await snapshotSourcePages(supabase, season)
+      const registered = await registerMilestones(supabase, season)
+      milestones = registered
+      if (registered.created > 0) {
+        notified.milestones = await sendPushToAll(messageForMilestones(registered.titles))
+      }
     } catch (cause) {
-      sourcePages = { error: cause instanceof Error ? cause.message : String(cause) }
+      const message = cause instanceof Error ? cause.message : String(cause)
+      if (sourcePages === null) sourcePages = { error: message }
+      else milestones = { error: message }
     }
 
     // 月末の確定と入金のリマインド。日本時間で月の最終日にだけ送る
@@ -136,6 +146,7 @@ export async function GET(request: Request) {
       warnings: result.warnings,
       registered,
       sourcePages,
+      milestones,
       notified,
     }
 

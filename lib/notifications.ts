@@ -136,3 +136,24 @@ export function messageForMonthEnd(month: string): PushMessage {
     tag: 'month-end',
   }
 }
+
+/**
+ * 記録達成を貯金に入れたときの知らせ。
+ *
+ * 何の記録かはロック画面に出しても困らないので、1件なら内容をそのまま出す。
+ * まとめて入ったときは件数だけにして、長くなりすぎないようにする。
+ */
+export function messageForMilestones(titles: string[]): PushMessage {
+  const body =
+    titles.length === 1
+      ? `${titles[0]}を貯金に追加しました。`
+      : `${titles.length}件の記録達成を貯金に追加しました。`
+
+  return {
+    title: '記録達成を取り込みました',
+    body,
+    category: 'games',
+    url: '/savings',
+    tag: 'milestones',
+  }
+}

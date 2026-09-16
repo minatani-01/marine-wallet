@@ -110,7 +110,27 @@ function homeRunsOf(raw: unknown): NpbHomeRun[] | null {
   })
 }
 
-export function gameFromNpb(row: NpbGameSource): ImportResult {
+/**
+ * 試合の「事実」だけを取り出す。
+ *
+ * 貯金の金額に関わるもの（本塁打・投手の記録・その他ボーナス）は含めない。
+ * 取り込みと、すでにある試合の直しの両方から使う。直しのほうは金額を
+ * 動かさないことが前提なので、事実と金額を分けて持てる形にしておく。
+ */
+export type GameFacts = {
+  opponent: string
+  home_away: HomeAway
+  stadium: string
+  marines_score: number
+  opponent_score: number
+  result: GameResult
+}
+
+export type FactsResult =
+  | { ok: true; facts: GameFacts }
+  | { ok: false; reason: string }
+
+export function factsFromNpb(row: NpbGameSource): FactsResult {
   if (row.status !== 'finished') {
     return { ok: false, reason: `まだ終わっていません（${row.status}）` }
   }
@@ -133,6 +153,24 @@ export function gameFromNpb(row: NpbGameSource): ImportResult {
     return { ok: false, reason: `対戦相手を判別できません（${opponentLabel}）` }
   }
 
+  return {
+    ok: true,
+    facts: {
+      opponent,
+      home_away: (isHome ? 'home' : 'away') satisfies HomeAway,
+      stadium: row.place.trim(),
+      marines_score: marinesScore,
+      opponent_score: opponentScore,
+      result:
+        marinesScore > opponentScore ? 'win' : marinesScore < opponentScore ? 'lose' : 'draw',
+    },
+  }
+}
+
+export function gameFromNpb(row: NpbGameSource): ImportResult {
+  const facts = factsFromNpb(row)
+  if (!facts.ok) return { ok: false, reason: facts.reason }
+
   // 本塁打の数はボックススコアからしか取れない。
   // 取れていないのに0本として作ると、静かに少ない金額で確定してしまう
   const homeRuns = homeRunsOf(row.raw)
@@ -140,28 +178,20 @@ export function gameFromNpb(row: NpbGameSource): ImportResult {
     return { ok: false, reason: 'ボックススコアを取得できていません' }
   }
 
-  const result: GameResult =
-    marinesScore > opponentScore ? 'win' : marinesScore < opponentScore ? 'lose' : 'draw'
-
   return {
     ok: true,
     game: {
       game_date: row.game_date,
-      opponent,
+      ...facts.facts,
       phase: toPhase(row.phase),
-      home_away: (isHome ? 'home' : 'away') satisfies HomeAway,
-      stadium: row.place.trim(),
-      result,
       is_sayonara: false,
-      marines_score: marinesScore,
-      opponent_score: opponentScore,
       ...countMarinesHomeRuns(homeRuns),
       multi_hits: 0,
       rbi: 0,
       pitching_highlight: 'none',
       is_winning_pitcher: false,
       // セーブが付くのは勝った試合だけ。負け試合に相手のセーブを拾わない
-      has_save: result === 'win' && row.save_pitcher.trim().length > 0,
+      has_save: facts.facts.result === 'win' && row.save_pitcher.trim().length > 0,
       other_amount: 0,
       other_note: '',
       source: 'npb',

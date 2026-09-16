@@ -91,7 +91,7 @@ export default function SavingsClient({
   const [backfilling, setBackfilling] = useState(false)
   const [backfillNote, setBackfillNote] = useState<string | null>(null)
 
-  // 「達成が予想される記録」のページの取り込み
+  // 記録達成の取り込み
   const [fetchingMilestones, setFetchingMilestones] = useState(false)
   const [milestoneNote, setMilestoneNote] = useState<string | null>(null)
 
@@ -184,15 +184,37 @@ export default function SavingsClient({
         created?: number
         skipped?: number
         remaining?: number
+        collected?: { saved?: number; remaining?: number }
+        repaired?: { updated?: number; mismatches?: { game_date: string }[] }
       }
       if (!res.ok) {
         setBackfillNote(body.error ?? '取り込めませんでした')
-      } else if ((body.created ?? 0) === 0 && (body.skipped ?? 0) === 0) {
-        setBackfillNote('取り込む試合はありませんでした')
       } else {
-        const rest = (body.remaining ?? 0) > 0 ? `。残り ${body.remaining} 試合` : ''
-        const skipped = (body.skipped ?? 0) > 0 ? `（見送り ${body.skipped}）` : ''
-        setBackfillNote(`${body.created ?? 0} 試合を取り込みました${skipped}${rest}`)
+        const parts: string[] = []
+
+        const updated = body.repaired?.updated ?? 0
+        if (updated > 0) parts.push(`${updated} 試合の内容を直しました`)
+
+        const created = body.created ?? 0
+        if (created > 0) parts.push(`${created} 試合を取り込みました`)
+
+        const skipped = body.skipped ?? 0
+        if (skipped > 0) parts.push(`見送り ${skipped}`)
+
+        // 月ぶんの日程がまだ残っていれば、もう一度押せばよいと分かるようにする
+        const restMonths = body.collected?.remaining ?? 0
+        if (restMonths > 0) parts.push(`未取得の月が ${restMonths} か月`)
+
+        const restGames = body.remaining ?? 0
+        if (restGames > 0) parts.push(`未登録の試合が ${restGames} 件`)
+
+        const mismatches = body.repaired?.mismatches ?? []
+        if (mismatches.length > 0) {
+          // 勝敗は金額そのものなので、こちらでは直さない
+          parts.push(`勝敗が食い違う試合が ${mismatches.length} 件（直していません）`)
+        }
+
+        setBackfillNote(parts.length > 0 ? parts.join(' / ') : '直すところはありませんでした')
       }
     } catch {
       setBackfillNote('取り込めませんでした')
@@ -202,24 +224,37 @@ export default function SavingsClient({
   }
 
   /**
-   * 「今季達成が予想される記録」のページを取り直す。
+   * 記録達成を取り込む。
    *
-   * 毎朝の取り込みでも同じことをしている。npb.jp の作りが変わったときに、
-   * 翌朝を待たずに取り直すための操作。
+   * ページを取り直してから読み取り、達成していれば積立まで作る。
+   * 毎朝の取り込みでも同じことをしている。仕込んだ直後や npb.jp の作りが
+   * 変わったときに、翌朝を待たずに動かすための操作。
+   *
+   * 何度押しても積立は積み上がらない。同じ記録は一度しか入らない。
    */
   const fetchMilestones = async () => {
     setFetchingMilestones(true)
     setMilestoneNote(null)
     try {
-      const res = await fetch('/api/npb/pages', { method: 'POST' })
-      const body = (await res.json()) as { error?: string; saved?: number }
-      setMilestoneNote(
-        res.ok ? `${body.saved ?? 0} ページを取り込みました` : (body.error ?? '取り込めませんでした')
-      )
+      const res = await fetch('/api/npb/milestones', { method: 'POST' })
+      const body = (await res.json()) as {
+        error?: string
+        created?: number
+        known?: number
+        titles?: string[]
+      }
+      if (!res.ok) {
+        setMilestoneNote(body.error ?? '取り込めませんでした')
+      } else if ((body.created ?? 0) === 0) {
+        setMilestoneNote(`新しい記録はありませんでした（確認済み ${body.known ?? 0} 件）`)
+      } else {
+        setMilestoneNote(`${body.created} 件を貯金に追加しました: ${(body.titles ?? []).join(' / ')}`)
+      }
     } catch {
       setMilestoneNote('取り込めませんでした')
     }
     setFetchingMilestones(false)
+    router.refresh()
   }
 
   /**
@@ -409,6 +444,9 @@ export default function SavingsClient({
               </button>
               <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
                 毎朝の取り込みは前日ぶんだけです。それ以前の試合が抜けているときに使います。
+                すでにある試合も、ホーム・ビジターや得点を npb.jp
+                に合わせて直します。勝敗とフェーズは触らないので、金額は変わりません。
+                古い月は1回につき3か月ぶんずつ取りに行くので、残っていれば続けて押してください。
               </p>
               {backfillNote ? (
                 <p className="mt-2 text-[12px] text-teal">{backfillNote}</p>
@@ -420,10 +458,11 @@ export default function SavingsClient({
                 disabled={fetchingMilestones}
                 className="mt-3 block text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine disabled:opacity-40"
               >
-                {fetchingMilestones ? '取り込んでいます' : '記録達成の一覧を取り込む'}
+                {fetchingMilestones ? '取り込んでいます' : '記録達成を取り込む'}
               </button>
               <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                「今季達成が予想される記録」のページを取り直します。まだ貯金には反映しません。
+                名球会記録・生涯記録・シーズン記録を読み取り、達成していれば貯金に入れます。
+                毎朝の取り込みでも同じことをしています。同じ記録は一度しか入りません。
               </p>
               {milestoneNote ? (
                 <p className="mt-2 text-[12px] text-teal">{milestoneNote}</p>

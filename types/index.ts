@@ -134,6 +134,27 @@ export type SavingCustomPreset = {
   label: string
   amount: number
   sort_order: number
+  /** 自動登録が使う定型。カスタム登録の選択肢には出さず、金額だけ変えられる */
+  auto: boolean
+}
+
+/**
+ * まもなく達成する記録。ホームのカウントダウンに使う。
+ * 毎朝の取り込みで作り直すので、履歴は持たない。
+ */
+export type UpcomingMilestoneRow = {
+  id: string
+  kind: 'batting' | 'pitching'
+  /** npb.jp の見出しそのまま（例: 2000安打） */
+  record_label: string
+  holder: string
+  /** 背番号。名鑑から引けなければ空 */
+  uniform_number: string
+  target: number
+  unit: string
+  /** 通算（昨年まで + 今季） */
+  current: number
+  remaining: number
 }
 
 /** 月末フロー。入金はワンバンク側で一度に終わるので中間状態は持たない */

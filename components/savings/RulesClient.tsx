@@ -87,6 +87,18 @@ export default function RulesClient({
   const [error, setError] = useState<string | null>(null)
 
   /**
+   * 定型は2つに分かれる。
+   *
+   *   手で選ぶもの … カスタム登録のプルダウンに並ぶ。増やせる・消せる・並べ替えられる
+   *   自動登録が使うもの … npb.jp から取れる記録。金額だけ変えられる
+   *
+   * 金額をここで変えられるようにしておくと、記録の重みを見直したくなったとき、
+   * コードに手を入れずに済む。
+   */
+  const manualPresets = presets.filter((p) => !p.auto)
+  const autoPresets = presets.filter((p) => p.auto)
+
+  /**
    * 定型は行なので、ルールの「保存する」とは別にその場で反映する。
    * まとめて保存にすると、追加したのに保存を押し忘れる事故が起きる。
    */
@@ -104,10 +116,10 @@ export default function RulesClient({
         label,
         amount,
         // 末尾に足す
-        sort_order: presets.reduce((max, p) => Math.max(max, p.sort_order), 0) + 10,
+        sort_order: manualPresets.reduce((max, p) => Math.max(max, p.sort_order), 0) + 10,
         updated_by: userId,
       })
-      .select('id, label, amount, sort_order')
+      .select('id, label, amount, sort_order, auto')
       .single()
     setPresetBusy(false)
 
@@ -144,20 +156,21 @@ export default function RulesClient({
    */
   const movePreset = async (index: number, direction: -1 | 1) => {
     const target = index + direction
-    if (target < 0 || target >= presets.length) return
+    if (target < 0 || target >= manualPresets.length) return
 
-    const a = presets[index]
-    const b = presets[target]
+    const a = manualPresets[index]
+    const b = manualPresets[target]
 
     // 並びが同じ値で作られていると交換しても動かないので、
-    // 位置から採り直して必ず差がつくようにする
-    const next = [...presets]
+    // 位置から採り直して必ず差がつくようにする。
+    // 自動登録ぶんは後ろに置いてあり、プルダウンにも出ないので触らない
+    const next = [...manualPresets]
     next[index] = b
     next[target] = a
     const renumbered = next.map((p, i) => ({ ...p, sort_order: (i + 1) * 10 }))
 
-    const before = presets
-    setPresets(renumbered)
+    const before = manualPresets
+    setPresets([...renumbered, ...autoPresets])
     setPresetBusy(true)
 
     const supabase = createClient()
@@ -175,7 +188,7 @@ export default function RulesClient({
     setPresetBusy(false)
 
     if (results.some((r) => r.error)) {
-      setPresets(before)
+      setPresets([...before, ...autoPresets])
       setPresetError('並びを保存できませんでした')
       return
     }
@@ -321,11 +334,11 @@ export default function RulesClient({
             ここでの並び順がそのままプルダウンの順になります。
           </p>
 
-          {presets.length === 0 ? (
+          {manualPresets.length === 0 ? (
             <p className="py-2 text-[13px] text-fg-mute">定型はまだありません。</p>
           ) : (
             <div className="divide-hairline">
-              {presets.map((preset, index) => (
+              {manualPresets.map((preset, index) => (
                 <div key={preset.id} className="flex items-center justify-between gap-2 py-2.5">
                   {canEdit ? (
                     <div className="flex shrink-0 flex-col">
@@ -342,7 +355,7 @@ export default function RulesClient({
                         type="button"
                         aria-label={`${preset.label}を下へ`}
                         onClick={() => movePreset(index, 1)}
-                        disabled={index === presets.length - 1 || presetBusy}
+                        disabled={index === manualPresets.length - 1 || presetBusy}
                         className="flex h-5 w-6 items-center justify-center rounded text-fg-mute transition-colors hover:text-marine disabled:opacity-25"
                       >
                         <IconChevronDown size={14} />
@@ -421,6 +434,48 @@ export default function RulesClient({
           ) : null}
         </Card>
       </div>
+
+      {autoPresets.length > 0 ? (
+        <div>
+          <SectionLabel>記録達成の金額</SectionLabel>
+          <Card>
+            <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
+              名球会記録・生涯記録・シーズン記録は npb.jp
+              から取れるので、自動登録が毎朝入れます。ここでは金額だけを決めます。
+              手で選ぶ定型ではないため、カスタム登録のプルダウンには出ません。
+            </p>
+
+            <div className="divide-hairline">
+              {autoPresets.map((preset) => (
+                <div key={preset.id} className="flex items-center justify-between gap-2 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-fg-dim">
+                    {preset.label}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="text-fg-mute">¥</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={100}
+                      value={preset.amount}
+                      onChange={(e) => updatePresetAmount(preset.id, e.target.value)}
+                      disabled={!canEdit}
+                      aria-label={`${preset.label}の金額`}
+                      className={numberInput}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-fg-mute">
+              名球会記録は通算2000安打・200勝・250セーブ、生涯記録はそれ以外の通算記録、
+              シーズン記録はその年だけの記録です。金額を変えても、すでに積み立てた分は変わりません。
+            </p>
+          </Card>
+        </div>
+      ) : null}
 
       {canEdit ? (
         <div className="flex flex-col gap-2">
