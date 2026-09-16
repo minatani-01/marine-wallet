@@ -355,7 +355,7 @@ export function Sheet({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center">
-      <div className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl border border-line bg-ink-2 sm:rounded-3xl">
+      <div className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl border border-line bg-ink-2 pb-[env(safe-area-inset-bottom)] sm:rounded-3xl sm:pb-0">
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold tracking-wide">{title}</h2>
           <IconButton label="閉じる" onClick={onClose}>

@@ -12,6 +12,16 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   themeColor: '#05070b',
+  /**
+   * iOS のホームバー・ノッチの下まで描く。
+   *
+   * これを入れないと env(safe-area-inset-*) が全て 0 になり、
+   * 画面下のタブがホームバーと重なる。Android では余白が別に確保されるので
+   * 気付きにくいが、iPhone では文字がホームバーに被る。
+   *
+   * 下まで描くぶん、ヘッダーとタブと各シートの端で inset を足し直す。
+   */
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

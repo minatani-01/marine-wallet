@@ -58,7 +58,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-ink/85 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-line bg-ink/85 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
         <div className="grid h-14 grid-cols-[44px_1fr_44px] items-center px-2">
           <div className="flex justify-start">
             {header?.back ? (
@@ -112,7 +112,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 px-4 pt-5 pb-28">{children}</main>
+      <main className="flex-1 px-4 pt-5 pb-[calc(7rem+env(safe-area-inset-bottom))]">{children}</main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/92 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-lg">
