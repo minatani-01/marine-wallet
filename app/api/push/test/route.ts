@@ -24,7 +24,9 @@ export async function POST() {
   }
 
   const result = await sendPushToUsers([user.id], {
-    title: 'Marine Wallet',
+    // アプリ名にしない。iOS は通知に「from Marine Wallet」を自分で足すので、
+    // タイトルもアプリ名だと同じ言葉が2行続いて読みにくくなる
+    title: '通知のテスト',
     body: '通知のテストです。これが見えていれば設定は完了しています。',
     // 本人が今まさに押したものなので、受け取る種類の設定では止めない
     category: 'always',
