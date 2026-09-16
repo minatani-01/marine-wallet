@@ -197,7 +197,9 @@ export default async function HomePage() {
         <div className="flex items-end justify-between gap-3">
           <div>
             <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
-            <div className="tnum mt-1.5 text-xl font-semibold">{formatWinRate(record.rate)}</div>
+            <div className="tnum mt-1.5 text-xl font-semibold text-marine">
+              {formatWinRate(record.rate)}
+            </div>
           </div>
           <div className="text-right">
             <div className="tnum text-[13px] text-fg-dim">
