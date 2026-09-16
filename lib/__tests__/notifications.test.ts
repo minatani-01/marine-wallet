@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import {
   NOTIFY_KINDS,
   isNotifyKind,
-  messageForGames,
+  messageForGameImported,
+  messageForGameNeedsManual,
   messageForKind,
   messageForMonthConfirmed,
   messageForMonthEnd,
@@ -42,7 +43,8 @@ test('すべての文面が、どの設定で止まるかを名乗る', () => {
   const allowed: string[] = [...NOTIFY_CATEGORIES]
   const messages = [
     ...NOTIFY_KINDS.map((kind) => messageForKind(kind, 'テスト')),
-    messageForGames(1, '2026-09-14'),
+    messageForGameImported('日本ハム', 'win'),
+    messageForGameNeedsManual('ボックススコアを取得できていません'),
     messageForMonthEnd('2026-09'),
     messageForMonthConfirmed('2026-09'),
   ]
@@ -54,7 +56,17 @@ test('すべての文面が、どの設定で止まるかを名乗る', () => {
 test('割り勘と接続は別の設定で止まる', () => {
   assert.equal(messageForKind('split_added', 'テスト').category, 'split')
   assert.equal(messageForKind('link_request', 'テスト').category, 'link')
-  assert.equal(messageForGames(1, null).category, 'games')
+  assert.equal(messageForGameImported('西武', 'lose').category, 'games')
   assert.equal(messageForMonthEnd('2026-09').category, 'savings')
   assert.equal(messageForMonthConfirmed('2026-09').category, 'savings')
+})
+
+test('取り込めたときだけ「貯金に追加した」と言う', () => {
+  assert.match(messageForGameImported('日本ハム', 'win').body, /勝利.*貯金に追加/)
+  assert.match(messageForGameImported('西武', 'lose').body, /敗戦/)
+  assert.match(messageForGameImported('楽天', 'draw').body, /引き分け/)
+  // 取り込めなかったときは、手で入れる必要があると分かる文面にする
+  const manual = messageForGameNeedsManual('ボックススコアを取得できていません')
+  assert.match(manual.body, /手で登録/)
+  assert.equal(/貯金に追加/.test(manual.body), false)
 })

@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 
 import { runNpbSync } from '@/lib/npb/sync'
 import { isJstMonthEnd, jstMonth, jstYesterday } from '@/lib/jst'
-import { messageForGames, messageForMonthEnd } from '@/lib/notifications'
+import {
+  messageForGameImported,
+  messageForGameNeedsManual,
+  messageForMonthEnd,
+} from '@/lib/notifications'
+import { registerYesterdayGame } from '@/lib/npb/register'
+import { opponentLabel } from '@/lib/constants'
 import { sendPushToAll } from '@/lib/push'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -13,8 +19,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * 全試合が終わったあとに走らせたいので、深夜の試合が長引いても
  * 間に合う時刻にしている。
  *
- * この段階では npb_games と npb_player_stat_snapshots に貯めるだけで、
- * 既存の games や貯金額には一切触れない。
+ * 取得したものは npb_games と npb_player_stat_snapshots に貯め、
+ * そのうち「前日に終わった1試合」だけを games と各自の積立へ入れる。
+ * 過去分をまとめて作り直すことはしない。想定しない書き換えが起きたときに
+ * 追えなくなるため。すでにある試合と積立にも触らない。
  */
 
 // 取得したものをそのまま保存するので、キャッシュさせない
@@ -85,22 +93,21 @@ export async function GET(request: Request) {
       if (error) throw new Error(`スナップショットの保存に失敗しました: ${error.message}`)
     }
 
-    // 取り込みの知らせ。前日までに終わった試合があるときだけ送る。
-    // 中止や試合の無い日に「取り込みました」と鳴らしても意味がない
+    // 前日の1試合だけを貯金へ入れる。ここで初めて金額が動く
     const yesterday = jstYesterday(now)
-    const finishedYesterday = result.games.filter(
-      (g) => g.status === 'finished' && g.game_date === yesterday
-    )
+    const registered = await registerYesterdayGame(supabase, yesterday)
     const notified: Record<string, unknown> = {}
 
-    if (finishedYesterday.length > 0) {
-      const latest = finishedYesterday[finishedYesterday.length - 1]
+    if (registered.status === 'created' && registered.opponent && registered.result) {
       notified.games = await sendPushToAll(
-        messageForGames(
-          finishedYesterday.length,
-          `${latest.home_team} ${latest.home_score ?? '-'}-${latest.away_score ?? '-'} ${latest.away_team}`
+        messageForGameImported(
+          opponentLabel(registered.opponent),
+          registered.result as 'win' | 'lose' | 'draw'
         )
       )
+    } else if (registered.needsManual && registered.reason) {
+      // 黙って見送ると、その日の貯金が抜けたことに気付けない
+      notified.games = await sendPushToAll(messageForGameNeedsManual(registered.reason))
     }
 
     // 月末の確定と入金のリマインド。日本時間で月の最終日にだけ送る
@@ -115,6 +122,7 @@ export async function GET(request: Request) {
       battingAsOf: result.battingAsOf,
       pitchingAsOf: result.pitchingAsOf,
       warnings: result.warnings,
+      registered,
       notified,
     }
 
