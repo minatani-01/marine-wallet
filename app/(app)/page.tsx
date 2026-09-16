@@ -212,9 +212,14 @@ export default async function HomePage() {
                     {item.unit}
                   </div>
                 </div>
-                <div className="tnum shrink-0 text-lg font-semibold text-marine">
-                  あと{item.remaining.toLocaleString()}
-                  <span className="ml-0.5 text-[11px] font-normal text-fg-mute">
+                {/* 行をまたいで「あと」の位置を揃える。数と単位はどちらも
+                    長さが変わるので、それぞれ幅を決めて数は右寄せ・単位は左寄せ */}
+                <div className="flex shrink-0 items-baseline">
+                  <span className="text-lg font-semibold text-marine">あと</span>
+                  <span className="tnum w-10 text-right text-lg font-semibold text-marine">
+                    {item.remaining.toLocaleString()}
+                  </span>
+                  <span className="ml-1 w-12 text-[11px] text-fg-mute">
                     {countdownUnit(item.unit)}
                   </span>
                 </div>
