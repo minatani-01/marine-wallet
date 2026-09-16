@@ -190,6 +190,28 @@ export default async function HomePage() {
         </Link>
       </div>
 
+      {/* 試合数ではなく戦績を出す。登録は試合のあとになるので、
+          「何試合ぶん記録したか」より「今季どうだったか」の方が読む意味がある。
+          どこまでの結果かが分かるよう、最後に記録した試合の日付を添える */}
+      <Card>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
+            <div className="tnum mt-1.5 text-xl font-semibold">{formatWinRate(record.rate)}</div>
+          </div>
+          <div className="text-right">
+            <div className="tnum text-[13px] text-fg-dim">
+              {record.win}勝{record.lose}敗{record.draw}分
+            </div>
+            {record.lastGameDate ? (
+              <div className="tnum mt-0.5 text-[11px] text-fg-mute">
+                {shortDate(record.lastGameDate)}まで
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </Card>
+
       {/* まもなく達成する記録。達成すると自動登録で貯金に入るので、
           ここに出しておくと「次に何が入るか」が先に分かる */}
       <Card>
@@ -227,28 +249,6 @@ export default async function HomePage() {
             ))}
           </div>
         )}
-      </Card>
-
-      {/* 試合数ではなく戦績を出す。登録は試合のあとになるので、
-          「何試合ぶん記録したか」より「今季どうだったか」の方が読む意味がある。
-          どこまでの結果かが分かるよう、最後に記録した試合の日付を添える */}
-      <Card>
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
-            <div className="tnum mt-1.5 text-xl font-semibold">{formatWinRate(record.rate)}</div>
-          </div>
-          <div className="text-right">
-            <div className="tnum text-[13px] text-fg-dim">
-              {record.win}勝{record.lose}敗{record.draw}分
-            </div>
-            {record.lastGameDate ? (
-              <div className="tnum mt-0.5 text-[11px] text-fg-mute">
-                {shortDate(record.lastGameDate)}まで
-              </div>
-            ) : null}
-          </div>
-        </div>
       </Card>
 
       {/* 月末の入金誘導 */}
