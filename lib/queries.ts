@@ -15,6 +15,7 @@ import type {
   Profile,
   SavingEntryRow,
   SavingCustomPreset,
+  UpcomingMilestoneRow,
   SavingRules,
   SavingCircleTotal,
   SharedGoalMemberProgress,
@@ -213,12 +214,30 @@ export async function getSavingRules(): Promise<SavingRules> {
 /**
  * カスタム登録の定型。全アカウント共通で、貯金ルールの画面から増やせる。
  */
+/**
+ * まもなく達成する記録。近いものから取る。
+ *
+ * 中身は毎朝の取り込みが作り直す。ここでは読むだけなので、
+ * ページを開くたびに npb.jp の HTML を読み直すことはない。
+ */
+export async function getUpcomingMilestones(limit = 3): Promise<UpcomingMilestoneRow[]> {
+  const supabase = await createClient()
+  const data = await read<UpcomingMilestoneRow[]>('npb_upcoming_milestones', () =>
+    supabase
+      .from('npb_upcoming_milestones')
+      .select('id, kind, record_label, holder, uniform_number, target, unit, current, remaining')
+      .order('remaining', { ascending: true })
+      .limit(limit)
+  )
+  return data ?? []
+}
+
 export async function getSavingCustomPresets(): Promise<SavingCustomPreset[]> {
   const supabase = await createClient()
   const data = await read<SavingCustomPreset[]>('saving_custom_presets', () =>
     supabase
       .from('saving_custom_presets')
-      .select('id, label, amount, sort_order')
+      .select('id, label, amount, sort_order, auto')
       .order('sort_order', { ascending: true })
       .order('label', { ascending: true })
   )

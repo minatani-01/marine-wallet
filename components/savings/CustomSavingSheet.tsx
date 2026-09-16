@@ -39,6 +39,14 @@ export default function CustomSavingSheet({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  /**
+   * 手で選べる定型だけを出す。
+   *
+   * 「名球会記録 / 生涯記録 / シーズン記録」は npb.jp から取れるので
+   * 自動登録に移した。選択肢に残すと、自動で入るものを手でも入れてしまう。
+   */
+  const selectable = presets.filter((p) => !p.auto)
+
   const parsedAmount = Math.max(0, Number.parseInt(amount || '0', 10) || 0)
   const canSubmit = title.trim().length > 0 && parsedAmount > 0 && Boolean(date)
 
@@ -106,18 +114,18 @@ export default function CustomSavingSheet({
 
           <Field label="定型" hint="貯金ルールで追加">
             <select
-              value={presets.find((p) => p.label === title)?.id ?? ''}
+              value={selectable.find((p) => p.label === title)?.id ?? ''}
               onChange={(e) => {
-                const preset = presets.find((p) => p.id === e.target.value)
+                const preset = selectable.find((p) => p.id === e.target.value)
                 if (preset) applyPreset(preset)
               }}
               className={inputClassCompact}
-              disabled={presets.length === 0}
+              disabled={selectable.length === 0}
             >
               <option value="">
-                {presets.length === 0 ? '定型がありません' : '選択しない'}
+                {selectable.length === 0 ? '定型がありません' : '選択しない'}
               </option>
-              {presets.map((preset) => (
+              {selectable.map((preset) => (
                 <option key={preset.id} value={preset.id}>
                   {preset.label}　¥{preset.amount.toLocaleString()}
                 </option>

@@ -9,7 +9,7 @@ import {
   getSavingEntries,
   getSessionUser,
   getSavingCircleTotals,
-  getSplitRecords,
+  getUpcomingMilestones,
 } from '@/lib/queries'
 import {
   depositedMonthSet,
@@ -20,6 +20,7 @@ import {
 } from '@/lib/insights'
 import { currentMonth, isMonthClosed, monthLabel, shortDate, today, yen } from '@/lib/format'
 import { MONTHLY_STATUS_LABEL } from '@/lib/constants'
+import { familyName } from '@/lib/npb/milestones'
 import type { MonthlyStatus } from '@/types'
 
 const STATUS_TONE: Record<MonthlyStatus, 'neutral' | 'marine' | 'warn' | 'done'> = {
@@ -33,11 +34,12 @@ export default async function HomePage() {
   if (!user) redirect('/login')
 
   // ホームは貯金ルールを使わない（年間目標を外したため）。1クエリ減らす
-  const [entries, monthlySavings, records, circle] = await Promise.all([
+  const [entries, monthlySavings, circle, upcoming] = await Promise.all([
     getSavingEntries(user.id),
     getMonthlySavings(user.id),
-    getSplitRecords(user.id),
     getSavingCircleTotals(),
+    // まもなく達成する記録。近いものから3件だけ
+    getUpcomingMilestones(3),
   ])
 
   const month = currentMonth()
@@ -50,8 +52,6 @@ export default async function HomePage() {
   const circleSize = circle.filter((row) => row.is_visible).length
   const monthEntries = entries.filter((e) => e.month === month)
   const monthTotal = monthEntries.reduce((sum, e) => sum + e.amount, 0)
-  const unpaid = records.filter((r) => r.status === 'unpaid')
-  const unpaidTotal = unpaid.reduce((sum, r) => sum + r.amount, 0)
   const streak = streakDays(entries)
 
   // 貯金推移。入金済みの月だけを積む（累計貯金額と同じ定義）。
@@ -190,31 +190,59 @@ export default async function HomePage() {
         </Link>
       </div>
 
-      {/* 未精算 */}
-      <div className="grid grid-cols-2 gap-2">
-        <Card>
-          {/* 割り勘タブの「精算に必要な額」とは別物（こちらは立替の総額）なので、
-              同じ「未精算」で並べず名前で区別する */}
-          <div className="text-[10px] tracking-wider text-fg-mute">未精算の立替</div>
-          <div className="tnum mt-1.5 text-xl font-semibold">{yen(unpaidTotal)}</div>
-          <div className="mt-1 text-[11px] text-fg-mute">{unpaid.length}件</div>
-        </Card>
-        <Card>
-          {/* 試合数ではなく戦績を出す。登録は試合のあとになるので、
-              「何試合ぶん記録したか」より「今季どうだったか」の方が読む意味がある。
-              どこまでの結果かが分かるよう、最後に記録した試合の日付を添える */}
-          <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
-          <div className="tnum mt-1.5 text-xl font-semibold">{formatWinRate(record.rate)}</div>
-          <div className="tnum mt-1 text-[11px] text-fg-mute">
-            {record.win}勝{record.lose}敗{record.draw}分
+      {/* まもなく達成する記録。達成すると自動登録で貯金に入るので、
+          ここに出しておくと「次に何が入るか」が先に分かる */}
+      <Card>
+        <div className="text-[10px] tracking-wider text-fg-mute">まもなく達成する記録</div>
+        {upcoming.length === 0 ? (
+          <p className="mt-2 text-[13px] text-fg-mute">
+            近いうちに届きそうな記録はありません。
+          </p>
+        ) : (
+          <div className="mt-1 divide-hairline">
+            {upcoming.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="truncate text-sm">
+                    {item.uniform_number ? `#${item.uniform_number}` : ''}
+                    {familyName(item.holder)}
+                  </div>
+                  <div className="tnum truncate text-[11px] text-fg-mute">
+                    通算{item.record_label} / 現在 {item.current.toLocaleString()}
+                    {item.unit}
+                  </div>
+                </div>
+                <div className="tnum shrink-0 text-lg font-semibold text-marine">
+                  あと{item.remaining.toLocaleString()}
+                  <span className="ml-0.5 text-[11px] font-normal text-fg-mute">{item.unit}</span>
+                </div>
+              </div>
+            ))}
           </div>
-          {record.lastGameDate ? (
-            <div className="tnum mt-0.5 text-[11px] text-fg-mute">
-              {shortDate(record.lastGameDate)}まで
+        )}
+      </Card>
+
+      {/* 試合数ではなく戦績を出す。登録は試合のあとになるので、
+          「何試合ぶん記録したか」より「今季どうだったか」の方が読む意味がある。
+          どこまでの結果かが分かるよう、最後に記録した試合の日付を添える */}
+      <Card>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
+            <div className="tnum mt-1.5 text-xl font-semibold">{formatWinRate(record.rate)}</div>
+          </div>
+          <div className="text-right">
+            <div className="tnum text-[13px] text-fg-dim">
+              {record.win}勝{record.lose}敗{record.draw}分
             </div>
-          ) : null}
-        </Card>
-      </div>
+            {record.lastGameDate ? (
+              <div className="tnum mt-0.5 text-[11px] text-fg-mute">
+                {shortDate(record.lastGameDate)}まで
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </Card>
 
       {/* 月末の入金誘導 */}
       {alertMonth ? (
