@@ -360,3 +360,44 @@ test('カウントダウンの単位は読みやすい言い方に直す', () =>
   assert.equal(countdownUnit('セーブ'), 'セーブ')
   assert.equal(countdownUnit('死球'), '死球')
 })
+
+/**
+ * npb.jp はセルを横につなぐことがある。小島の通算1000投球回は
+ * 「打者」と「結果」を colspan="2" でまとめていて、つないだぶんを
+ * 数えないと列数が合わず、行ごと落ちていた。
+ */
+const COLSPAN_HTML = `
+<div class="wrap">
+  <h4>1000投球回（過去373人）</h4>
+  <div class="table_center sp_table2 projected">
+    <table>
+      <thead><tr>
+        <th width="110">氏名</th><th width="90">所属</th><th width="70">達成日</th>
+        <th width="100">相手</th><th width="40">回戦</th><th width="120">球場</th>
+        <th width="40">回</th><th width="120">打者</th><th>結果</th><th>備考</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <th>床田 寛樹</th><td>広　島</td><td>2026.6.27</td><td>阪　神</td><td>9</td>
+          <td>マツダスタジアム</td><td>1回</td><td>中野 拓夢</td><td>捕犠打</td>
+          <td class="left">375人目</td>
+        </tr>
+        <tr>
+          <th>小島 和哉</th><td>ロッテ</td><td>2026.8.14</td><td>西　武</td><td>17</td>
+          <td>ベルーナドーム</td><td>3回</td><td colspan="2">走者・源田壮亮の盗塁刺</td>
+          <td class="left">376人目</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+`
+
+test('横につないだセル（colspan）がある行も拾う', () => {
+  const found = parseCareerMilestones(COLSPAN_HTML, 'pitching')
+
+  assert.deepEqual(
+    found.map((m) => [m.recordLabel, m.holder, m.achievedOn]),
+    [['1000投球回', '小島 和哉', '2026-08-14']]
+  )
+})
