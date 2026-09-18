@@ -176,18 +176,10 @@ export default function PlacesMap({ places }: { places: Place[] }) {
   }
 
   return (
-    <div>
-      <div
-        ref={boxRef}
-        className="h-[280px] w-full overflow-hidden rounded-2xl border border-line"
-      />
-      <p className="mt-1.5 text-[11px] text-fg-mute">
-        塗りつぶしが行った場所、輪郭だけが行きたい場所です。
-        {pinned.length < places.length
-          ? ` 位置を引けなかった ${places.length - pinned.length} 件は地図に出ません。`
-          : ''}
-      </p>
-    </div>
+    <div
+      ref={boxRef}
+      className="h-[280px] w-full overflow-hidden rounded-2xl border border-line"
+    />
   )
 }
 

@@ -217,10 +217,6 @@ export default function PlacesClient({
           </span>
           <span className="text-lg text-fg-mute">/ {places.length} 件</span>
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
-          行きたい場所は {lists.wish.length} 件あります。
-          リストはメンバー全員で共有していて、誰でも足せます。
-        </p>
         <Button variant="primary" full className="mt-3" onClick={() => setSheet({ place: null })}>
           <span className="flex items-center justify-center gap-2">
             <IconPlus size={17} />
