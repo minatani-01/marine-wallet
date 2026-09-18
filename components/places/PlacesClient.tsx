@@ -20,6 +20,7 @@ import {
   IconTrash,
 } from '@/components/icons'
 import PlaceSheet from '@/components/places/PlaceSheet'
+import PlacesMap from '@/components/places/PlacesMap'
 import { createClient } from '@/lib/supabase/client'
 import {
   filterByKind,
@@ -224,6 +225,9 @@ export default function PlacesClient({
 
       <Segmented value={tab} options={TABS} onChange={setTab} />
       <Segmented value={kind} options={KIND_TABS} onChange={setKind} />
+
+      {/* 地図。いま絞り込んでいるぶんだけピンを立てる */}
+      <PlacesMap places={shown} />
 
       {error ? <p className="text-[13px] text-danger">{error}</p> : null}
 

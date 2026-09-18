@@ -177,6 +177,9 @@ export type Place = {
   /** 行った日。null なら「行きたい」側 */
   visited_on: string | null
   created_by: string | null
+  /** 名前と場所から引いた座標（0041）。引けなければ null で、地図には出ない */
+  lat: number | null
+  lng: number | null
 }
 
 /** 貯金を共にしている人。同行者を選ぶときに使う（名前だけ） */

@@ -22,6 +22,8 @@ const place = (over: Partial<Place> = {}): Place => ({
   stadium_id: null,
   visited_on: null,
   created_by: 'u1',
+  lat: null,
+  lng: null,
   ...over,
 })
 

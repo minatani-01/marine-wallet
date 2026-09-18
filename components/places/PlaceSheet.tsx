@@ -54,15 +54,30 @@ export default function PlaceSheet({
       stadium_id: stadiumId || null,
     }
 
-    const { error: saveError } = place
-      ? await supabase.from('places').update(row).eq('id', place.id)
-      : await supabase.from('places').insert({ ...row, created_by: userId })
+    const saved = place
+      ? await supabase.from('places').update(row).eq('id', place.id).select('id').maybeSingle()
+      : await supabase
+          .from('places')
+          .insert({ ...row, created_by: userId })
+          .select('id')
+          .maybeSingle()
 
-    setSaving(false)
-    if (saveError) {
+    if (saved.error) {
+      setSaving(false)
       setError('保存できませんでした')
       return
     }
+
+    // 地図に出すための座標を、この1件だけ引く。引けなくても保存は済んでいる
+    if (saved.data?.id) {
+      await fetch('/api/places/geocode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: saved.data.id }),
+      }).catch(() => null)
+    }
+
+    setSaving(false)
     router.refresh()
     onClose()
   }

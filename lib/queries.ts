@@ -586,7 +586,7 @@ export async function getPlaces(): Promise<Place[]> {
   const data = await read<Place[]>('places', () =>
     supabase
       .from('places')
-      .select('id, kind, name, area, url, note, stadium_id, visited_on, created_by')
+      .select('id, kind, name, area, url, note, stadium_id, visited_on, created_by, lat, lng')
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })
   )
