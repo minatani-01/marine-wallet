@@ -30,6 +30,7 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/split': { title: '割り勘' },
   '/history': { title: '履歴・グラフ' },
   '/stadiums': { title: '球場スタンプ', back: '/history' },
+  '/places': { title: '行きたい場所', back: '/history' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }

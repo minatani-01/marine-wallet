@@ -159,6 +159,26 @@ export type StadiumVisit = {
   created_by: string | null
 }
 
+/**
+ * 行きたい場所・行った場所（0040）。
+ * 行った日が入っていれば「行った」側。全員で共有する。
+ */
+export type PlaceKind = 'sight' | 'food'
+
+export type Place = {
+  id: string
+  kind: PlaceKind
+  name: string
+  area: string
+  url: string
+  note: string
+  /** 近い球場。lib/stadiums.ts の Stadium.id。結び付けなくてもよい */
+  stadium_id: string | null
+  /** 行った日。null なら「行きたい」側 */
+  visited_on: string | null
+  created_by: string | null
+}
+
 /** 貯金を共にしている人。同行者を選ぶときに使う（名前だけ） */
 export type CircleMember = {
   id: string

@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { Card, EmptyState, IconFrame, SectionLabel } from '@/components/ui'
 import Link from 'next/link'
-import { IconBaseball, IconChevronRight, IconSpark } from '@/components/icons'
+import { IconBaseball, IconChevronRight, IconFood, IconSpark } from '@/components/icons'
 import CategoryIcon from '@/components/CategoryIcon'
 import { shortDate, yen } from '@/lib/format'
 import { categoryLabel, opponentLabel, resultLabel } from '@/lib/constants'
@@ -71,6 +71,19 @@ export default function HistoryClient({
         <span className="flex min-w-0 items-center gap-2.5 text-sm">
           <IconBaseball size={19} />
           球場スタンプ
+        </span>
+        <IconChevronRight size={18} />
+      </Link>
+
+      {/* 行きたい場所・行った場所。遠征の記録なので、球場スタンプの隣に置く */}
+      <Link
+        href="/places"
+        prefetch={false}
+        className="glass flex min-h-[54px] items-center justify-between gap-3 rounded-2xl px-4 transition-colors hover:border-marine/50"
+      >
+        <span className="flex min-w-0 items-center gap-2.5 text-sm">
+          <IconFood size={19} />
+          行きたい場所
         </span>
         <IconChevronRight size={18} />
       </Link>
