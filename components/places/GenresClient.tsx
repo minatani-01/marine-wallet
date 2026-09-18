@@ -1,15 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Card, EmptyState, IconButton, SectionLabel, inputClassCompact } from '@/components/ui'
-import { IconCheck, IconClose, IconEdit, IconPlus, IconTrash } from '@/components/icons'
+import {
+  IconCheck,
+  IconChevronDown,
+  IconChevronUp,
+  IconClose,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+} from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
+import { reorderGenres } from '@/lib/place-genres'
 import { tapFeedback } from '@/lib/haptics'
 import type { PlaceGenre } from '@/types'
 
 /**
- * 飲食のジャンルの候補を足す・直す・消す。
+ * 飲食のジャンルの候補を足す・直す・消す・並べ替える。
  *
  * 候補をコードに書いていると、「立ち食いそば」を足すのにデプロイが要る。
  * 貯金のカスタム登録の定型と同じで、ここから増やせるようにする。
@@ -18,6 +27,9 @@ import type { PlaceGenre } from '@/types'
  * 追いかけないと、直した瞬間に既存の店が絞り込みから外れる。
  * 消したときは場所に書かれた言葉をそのまま残す。候補から外れるだけで、
  * 記録が消える理由は無い。
+ *
+ * 並びは登録画面の候補と、マップのジャンルの並びに効く。よく使うものを
+ * 上に置けるようにする。
  */
 export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
   const router = useRouter()
@@ -25,6 +37,16 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /**
+   * 画面に出している並び。
+   *
+   * 押した瞬間に動かしたいので、サーバーの返事を待たずにここで入れ替える。
+   * 待つと、押してから動くまでの間に二度押しされる。保存に失敗したときは
+   * 元に戻す。
+   */
+  const [rows, setRows] = useState<PlaceGenre[]>(genres)
+  useEffect(() => setRows(genres), [genres])
 
   const add = async () => {
     const name = adding.trim()
@@ -37,7 +59,7 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
     const supabase = createClient()
     const { error: saveError } = await supabase
       .from('place_genres')
-      .insert({ name, sort_order: (genres.at(-1)?.sort_order ?? 0) + 10 })
+      .insert({ name, sort_order: (rows.at(-1)?.sort_order ?? 0) + 10 })
 
     setBusy(false)
     if (saveError) {
@@ -70,6 +92,41 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
       return
     }
     setEditing(null)
+    router.refresh()
+  }
+
+  /**
+   * 1つ上・1つ下へ動かす。
+   *
+   * 動いたあとの並び順を全体に振り直して書き戻す。隣と入れ替えるだけだと、
+   * 同じ並び順が並んでいるとき（既定値のまま足したとき）に何も起きない。
+   */
+  const move = async (genre: PlaceGenre, direction: -1 | 1) => {
+    const { rows: next, changed } = reorderGenres(rows, genre.id, direction)
+    if (changed.length === 0) return
+
+    tapFeedback()
+    const before = rows
+    setRows(next)
+    setBusy(true)
+    setError(null)
+
+    const supabase = createClient()
+    for (const row of changed) {
+      const { error: saveError } = await supabase
+        .from('place_genres')
+        .update({ sort_order: row.sort_order })
+        .eq('id', row.id)
+
+      if (saveError) {
+        setBusy(false)
+        setRows(before)
+        setError('並びを保存できませんでした')
+        return
+      }
+    }
+
+    setBusy(false)
     router.refresh()
   }
 
@@ -129,7 +186,7 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
 
       <div>
         <SectionLabel>候補</SectionLabel>
-        {genres.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState
             title="候補がありません"
             description="よく使うジャンルを足しておくと、登録が速くなります。"
@@ -137,8 +194,8 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
         ) : (
           <Card padded={false}>
             <div className="divide-hairline px-4">
-              {genres.map((genre) => (
-                <div key={genre.id} className="flex items-center gap-3 py-2.5">
+              {rows.map((genre, index) => (
+                <div key={genre.id} className="flex items-center gap-2 py-2.5">
                   {editing?.id === genre.id ? (
                     <>
                       <input
@@ -164,7 +221,28 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
                     </>
                   ) : (
                     <>
+                      {/* 並び替え。上端・下端では押せない */}
+                      <div className="flex shrink-0 flex-col gap-0.5">
+                        <IconButton
+                          label="上へ"
+                          disabled={busy || index === 0}
+                          onClick={() => move(genre, -1)}
+                          className="!h-[26px] !w-8"
+                        >
+                          <IconChevronUp size={14} />
+                        </IconButton>
+                        <IconButton
+                          label="下へ"
+                          disabled={busy || index === rows.length - 1}
+                          onClick={() => move(genre, 1)}
+                          className="!h-[26px] !w-8"
+                        >
+                          <IconChevronDown size={14} />
+                        </IconButton>
+                      </div>
+
                       <span className="min-w-0 flex-1 truncate text-sm">{genre.name}</span>
+
                       <div className="flex shrink-0 gap-1.5">
                         <IconButton
                           label="名前を直す"
@@ -191,6 +269,8 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
       </div>
 
       <p className="text-[11px] leading-relaxed text-fg-mute">
+        上下の矢印で並びを変えられます。ここの並びが、登録画面の候補とマップの
+        ジャンルの並びになります。
         名前を直すと、その言葉で登録済みの場所も一緒に直ります。
         消した場合は、登録済みの場所のジャンルはそのまま残ります（候補から外れるだけです）。
       </p>
