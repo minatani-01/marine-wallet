@@ -310,6 +310,20 @@ export function IconTarget(props: IconProps) {
   )
 }
 
+/** 地図。ピンと折り目のある紙の地図 */
+export function IconMap(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.6 6.6 9 4.4v13L3.6 19.6z" />
+      <path d="M9 4.4l5.4 2.2v3" />
+      <path d="M9 17.4l5.4 2.2 5-2V12" />
+      <path d="M14.4 6.6v2.2" />
+      <circle cx="17.6" cy="7.2" r="2.2" />
+      <path d="M17.6 9.4v2" />
+    </Icon>
+  )
+}
+
 export function IconFlame(props: IconProps) {
   return (
     <Icon {...props}>
