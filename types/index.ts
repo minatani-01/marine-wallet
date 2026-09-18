@@ -170,10 +170,10 @@ export type Place = {
   kind: PlaceKind
   name: string
   area: string
+  /** ジャンル（焼肉・寿司・温泉など）。空でもよい */
+  genre: string
   url: string
   note: string
-  /** 近い球場。lib/stadiums.ts の Stadium.id。結び付けなくてもよい */
-  stadium_id: string | null
   /** 行った日。null なら「行きたい」側 */
   visited_on: string | null
   created_by: string | null

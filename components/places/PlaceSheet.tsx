@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button, Chip, Field, Sheet, inputClassCompact } from '@/components/ui'
 import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
-import { PLACE_KINDS, placeKindLabel } from '@/lib/places'
-import { HOME_STADIUMS, REGIONAL_STADIUMS } from '@/lib/stadiums'
+import { GENRE_SUGGESTIONS, PLACE_KINDS, placeKindLabel } from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceKind } from '@/types'
 
@@ -38,7 +37,7 @@ export default function PlaceSheet({
   const [area, setArea] = useState(place?.area ?? '')
   const [url, setUrl] = useState(place?.url ?? '')
   const [note, setNote] = useState(place?.note ?? '')
-  const [stadiumId, setStadiumId] = useState(place?.stadium_id ?? '')
+  const [genre, setGenre] = useState(place?.genre ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -107,7 +106,7 @@ export default function PlaceSheet({
       area: area.trim(),
       url: url.trim(),
       note: note.trim(),
-      stadium_id: stadiumId || null,
+      genre: genre.trim(),
       // 検索で選んだなら座標は分かっている。引き直す必要は無い
       ...(picked
         ? {
@@ -171,7 +170,7 @@ export default function PlaceSheet({
                   void search()
                 }
               }}
-              placeholder="例）ゑぶり亭 横浜"
+              placeholder="場所の名前を入力"
             />
             <Button
               variant="outline"
@@ -242,28 +241,28 @@ export default function PlaceSheet({
           />
         </Field>
 
-        <Field label="近い球場" hint="遠征のときにまとめて見られます">
-          <select
+        <Field label="ジャンル" hint="あとで絞り込めます">
+          <input
             className={inputClassCompact}
-            value={stadiumId}
-            onChange={(e) => setStadiumId(e.target.value)}
-          >
-            <option value="">選ばない</option>
-            <optgroup label="本拠地">
-              {HOME_STADIUMS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.short}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="地方球場">
-              {REGIONAL_STADIUMS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.short}
-                </option>
-              ))}
-            </optgroup>
-          </select>
+            value={genre}
+            onChange={(e) => setGenre(e.target.value)}
+            placeholder="例）焼肉"
+          />
+          {/* 候補は入力を早くするためのもの。ここに無い言葉も入れられる */}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {GENRE_SUGGESTIONS[kind].map((g) => (
+              <Chip
+                key={g}
+                selected={genre === g}
+                onClick={() => {
+                  tapFeedback()
+                  setGenre(genre === g ? '' : g)
+                }}
+              >
+                {g}
+              </Chip>
+            ))}
+          </div>
         </Field>
 
         <Field label="リンク" hint="任意">

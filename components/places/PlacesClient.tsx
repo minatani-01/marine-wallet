@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Button,
@@ -9,8 +9,9 @@ import {
   EmptyState,
   IconButton,
   IconFrame,
-  SectionLabel,
+  PillTabs,
   Segmented,
+  inputClassCompact,
 } from '@/components/ui'
 import {
   IconCamera,
@@ -26,10 +27,12 @@ import { createClient } from '@/lib/supabase/client'
 import { parseTakeoutPlaces } from '@/lib/csv'
 import {
   PLACE_KINDS,
+  filterByGenre,
   filterByKind,
-  groupByStadium,
+  genresOf,
   mapsUrl,
   placeKindLabel,
+  searchPlaces,
   splitPlaces,
 } from '@/lib/places'
 import { shortDate, today } from '@/lib/format'
@@ -89,7 +92,10 @@ function PlaceCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[11px] text-fg-mute">
-            <span>{placeKindLabel(place.kind)}</span>
+            <span className="shrink-0">
+              {placeKindLabel(place.kind)}
+              {place.genre ? ` / ${place.genre}` : ''}
+            </span>
             {place.area ? <span className="truncate">{place.area}</span> : null}
             {visited ? (
               <span className="tnum shrink-0 text-marine">{shortDate(place.visited_on!)}</span>
@@ -165,6 +171,8 @@ export default function PlacesClient({
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('wish')
   const [kind, setKind] = useState<KindTab>('all')
+  const [genre, setGenre] = useState<string | null>(null)
+  const [words, setWords] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sheet, setSheet] = useState<{ place: Place | null } | null>(null)
@@ -179,19 +187,30 @@ export default function PlacesClient({
   const [importNote, setImportNote] = useState<string | null>(null)
 
   const lists = useMemo(() => splitPlaces(places), [places])
-  const shown = useMemo(
+
+  /** 種別で絞ったぶん。ジャンルの選択肢はここから作る */
+  const byKind = useMemo(
     () => filterByKind(tab === 'wish' ? lists.wish : lists.visited, kind === 'all' ? null : kind),
     [lists, tab, kind]
   )
 
-  /** 地図に出すぶん。タブでは絞らず、種別だけで絞る */
-  const onMap = useMemo(
-    () => filterByKind(places, kind === 'all' ? null : kind),
-    [places, kind]
+  /** いま出ている場所に実際に入っているジャンルだけを出す */
+  const genres = useMemo(() => genresOf(byKind), [byKind])
+
+  const shown = useMemo(
+    () => searchPlaces(filterByGenre(byKind, genre), words),
+    [byKind, genre, words]
   )
 
-  /** 球場ごとにまとめるのは「行きたい」側だけ。遠征の計画に使う */
-  const groups = useMemo(() => (tab === 'wish' ? groupByStadium(shown) : []), [shown, tab])
+  /** 地図に出すぶん。タブでは絞らず、種別・ジャンル・言葉で絞る */
+  const onMap = useMemo(
+    () =>
+      searchPlaces(
+        filterByGenre(filterByKind(places, kind === 'all' ? null : kind), genre),
+        words
+      ),
+    [places, kind, genre, words]
+  )
 
   /** 地図に出ていない場所。座標を引けていないもの */
   const unlocated = useMemo(() => places.filter((p) => p.lat === null || p.lng === null), [places])
@@ -277,6 +296,7 @@ export default function PlacesClient({
         kind: importKind,
         name: row.name,
         area: '',
+        genre: '',
         url: row.url,
         note: row.note,
         created_by: userId,
@@ -347,6 +367,25 @@ export default function PlacesClient({
       <Segmented value={tab} options={TABS} onChange={setTab} />
       <Segmented value={kind} options={KIND_TABS} onChange={setKind} />
 
+      {/* ジャンル。登録されている言葉だけを出す */}
+      {genres.length > 0 ? (
+        <PillTabs
+          value={genre ?? ''}
+          options={[
+            { id: '', label: 'ジャンル問わず' },
+            ...genres.map((g) => ({ id: g, label: g })),
+          ]}
+          onChange={(id) => setGenre(id === '' ? null : id)}
+        />
+      ) : null}
+
+      <input
+        className={inputClassCompact}
+        value={words}
+        onChange={(e) => setWords(e.target.value)}
+        placeholder="名前・場所・メモで探す"
+      />
+
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
@@ -384,24 +423,6 @@ export default function PlacesClient({
               : '行きたい場所で「行ったことにする」を押すと、こちらに移ります。'
           }
         />
-      ) : tab === 'wish' ? (
-        groups.map((group) => (
-          <div key={group.label}>
-            <SectionLabel>{group.label}</SectionLabel>
-            <div className="flex flex-col gap-2">
-              {group.places.map((place) => (
-                <PlaceCard
-                  key={place.id}
-                  place={place}
-                  busy={busy}
-                  onToggleVisited={toggleVisited}
-                  onEdit={(p) => setSheet({ place: p })}
-                  onDelete={remove}
-                />
-              ))}
-            </div>
-          </div>
-        ))
       ) : (
         <div className="flex flex-col gap-2">
           {shown.map((place) => (
