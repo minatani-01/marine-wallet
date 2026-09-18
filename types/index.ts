@@ -139,6 +139,23 @@ export type SavingCustomPreset = {
 }
 
 /**
+ * 行った球場の記録（0038）。
+ *
+ * 球場そのものは DB に置かず、lib/stadiums.ts のマスタを id で指す。
+ * 記録は人ごと。カスタム登録や割り勘と違い、ここは人によって中身が変わる。
+ */
+export type StadiumVisit = {
+  id: string
+  user_id: string
+  /** lib/stadiums.ts の Stadium.id */
+  stadium_id: string
+  visited_on: string
+  /** 観戦した試合。試合の無い日の来場なら null */
+  game_id: string | null
+  note: string
+}
+
+/**
  * まもなく達成する記録。ホームのカウントダウンに使う。
  * 毎朝の取り込みで作り直すので、履歴は持たない。
  */

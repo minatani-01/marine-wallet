@@ -29,6 +29,7 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/savings/rules': { title: '貯金ルール', back: '/savings' },
   '/split': { title: '割り勘' },
   '/history': { title: '履歴・グラフ' },
+  '/stadiums': { title: '球場スタンプ', back: '/history' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }

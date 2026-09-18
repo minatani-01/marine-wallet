@@ -24,6 +24,7 @@ import type {
   SplitMember,
   SplitMemberView,
   SplitRecord,
+  StadiumVisit,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -287,6 +288,24 @@ export async function getMonthlySavings(userId: string): Promise<MonthlySaving[]
  * 持ち主はマスターで、割り勘の共有を許可された接続相手が読み書きする。
  * 許可されていない人には RLS が何も返さないので、その人は自分の分だけを見る。
  */
+/**
+ * 行った球場の記録（0038）。
+ *
+ * 人ごとの記録なので、自分のぶんを引く。接続相手のぶんは RLS が読ませるが、
+ * スタンプ画面は自分の達成を見るところなので、ここでは絞る。
+ */
+export async function getStadiumVisits(userId: string): Promise<StadiumVisit[]> {
+  const supabase = await createClient()
+  const data = await read<StadiumVisit[]>('stadium_visits', () =>
+    supabase
+      .from('stadium_visits')
+      .select('id, user_id, stadium_id, visited_on, game_id, note')
+      .eq('user_id', userId)
+      .order('visited_on', { ascending: true })
+  )
+  return data ?? []
+}
+
 export async function getSplitOwnerId(fallback: string): Promise<string> {
   const supabase = await createClient()
   const data = await read<{ id: string }[]>('profiles', () =>
