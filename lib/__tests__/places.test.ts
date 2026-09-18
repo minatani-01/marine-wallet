@@ -9,6 +9,7 @@ import {
   isVisited,
   mapsUrl,
   placeKindLabel,
+  revisitPatch,
   searchPlaces,
   splitPlaces,
 } from '../places'
@@ -23,6 +24,7 @@ const place = (over: Partial<Place> = {}): Place => ({
   url: '',
   note: '',
   visited_on: null,
+  revisit: '',
   created_by: 'u1',
   lat: null,
   lng: null,
@@ -136,4 +138,23 @@ test('ジャンルの並びは設定した順に従う', () => {
     'カフェ',
     '寿司',
   ])
+})
+
+test('リピの札を押したときの書き込み', () => {
+  const today = '2026-09-18'
+  // まだ行っていない場所に押すと、その日を行った日にする
+  assert.deepEqual(revisitPatch({ visited_on: null, revisit: '' }, 'yes', today), {
+    visited_on: today,
+    revisit: 'yes',
+  })
+  // すでに行った場所は日付をそのままに、札だけ入れ替える
+  assert.deepEqual(revisitPatch({ visited_on: '2026-08-01', revisit: 'yes' }, 'no', today), {
+    visited_on: '2026-08-01',
+    revisit: 'no',
+  })
+  // 押してある札をもう一度押すと、行きたい側へ戻す
+  assert.deepEqual(revisitPatch({ visited_on: '2026-08-01', revisit: 'no' }, 'no', today), {
+    visited_on: null,
+    revisit: '',
+  })
 })
