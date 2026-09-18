@@ -28,11 +28,14 @@ import { createClient } from '@/lib/supabase/client'
 import { parseTakeoutPlaces } from '@/lib/csv'
 import {
   PLACE_KINDS,
+  REVISIT_CHOICES,
+  REVISIT_LABEL,
   filterByGenre,
   filterByKind,
   genresOf,
   mapsUrl,
   placeKindLabel,
+  revisitPatch,
   searchPlaces,
   splitPlaces,
 } from '@/lib/places'
@@ -44,7 +47,7 @@ import {
 } from '@/lib/places-status'
 import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceGenre, PlaceKind } from '@/types'
+import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
 
 /**
  * 行きたい場所と、行った場所。
@@ -89,13 +92,13 @@ function narrowBy(rows: Place[], genre: string | null): Place[] {
 function PlaceCard({
   place,
   busy,
-  onToggleVisited,
+  onChooseRevisit,
   onEdit,
   onDelete,
 }: {
   place: Place
   busy: boolean
-  onToggleVisited: (place: Place) => void
+  onChooseRevisit: (place: Place, choice: Exclude<Revisit, ''>) => void
   onEdit: (place: Place) => void
   onDelete: (place: Place) => void
 }) {
@@ -148,22 +151,27 @@ function PlaceCard({
       </div>
 
       <div className="mt-2 flex items-center gap-3">
-        {/* 行った／行きたいの切り替え。言葉は「行った」だけにして、
-            押してあるかどうかは色で出す。もう一度押すと戻る */}
-        <button
-          type="button"
-          disabled={busy}
-          aria-pressed={visited}
-          title={visited ? '行った（押すと行きたいに戻ります）' : '行ったことにする'}
-          onClick={() => onToggleVisited(place)}
-          className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
-            visited
-              ? 'border-marine/60 bg-marine/12 text-marine'
-              : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
-          }`}
-        >
-          行った
-        </button>
+        {/* リピあり・リピなし。どちらかを押すと行った扱いになる。
+            同じ札をもう一度押すと行きたいへ戻る */}
+        {REVISIT_CHOICES.map((choice) => {
+          const on = place.revisit === choice
+          const tone = choice === 'yes' ? 'border-marine/60 bg-marine/12 text-marine' : 'border-fg-mute/60 bg-fg-mute/15 text-fg-dim'
+          return (
+            <button
+              key={choice}
+              type="button"
+              disabled={busy}
+              aria-pressed={on}
+              title={on ? `${REVISIT_LABEL[choice]}（押すと行きたいに戻ります）` : REVISIT_LABEL[choice]}
+              onClick={() => onChooseRevisit(place, choice)}
+              className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
+                on ? tone : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
+              }`}
+            >
+              {REVISIT_LABEL[choice]}
+            </button>
+          )
+        })}
 
         <a
           href={mapsUrl(place)}
@@ -358,8 +366,13 @@ export default function PlacesClient({
     router.refresh()
   }
 
-  /** 行った／行きたいを行き来する。日付を入れるだけで、メモは残る */
-  const toggleVisited = async (place: Place) => {
+  /**
+   * リピあり・リピなしを付ける。
+   *
+   * まだ行っていない場所に押したときは、その日を行った日として入れる。
+   * 押してある札をもう一度押すと行きたい側へ戻る。どちらもメモは残る。
+   */
+  const chooseRevisit = async (place: Place, choice: Exclude<Revisit, ''>) => {
     tapFeedback()
     setBusy(true)
     setError(null)
@@ -367,7 +380,7 @@ export default function PlacesClient({
     const supabase = createClient()
     const { error: saveError } = await supabase
       .from('places')
-      .update({ visited_on: place.visited_on ? null : today() })
+      .update(revisitPatch(place, choice, today()))
       .eq('id', place.id)
 
     setBusy(false)
@@ -473,7 +486,7 @@ export default function PlacesClient({
           }
           description={
             tab === 'visited'
-              ? '行きたい場所で「行った」を押すと、こちらに移ります。'
+              ? '行きたい場所で「リピあり」か「リピなし」を押すと、こちらに移ります。'
               : '観光地や店を思い付いたときに足しておくと、遠征のときに迷いません。'
           }
         />
@@ -484,7 +497,7 @@ export default function PlacesClient({
               key={place.id}
               place={place}
               busy={busy}
-              onToggleVisited={toggleVisited}
+              onChooseRevisit={chooseRevisit}
               onEdit={(p) => setSheet({ place: p })}
               onDelete={remove}
             />

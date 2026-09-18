@@ -1,4 +1,4 @@
-import type { Place, PlaceKind } from '@/types'
+import type { Place, PlaceKind, Revisit } from '@/types'
 
 /**
  * 行きたい場所・行った場所の整理。
@@ -39,6 +39,35 @@ export function hasGenre(kind: PlaceKind): boolean {
 export function mapsUrl(place: Pick<Place, 'name' | 'area'>): string {
   const query = [place.area, place.name].filter(Boolean).join(' ')
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
+}
+
+/**
+ * また行きたいかの札（0046）。
+ *
+ * 行ったかどうかだけでは、次にどこへ行くかを決められない。行った店が
+ * 増えるほど「どれがまた行きたい店だったか」を思い出せなくなる。
+ */
+export const REVISIT_LABEL: Record<Exclude<Revisit, ''>, string> = {
+  yes: 'リピあり',
+  no: 'リピなし',
+}
+
+export const REVISIT_CHOICES: Exclude<Revisit, ''>[] = ['yes', 'no']
+
+/**
+ * 札を押したときの書き込み内容。
+ *
+ * 押してある札をもう一度押すと、行きたい側へ戻す（間違えて押したときに
+ * 戻せないと直せない）。まだ行っていない場所に押したときは、その日を
+ * 行った日として入れる。すでに行った場所なら日付はそのまま。
+ */
+export function revisitPatch(
+  place: Pick<Place, 'visited_on' | 'revisit'>,
+  choice: Exclude<Revisit, ''>,
+  today: string
+): { visited_on: string | null; revisit: Revisit } {
+  if (place.revisit === choice) return { visited_on: null, revisit: '' }
+  return { visited_on: place.visited_on ?? today, revisit: choice }
 }
 
 /** 行った場所かどうか */
