@@ -169,6 +169,12 @@ export default function PlacesClient({
     [lists, tab, kind]
   )
 
+  /** 地図に出すぶん。タブでは絞らず、種別だけで絞る */
+  const onMap = useMemo(
+    () => filterByKind(places, kind === 'all' ? null : kind),
+    [places, kind]
+  )
+
   /** 球場ごとにまとめるのは「行きたい」側だけ。遠征の計画に使う */
   const groups = useMemo(() => (tab === 'wish' ? groupByStadium(shown) : []), [shown, tab])
 
@@ -226,8 +232,10 @@ export default function PlacesClient({
       <Segmented value={tab} options={TABS} onChange={setTab} />
       <Segmented value={kind} options={KIND_TABS} onChange={setKind} />
 
-      {/* 地図。いま絞り込んでいるぶんだけピンを立てる */}
-      <PlacesMap places={shown} />
+      {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
+          片方だけにすると「近くに行った店がある」が見えなくなる。
+          種別の絞り込みは効かせる */}
+      <PlacesMap places={onMap} />
 
       {error ? <p className="text-[13px] text-danger">{error}</p> : null}
 
