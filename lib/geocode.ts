@@ -38,14 +38,16 @@ export async function geocode(query: string): Promise<GeoPoint | null> {
   url.searchParams.set('components', 'country:JP')
   url.searchParams.set('key', key)
 
-  const res = await fetch(url, { cache: 'no-store' })
-  if (!res.ok) return null
+  // 通信そのものが失敗することもある（Google 側の不調、名前解決）。
+  // ここで投げると保存の直後に500を返すことになるので、引けなかった扱いにする
+  const res = await fetch(url, { cache: 'no-store' }).catch(() => null)
+  if (!res || !res.ok) return null
 
-  const body = (await res.json()) as {
+  const body = (await res.json().catch(() => null)) as {
     status?: string
     results?: { geometry?: { location?: { lat?: number; lng?: number } } }[]
-  }
-  if (body.status !== 'OK') return null
+  } | null
+  if (!body || body.status !== 'OK') return null
 
   const point = body.results?.[0]?.geometry?.location
   if (typeof point?.lat !== 'number' || typeof point?.lng !== 'number') return null

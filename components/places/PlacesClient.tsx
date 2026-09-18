@@ -53,6 +53,9 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'visited', label: '行った' },
 ]
 
+/** 1回に座標を引く件数。上限に一度で当たらないようにする */
+const LOCATE_STEP = 20
+
 const KIND_TABS: { id: KindTab; label: string }[] = [
   { id: 'all', label: 'すべて' },
   { id: 'sight', label: '観光地' },
@@ -163,6 +166,10 @@ export default function PlacesClient({
   const [error, setError] = useState<string | null>(null)
   const [sheet, setSheet] = useState<{ place: Place | null } | null>(null)
 
+  // まとめて座標を引いているあいだの進み具合
+  const [locating, setLocating] = useState(false)
+  const [locateNote, setLocateNote] = useState<string | null>(null)
+
   const lists = useMemo(() => splitPlaces(places), [places])
   const shown = useMemo(
     () => filterByKind(tab === 'wish' ? lists.wish : lists.visited, kind === 'all' ? null : kind),
@@ -177,6 +184,54 @@ export default function PlacesClient({
 
   /** 球場ごとにまとめるのは「行きたい」側だけ。遠征の計画に使う */
   const groups = useMemo(() => (tab === 'wish' ? groupByStadium(shown) : []), [shown, tab])
+
+  /** 地図に出ていない場所。座標を引けていないもの */
+  const unlocated = useMemo(() => places.filter((p) => p.lat === null || p.lng === null), [places])
+
+  /**
+   * 地図に出ていない場所の座標をまとめて引く。
+   *
+   * 1回に引くのは20件まで。上限（100件/日）に一度で当たらないようにし、
+   * 押しっぱなしで延々と呼ばないようにする。引けなかった場所は
+   * そのまま残るので、名前や場所を直してから押し直せばよい。
+   */
+  const locateAll = async () => {
+    if (unlocated.length === 0) return
+
+    tapFeedback()
+    setLocating(true)
+    setLocateNote(null)
+
+    const targets = unlocated.slice(0, LOCATE_STEP)
+    let done = 0
+    let overBudget = false
+
+    for (const place of targets) {
+      const res = await fetch('/api/places/geocode', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: place.id }),
+      }).catch(() => null)
+
+      if (res?.status === 429) {
+        overBudget = true
+        break
+      }
+      const body = res?.ok ? ((await res.json()) as { ok?: boolean }) : null
+      if (body?.ok) done += 1
+    }
+
+    setLocating(false)
+    setLocateNote(
+      overBudget
+        ? `今日はここまでです（${done} 件取り込みました）。明朝また押してください。`
+        : `${done} / ${targets.length} 件の位置を取り込みました。` +
+          (targets.length < unlocated.length
+            ? ` 残り ${unlocated.length - targets.length} 件は、もう一度押してください。`
+            : '')
+    )
+    router.refresh()
+  }
 
   /** 行った／行きたいを行き来する。日付を入れるだけで、メモは残る */
   const toggleVisited = async (place: Place) => {
@@ -232,6 +287,27 @@ export default function PlacesClient({
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
       <PlacesMap places={onMap} />
+
+      {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}
+      {unlocated.length > 0 ? (
+        <Card>
+          <p className="text-[13px]">
+            地図に出ていない場所が {unlocated.length} 件あります。
+          </p>
+          <Button
+            variant="outline"
+            full
+            className="mt-3"
+            disabled={locating}
+            onClick={locateAll}
+          >
+            {locating ? '取り込んでいます' : '位置をまとめて取り込む'}
+          </Button>
+          {locateNote ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{locateNote}</p>
+          ) : null}
+        </Card>
+      ) : null}
 
       {error ? <p className="text-[13px] text-danger">{error}</p> : null}
 
