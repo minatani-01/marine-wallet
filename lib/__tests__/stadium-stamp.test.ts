@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { buildStampCard, scoreOf, visitFromGame, visitOfGame } from '../stadium-stamp'
-import type { Game, StadiumVisit } from '../../types'
+import { buildStampCard, companionLabel, scoreOf, visitFromGame, visitOfGame } from '../stadium-stamp'
+import type { CircleMember, Game, StadiumVisit } from '../../types'
 
 const visit = (over: Partial<StadiumVisit> = {}): StadiumVisit => ({
   id: crypto.randomUUID(),
@@ -11,6 +11,8 @@ const visit = (over: Partial<StadiumVisit> = {}): StadiumVisit => ({
   visited_on: '2026-04-03',
   game_id: null,
   note: '',
+  companions: [],
+  created_by: 'u1',
   ...over,
 })
 
@@ -122,4 +124,20 @@ test('試合から訪問記録の中身を作る', () => {
   })
   // 球場を引けない試合にはスタンプの付け先が無い
   assert.equal(visitFromGame(game({ stadium: 'どこかの球場' })), null)
+})
+
+test('同行者の見出しを作る', () => {
+  const members: CircleMember[] = [
+    { id: 'u1', member_name: '良旭', is_self: true },
+    { id: 'u2', member_name: '良将', is_self: false },
+    { id: 'u3', member_name: '検証', is_self: false },
+  ]
+
+  assert.equal(companionLabel(['u2'], members), '一緒に 良将')
+  assert.equal(companionLabel(['u2', 'u3'], members), '一緒に 良将・検証')
+  // 一人で行った
+  assert.equal(companionLabel([], members), null)
+  // 消えたアカウントの id は出さない（券面に意味の無い文字列を並べない）
+  assert.equal(companionLabel(['nobody'], members), null)
+  assert.equal(companionLabel(['u2', 'nobody'], members), '一緒に 良将')
 })

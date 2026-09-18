@@ -153,6 +153,17 @@ export type StadiumVisit = {
   /** 観戦した試合。試合の無い日の来場なら null */
   game_id: string | null
   note: string
+  /** 一緒に行った人。空なら一人で行った（0039） */
+  companions: string[]
+  /** この行を作った人。写しかどうかの判別に使う */
+  created_by: string | null
+}
+
+/** 貯金を共にしている人。同行者を選ぶときに使う（名前だけ） */
+export type CircleMember = {
+  id: string
+  member_name: string
+  is_self: boolean
 }
 
 /**
