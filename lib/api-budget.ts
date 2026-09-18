@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/server'
  * リストと「地図で開く」は使える。
  */
 
-export type ApiName = 'maps_js' | 'geocoding'
+export type ApiName = 'maps_js' | 'geocoding' | 'places_search'
 
 /** 1日と1か月の上限。月10,000回の無料枠に対して十分低く取る */
 export const API_BUDGET: Record<ApiName, { daily: number; monthly: number }> = {
@@ -21,6 +21,9 @@ export const API_BUDGET: Record<ApiName, { daily: number; monthly: number }> = {
   maps_js: { daily: 200, monthly: 8000 },
   // 座標の取得。場所を登録・編集したときだけ呼ぶ
   geocoding: { daily: 100, monthly: 2000 },
+  // 店の検索。打つたびではなく、検索を押したときだけ1回呼ぶ。
+  // 名前・住所・座標を受け取る形は無料枠が月5,000回なので、そこより低く取る
+  places_search: { daily: 50, monthly: 1000 },
 }
 
 export type Spend = {
