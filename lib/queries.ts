@@ -27,6 +27,7 @@ import type {
   StadiumVisit,
   CircleMember,
   Place,
+  PlaceGenre,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -586,9 +587,24 @@ export async function getPlaces(): Promise<Place[]> {
   const data = await read<Place[]>('places', () =>
     supabase
       .from('places')
-      .select('id, kind, name, area, url, note, stadium_id, visited_on, created_by, lat, lng')
+      .select(
+        'id, kind, name, area, genre, url, note, visited_on, created_by, lat, lng, business_status, status_checked_at'
+      )
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })
+  )
+  return data ?? []
+}
+
+/** 飲食のジャンルの候補。設定画面で足せる（0044） */
+export async function getPlaceGenres(): Promise<PlaceGenre[]> {
+  const supabase = await createClient()
+  const data = await read<PlaceGenre[]>('place_genres', () =>
+    supabase
+      .from('place_genres')
+      .select('id, name, sort_order')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
   )
   return data ?? []
 }

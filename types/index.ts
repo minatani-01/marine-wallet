@@ -170,16 +170,30 @@ export type Place = {
   kind: PlaceKind
   name: string
   area: string
+  /** ジャンル（焼肉・寿司・温泉など）。空でもよい */
+  genre: string
   url: string
   note: string
-  /** 近い球場。lib/stadiums.ts の Stadium.id。結び付けなくてもよい */
-  stadium_id: string | null
   /** 行った日。null なら「行きたい」側 */
   visited_on: string | null
   created_by: string | null
   /** 名前と場所から引いた座標（0041）。引けなければ null で、地図には出ない */
   lat: number | null
   lng: number | null
+  /**
+   * Google が返した営業状態（0045）。OPERATIONAL / CLOSED_TEMPORARILY /
+   * CLOSED_PERMANENTLY のいずれか。空は「まだ確かめていない」
+   */
+  business_status: string
+  /** 最後に確かめた日時。null なら一度も確かめていない */
+  status_checked_at: string | null
+}
+
+/** 飲食のジャンルの候補（0044）。設定画面から足せる */
+export type PlaceGenre = {
+  id: string
+  name: string
+  sort_order: number
 }
 
 /** 貯金を共にしている人。同行者を選ぶときに使う（名前だけ） */

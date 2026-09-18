@@ -1,4 +1,3 @@
-import { stadiumById } from '@/lib/stadiums'
 import type { Place, PlaceKind } from '@/types'
 
 /**
@@ -21,6 +20,16 @@ export function placeKindLabel(kind: PlaceKind): string {
 }
 
 /**
+ * ジャンルを持つ種別かどうか。
+ *
+ * 観光地には付けない。「名所」「公園」と分けても、行きたい場所が20件も
+ * 並ぶことがなく、分ける意味が薄い。ジャンルは飲食だけのものとする。
+ */
+export function hasGenre(kind: PlaceKind): boolean {
+  return kind === 'food'
+}
+
+/**
  * Google マップで開くリンク。
  *
  * 公式の URL の形（api=1）を使う。鍵も課金も要らず、スマートフォンでは
@@ -30,12 +39,6 @@ export function placeKindLabel(kind: PlaceKind): string {
 export function mapsUrl(place: Pick<Place, 'name' | 'area'>): string {
   const query = [place.area, place.name].filter(Boolean).join(' ')
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-}
-
-/** 近くの球場の短い名前。結び付けていなければ null */
-export function placeStadiumLabel(place: Pick<Place, 'stadium_id'>): string | null {
-  if (!place.stadium_id) return null
-  return stadiumById(place.stadium_id)?.short ?? null
 }
 
 /** 行った場所かどうか */
@@ -65,23 +68,40 @@ export function filterByKind(places: Place[], kind: PlaceKind | null): Place[] {
   return places.filter((p) => p.kind === kind)
 }
 
+/** ジャンルで絞る。genre が null なら全部 */
+export function filterByGenre(places: Place[], genre: string | null): Place[] {
+  if (!genre) return places
+  return places.filter((p) => p.genre === genre)
+}
+
 /**
- * 球場ごとにまとめる。遠征の計画に使う。
- * 球場を結び付けていない場所は最後に「その他」としてまとめる。
+ * いま出ている場所に実際に入っているジャンル。
+ *
+ * 候補の一覧ではなく、入っている言葉から作る。登録していないジャンルの
+ * ボタンを押しても0件になるだけで、押す意味が無い。
  */
-export function groupByStadium(places: Place[]): { label: string; places: Place[] }[] {
-  const groups = new Map<string, Place[]>()
-
+export function genresOf(places: Place[]): string[] {
+  const seen = new Set<string>()
   for (const place of places) {
-    const label = placeStadiumLabel(place) ?? 'その他'
-    groups.set(label, [...(groups.get(label) ?? []), place])
+    if (place.genre) seen.add(place.genre)
   }
+  return [...seen].sort((a, b) => a.localeCompare(b, 'ja'))
+}
 
-  return [...groups.entries()]
-    .map(([label, list]) => ({ label, places: list }))
-    .sort((a, b) => {
-      if (a.label === 'その他') return 1
-      if (b.label === 'その他') return -1
-      return a.label.localeCompare(b.label, 'ja')
-    })
+/**
+ * 言葉で探す。名前・場所・ジャンル・メモのどれかに含まれていれば残す。
+ *
+ * 大文字小文字は区別しない。空白で区切った語は「すべて含む」で扱う。
+ * 「幕張 焼肉」で、幕張にある焼肉だけを出せるようにするため。
+ */
+export function searchPlaces(places: Place[], text: string): Place[] {
+  const words = text.trim().toLowerCase().split(/[\s　]+/).filter(Boolean)
+  if (words.length === 0) return places
+
+  return places.filter((place) => {
+    const haystack = [place.name, place.area, place.genre, place.note]
+      .join(' ')
+      .toLowerCase()
+    return words.every((word) => haystack.includes(word))
+  })
 }

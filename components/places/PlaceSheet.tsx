@@ -5,10 +5,9 @@ import { useRouter } from 'next/navigation'
 import { Button, Chip, Field, Sheet, inputClassCompact } from '@/components/ui'
 import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
-import { PLACE_KINDS, placeKindLabel } from '@/lib/places'
-import { HOME_STADIUMS, REGIONAL_STADIUMS } from '@/lib/stadiums'
+import { PLACE_KINDS, hasGenre, placeKindLabel } from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceKind } from '@/types'
+import type { Place, PlaceGenre, PlaceKind } from '@/types'
 
 /**
  * 行きたい場所の登録と編集。
@@ -25,10 +24,13 @@ import type { Place, PlaceKind } from '@/types'
 type Hit = { name: string; address: string; lat: number; lng: number }
 export default function PlaceSheet({
   place,
+  genres,
   userId,
   onClose,
 }: {
   place: Place | null
+  /** 飲食のジャンルの候補。設定画面で足せる */
+  genres: PlaceGenre[]
   userId: string
   onClose: () => void
 }) {
@@ -38,7 +40,7 @@ export default function PlaceSheet({
   const [area, setArea] = useState(place?.area ?? '')
   const [url, setUrl] = useState(place?.url ?? '')
   const [note, setNote] = useState(place?.note ?? '')
-  const [stadiumId, setStadiumId] = useState(place?.stadium_id ?? '')
+  const [genre, setGenre] = useState(place?.genre ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -107,7 +109,7 @@ export default function PlaceSheet({
       area: area.trim(),
       url: url.trim(),
       note: note.trim(),
-      stadium_id: stadiumId || null,
+      genre: hasGenre(kind) ? genre.trim() : '',
       // 検索で選んだなら座標は分かっている。引き直す必要は無い
       ...(picked
         ? {
@@ -171,7 +173,7 @@ export default function PlaceSheet({
                   void search()
                 }
               }}
-              placeholder="例）ゑぶり亭 横浜"
+              placeholder="場所の名前を入力"
             />
             <Button
               variant="outline"
@@ -216,6 +218,8 @@ export default function PlaceSheet({
                 onClick={() => {
                   tapFeedback()
                   setKind(k)
+                  // 観光地にジャンルは無い。切り替えたら持ち越さない
+                  if (!hasGenre(k)) setGenre('')
                 }}
               >
                 {placeKindLabel(k)}
@@ -242,29 +246,33 @@ export default function PlaceSheet({
           />
         </Field>
 
-        <Field label="近い球場" hint="遠征のときにまとめて見られます">
-          <select
-            className={inputClassCompact}
-            value={stadiumId}
-            onChange={(e) => setStadiumId(e.target.value)}
-          >
-            <option value="">選ばない</option>
-            <optgroup label="本拠地">
-              {HOME_STADIUMS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.short}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="地方球場">
-              {REGIONAL_STADIUMS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.short}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </Field>
+        {hasGenre(kind) ? (
+          <Field label="ジャンル" hint="あとで絞り込めます">
+            <input
+              className={inputClassCompact}
+              value={genre}
+              onChange={(e) => setGenre(e.target.value)}
+              placeholder="例）焼肉"
+            />
+            {/* 候補は設定画面で足せる。ここに無い言葉も直接入れられる */}
+            {genres.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {genres.map((g) => (
+                  <Chip
+                    key={g.id}
+                    selected={genre === g.name}
+                    onClick={() => {
+                      tapFeedback()
+                      setGenre(genre === g.name ? '' : g.name)
+                    }}
+                  >
+                    {g.name}
+                  </Chip>
+                ))}
+              </div>
+            ) : null}
+          </Field>
+        ) : null}
 
         <Field label="リンク" hint="任意">
           <input
