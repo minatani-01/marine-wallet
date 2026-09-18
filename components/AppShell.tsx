@@ -9,6 +9,7 @@ import {
   IconBell,
   IconClock,
   IconHome,
+  IconMap,
   IconRefresh,
   IconUser,
   IconUsers,
@@ -19,6 +20,7 @@ const TABS = [
   { href: '/', label: 'ホーム', Icon: IconHome },
   { href: '/savings', label: '貯金', Icon: IconWallet },
   { href: '/split', label: '割り勘', Icon: IconUsers },
+  { href: '/places', label: 'マップ', Icon: IconMap },
   { href: '/history', label: '履歴', Icon: IconClock },
   { href: '/me', label: 'マイページ', Icon: IconUser },
 ]
@@ -30,6 +32,7 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/split': { title: '割り勘' },
   '/history': { title: '履歴・グラフ' },
   '/stadiums': { title: '球場スタンプ', back: '/history' },
+  '/places': { title: 'マップ' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }

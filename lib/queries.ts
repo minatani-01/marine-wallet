@@ -26,6 +26,7 @@ import type {
   SplitRecord,
   StadiumVisit,
   CircleMember,
+  Place,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -574,6 +575,22 @@ export async function getSharedGoals(): Promise<SharedGoalView[]> {
       pending_total: progress.reduce((sum, row) => sum + row.pending, 0),
     }
   })
+}
+
+/**
+ * 行きたい場所・行った場所。全員で共有しているので、誰が入れたかで絞らない。
+ * 行った側は新しい順、行きたい側は入れた順に並べたいので、両方の並びで取る。
+ */
+export async function getPlaces(): Promise<Place[]> {
+  const supabase = await createClient()
+  const data = await read<Place[]>('places', () =>
+    supabase
+      .from('places')
+      .select('id, kind, name, area, url, note, stadium_id, visited_on, created_by, lat, lng')
+      .order('visited_on', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: true })
+  )
+  return data ?? []
 }
 
 /**
