@@ -12,5 +12,5 @@ export default async function StadiumsPage() {
     getRecentGames(400),
   ])
 
-  return <StampClient userId={user.id} visits={visits} games={games} />
+  return <StampClient visits={visits} games={games} />
 }

@@ -1,133 +1,165 @@
-'use client'
-
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Button, Card, ProgressBar, SectionLabel } from '@/components/ui'
-import { createClient } from '@/lib/supabase/client'
-import { buildStampCard, uncheckedGames, visitFromGame } from '@/lib/stadium-stamp'
+import { Card, ProgressBar, SectionLabel } from '@/components/ui'
+import StadiumArt from '@/components/stadiums/StadiumArt'
+import { buildStampCard } from '@/lib/stadium-stamp'
 import type { StadiumStamp } from '@/lib/stadium-stamp'
 import { opponentLabel } from '@/lib/constants'
-import { shortDate } from '@/lib/format'
-import { tapFeedback } from '@/lib/haptics'
 import type { Game, StadiumVisit } from '@/types'
 
 /**
- * 球場スタンプラリー。
+ * 球場スタンプ帳（パスポート）。
  *
- * 12球団の本拠地をいくつ回ったかを出す。スタンプの根拠は訪問記録だけで、
- * 試合データからは付けない。games.stadium は「マリーンズが試合をした球場」
- * であって「自分が行った球場」ではないため（0038）。
+ * スタンプは訪問記録だけを根拠にする。games.stadium は「マリーンズが
+ * 試合をした球場」であって「自分が行った球場」ではない（0038）。
  *
- * 行った試合を1つずつ探すのは大変なので、こちらから候補を出して
- * 押すだけで済むようにする。
+ * 押す操作はここには置かない。貯金の記録一覧に「現地観戦」ボタンがあり、
+ * 押すとこの帳面にスタンプが増える。行った試合を思い出しながら探す場所は
+ * 試合の並んでいる貯金の画面のほうが自然で、同じ操作を二か所に置くと
+ * どちらが正しいのか分からなくなる。
  */
 
-/** 1回に出す候補の数。全部出すと126件並ぶ */
-const CANDIDATE_STEP = 12
+/** 'YYYY-MM-DD' → '2026.04.03'（券面の刻印） */
+function stampDate(iso: string): string {
+  return iso.replaceAll('-', '.')
+}
 
-function StampRow({ stamp }: { stamp: StadiumStamp }) {
-  const { stadium, visited, firstVisit, visits, games } = stamp
+/** 差し色に透明度を足す。#22d3ee + '33' */
+function alpha(hex: string, aa: string): string {
+  return `${hex}${aa}`
+}
+
+function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
+  const { stadium, no, visited, log } = stamp
+  const head = log[0] ?? null
+  const accent = stadium.accent
 
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <div className="flex min-w-0 items-center gap-3">
-        <span
-          aria-hidden
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
-            visited
-              ? 'border-marine/70 bg-marine/12 text-marine'
-              : 'border-dashed border-line text-fg-mute'
-          }`}
+    <div
+      className={`relative overflow-hidden rounded-xl border ${
+        visited ? 'border-line bg-white/[0.03]' : 'border-dashed border-line'
+      }`}
+      style={
+        visited
+          ? {
+              borderColor: alpha(accent, '66'),
+              background: `linear-gradient(180deg, ${alpha(accent, '1f')}, rgba(255,255,255,0.02) 62%)`,
+            }
+          : undefined
+      }
+    >
+      <div className="flex">
+        {/* 地方名（縦書き） */}
+        <div
+          className="flex w-[18px] shrink-0 items-center justify-center border-r border-dashed py-2"
+          style={{ borderColor: visited ? alpha(accent, '4d') : undefined }}
         >
-          {visited ? '済' : '—'}
-        </span>
-        <div className="min-w-0">
-          <div className={`truncate text-sm ${visited ? '' : 'text-fg-mute'}`}>
+          <span
+            className="text-[8px] tracking-[0.18em] [writing-mode:vertical-rl]"
+            style={{ color: visited ? accent : 'var(--color-fg-mute)' }}
+          >
+            {stadium.regionEn}
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1 px-2.5 pb-2.5 pt-2">
+          {/* 通し番号と所在地 */}
+          <div className="flex items-baseline justify-between gap-2">
+            <span
+              className="tnum text-[11px] font-semibold"
+              style={{ color: visited ? accent : 'var(--color-fg-mute)' }}
+            >
+              {String(no).padStart(2, '0')}
+              <span className="text-fg-mute">/{total}</span>
+            </span>
+            <span className="truncate text-[8px] tracking-[0.18em] text-fg-mute">
+              {stadium.prefectureEn}
+            </span>
+          </div>
+
+          {/* 球場の絵 */}
+          <div
+            className="mt-1.5"
+            style={{ color: visited ? accent : 'rgba(107,124,141,0.38)' }}
+          >
+            <StadiumArt shape={stadium.shape} className="h-10 w-full" />
+          </div>
+
+          {/* 球場名 */}
+          <div className={`mt-1.5 truncate text-[12px] ${visited ? '' : 'text-fg-mute'}`}>
             {stadium.short}
           </div>
-          <div className="tnum truncate text-[11px] text-fg-mute">
-            {visited
-              ? `初 ${shortDate(firstVisit!)} / ${visits}回${games > 0 ? `（観戦${games}）` : ''}`
-              : 'まだ行っていません'}
+          <div className="truncate text-[8px] tracking-[0.12em] text-fg-mute">
+            {stadium.nameEn}
+          </div>
+
+          {/* 半券：行った日と点数 */}
+          <div
+            className="mt-2 border-t border-dashed pt-1.5"
+            style={{ borderColor: visited ? alpha(accent, '4d') : undefined }}
+          >
+            <div className="text-[8px] tracking-[0.2em] text-fg-mute">VISITED</div>
+            {visited && head ? (
+              <>
+                <div className="tnum text-[12px] leading-tight">{stampDate(head.date)}</div>
+                <div className="tnum truncate text-[10px] text-fg-mute">
+                  {head.game ? (
+                    <>
+                      vs {opponentLabel(head.game.opponent)}
+                      {head.score ? <span className="ml-1 text-fg-dim">{head.score}</span> : null}
+                    </>
+                  ) : (
+                    '来場'
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="mt-1.5 h-px w-full bg-white/12" />
+            )}
+            {stamp.visits > 1 ? (
+              <div className="tnum mt-0.5 text-[9px] text-fg-mute">ほか {stamp.visits - 1} 回</div>
+            ) : null}
           </div>
         </div>
       </div>
-      {stadium.team ? (
-        <span className="shrink-0 text-[11px] text-fg-mute">{opponentLabel(stadium.team)}</span>
-      ) : null}
+    </div>
+  )
+}
+
+function TicketGrid({ stamps, total }: { stamps: StadiumStamp[]; total: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+      {stamps.map((stamp) => (
+        <Ticket key={stamp.stadium.id} stamp={stamp} total={total} />
+      ))}
     </div>
   )
 }
 
 export default function StampClient({
-  userId,
   visits,
   games,
 }: {
-  userId: string
   visits: StadiumVisit[]
-  /** 共通の試合。行った試合を押して記録するのに使う */
+  /** 券面に点数を刻むために使う。スタンプの有無には効かない */
   games: Game[]
 }) {
-  const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [shown, setShown] = useState(CANDIDATE_STEP)
-  const [error, setError] = useState<string | null>(null)
+  const card = buildStampCard(visits, games)
 
-  const card = useMemo(() => buildStampCard(visits), [visits])
-  const candidates = useMemo(() => uncheckedGames(games, visits), [games, visits])
-
-  /** 観戦した試合を記録する。押した試合の球場にスタンプが付く */
-  const checkIn = async (game: Game) => {
-    const from = visitFromGame(game)
-    if (!from) return
-
-    tapFeedback()
-    setBusy(true)
-    setError(null)
-
-    const supabase = createClient()
-    const { error: saveError } = await supabase.from('stadium_visits').insert({
-      user_id: userId,
-      stadium_id: from.stadium_id,
-      visited_on: from.visited_on,
-      game_id: game.id,
-    })
-
-    setBusy(false)
-    if (saveError) {
-      setError('記録できませんでした')
-      return
-    }
-    router.refresh()
-  }
-
-  /** 押し間違えたときに取り消す */
-  const undo = async (gameId: string) => {
-    const target = visits.find((v) => v.game_id === gameId)
-    if (!target) return
-
-    setBusy(true)
-    const supabase = createClient()
-    await supabase.from('stadium_visits').delete().eq('id', target.id)
-    setBusy(false)
-    router.refresh()
-  }
-
-  const checked = useMemo(
-    () =>
-      games
-        .filter((g) => visits.some((v) => v.game_id === g.id))
-        .sort((a, b) => b.game_date.localeCompare(a.game_date)),
-    [games, visits]
-  )
+  /** 観戦した試合を新しい順に。券面に載らない2回目以降もここで見える */
+  const log = [...card.home, ...card.regional]
+    .flatMap((stamp) => stamp.log.map((v) => ({ stamp, visit: v })))
+    .sort((a, b) => b.visit.date.localeCompare(a.visit.date))
 
   return (
     <div className="flex flex-col gap-6">
       {/* 達成状況 */}
       <Card className="glow">
-        <div className="eyebrow">12球団の本拠地</div>
-        <div className="mt-2 flex items-baseline gap-2">
+        <div className="eyebrow">NPB Ballpark Stamp Collection</div>
+        <p className="mt-2 text-[13px] leading-relaxed text-fg-dim">
+          球場をめぐる。野球を集める。
+          <br />
+          あなただけのスタンプコレクション。
+        </p>
+        <div className="mt-3 flex items-baseline gap-2">
           <span className="tnum text-[42px] font-semibold leading-none text-marine">
             {card.homeVisited}
           </span>
@@ -137,121 +169,65 @@ export default function StampClient({
           <ProgressBar
             value={card.homeVisited}
             max={12}
-            label="制覇まで"
+            label="12球団の本拠地"
             caption={`あと ${12 - card.homeVisited} 球場`}
           />
         </div>
         <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">
           地方球場は {card.regionalVisited} / {card.regional.length} です。
-          スタンプは「行った」と記録した試合にだけ付きます。
+          スタンプは貯金の記録から「現地観戦」を押した試合にだけ付きます。
         </p>
       </Card>
 
       {/* 本拠地 */}
       <div>
         <SectionLabel>本拠地</SectionLabel>
-        <Card>
-          <div className="divide-hairline">
-            {card.home.map((stamp) => (
-              <StampRow key={stamp.stadium.id} stamp={stamp} />
-            ))}
-          </div>
-        </Card>
+        <TicketGrid stamps={card.home} total={12} />
       </div>
 
       {/* 地方球場 */}
       <div>
         <SectionLabel>地方球場</SectionLabel>
-        <Card>
-          <div className="divide-hairline">
-            {card.regional.map((stamp) => (
-              <StampRow key={stamp.stadium.id} stamp={stamp} />
-            ))}
-          </div>
-        </Card>
+        <TicketGrid stamps={card.regional} total={card.regional.length} />
       </div>
 
-      {/* 行った試合を記録する */}
+      {/* 観戦した試合 */}
       <div>
-        <SectionLabel>行った試合を記録する</SectionLabel>
+        <SectionLabel>観戦した試合</SectionLabel>
         <Card>
-          <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
-            観戦した試合を押すと、その球場にスタンプが付きます。
-            試合データは全員で共通ですが、行ったかどうかは人ごとに記録します。
-          </p>
-
-          {error ? <p className="mb-2 text-[13px] text-danger">{error}</p> : null}
-
-          {candidates.length === 0 ? (
-            <p className="py-2 text-[13px] text-fg-mute">記録していない試合はありません。</p>
+          {log.length === 0 ? (
+            <p className="py-2 text-[13px] text-fg-mute">
+              まだ記録がありません。貯金の記録一覧で、行った試合の「現地観戦」を押してください。
+            </p>
           ) : (
-            <>
-              <div className="divide-hairline">
-                {candidates.slice(0, shown).map((game) => (
-                  <div key={game.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm">
-                        {shortDate(game.game_date)} {opponentLabel(game.opponent)}戦
-                      </div>
-                      <div className="truncate text-[11px] text-fg-mute">{game.stadium}</div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      className="shrink-0 !min-h-[38px] !px-3 text-[13px]"
-                      disabled={busy}
-                      onClick={() => checkIn(game)}
-                    >
-                      行った
-                    </Button>
-                  </div>
-                ))}
-              </div>
-
-              {candidates.length > shown ? (
-                <button
-                  type="button"
-                  onClick={() => setShown((n) => n + CANDIDATE_STEP)}
-                  className="mt-3 w-full text-[12px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
-                >
-                  もっと見る（残り {candidates.length - shown} 試合）
-                </button>
-              ) : null}
-            </>
-          )}
-        </Card>
-      </div>
-
-      {/* 記録済み */}
-      {checked.length > 0 ? (
-        <div>
-          <SectionLabel>観戦した試合</SectionLabel>
-          <Card>
             <div className="divide-hairline">
-              {checked.slice(0, 20).map((game) => (
-                <div key={game.id} className="flex items-center justify-between gap-3 py-2.5">
+              {log.slice(0, 30).map(({ stamp, visit }) => (
+                <div key={visit.visitId} className="flex items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <div className="truncate text-sm">
-                      {shortDate(game.game_date)} {opponentLabel(game.opponent)}戦
+                      <span className="tnum">{stampDate(visit.date)}</span>
+                      <span className="ml-2 text-fg-dim">{stamp.stadium.short}</span>
                     </div>
-                    <div className="truncate text-[11px] text-fg-mute">{game.stadium}</div>
+                    <div className="tnum truncate text-[11px] text-fg-mute">
+                      {visit.game
+                        ? `vs ${opponentLabel(visit.game.opponent)}${visit.score ? ` ${visit.score}` : ''}`
+                        : '試合以外の来場'}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => undo(game.id)}
-                    className="shrink-0 text-[12px] text-fg-mute underline underline-offset-2 transition-colors hover:text-danger disabled:opacity-40"
-                  >
-                    取り消す
-                  </button>
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: stamp.stadium.accent }}
+                  />
                 </div>
               ))}
             </div>
-            {checked.length > 20 ? (
-              <p className="mt-3 text-[11px] text-fg-mute">ほか {checked.length - 20} 試合</p>
-            ) : null}
-          </Card>
-        </div>
-      ) : null}
+          )}
+          {log.length > 30 ? (
+            <p className="mt-3 text-[11px] text-fg-mute">ほか {log.length - 30} 件</p>
+          ) : null}
+        </Card>
+      </div>
     </div>
   )
 }
