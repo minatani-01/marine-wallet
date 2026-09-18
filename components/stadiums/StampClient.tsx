@@ -80,7 +80,7 @@ function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
             className="mt-1.5"
             style={{ color: visited ? accent : 'rgba(107,124,141,0.38)' }}
           >
-            <StadiumArt shape={stadium.shape} className="h-10 w-full" />
+            <StadiumArt id={stadium.id} shape={stadium.shape} className="h-12 w-full" />
           </div>
 
           {/* 球場名 */}
