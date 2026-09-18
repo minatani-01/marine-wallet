@@ -65,12 +65,7 @@ test('id から引ける', () => {
 test('券面に出す文字がすべて埋まっている', () => {
   // 1つでも空だと、その球場だけスタンプが崩れる
   const blank = STADIUMS.filter(
-    (s) => !s.nameEn || !s.prefecture || !s.prefectureEn || !s.regionEn || !s.accent
+    (s) => !s.nameEn || !s.prefecture || !s.prefectureEn || !s.regionEn
   )
   assert.deepEqual(blank.map((s) => s.id), [])
-})
-
-test('差し色は6桁の16進（券面で透明度を足すため）', () => {
-  const bad = STADIUMS.filter((s) => !/^#[0-9a-f]{6}$/.test(s.accent))
-  assert.deepEqual(bad.map((s) => s.id), [])
 })

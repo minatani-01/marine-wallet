@@ -22,39 +22,29 @@ function stampDate(iso: string): string {
   return iso.replaceAll('-', '.')
 }
 
-/** 差し色に透明度を足す。#22d3ee + '33' */
-function alpha(hex: string, aa: string): string {
-  return `${hex}${aa}`
-}
-
 function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
   const { stadium, no, visited, log } = stamp
   const head = log[0] ?? null
-  const accent = stadium.accent
 
   return (
     <div
       className={`relative overflow-hidden rounded-xl border ${
-        visited ? 'border-line bg-white/[0.03]' : 'border-dashed border-line'
-      }`}
-      style={
         visited
-          ? {
-              borderColor: alpha(accent, '66'),
-              background: `linear-gradient(180deg, ${alpha(accent, '1f')}, rgba(255,255,255,0.02) 62%)`,
-            }
-          : undefined
-      }
+          ? 'border-marine/45 bg-gradient-to-b from-marine/12 to-white/[0.02]'
+          : 'border-dashed border-line'
+      }`}
     >
       <div className="flex">
         {/* 地方名（縦書き） */}
         <div
-          className="flex w-[18px] shrink-0 items-center justify-center border-r border-dashed py-2"
-          style={{ borderColor: visited ? alpha(accent, '4d') : undefined }}
+          className={`flex w-[18px] shrink-0 items-center justify-center border-r border-dashed py-2 ${
+            visited ? 'border-marine/30' : 'border-line'
+          }`}
         >
           <span
-            className="text-[8px] tracking-[0.18em] [writing-mode:vertical-rl]"
-            style={{ color: visited ? accent : 'var(--color-fg-mute)' }}
+            className={`text-[8px] tracking-[0.18em] [writing-mode:vertical-rl] ${
+              visited ? 'text-marine' : 'text-fg-mute'
+            }`}
           >
             {stadium.regionEn}
           </span>
@@ -64,8 +54,9 @@ function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
           {/* 通し番号と所在地 */}
           <div className="flex items-baseline justify-between gap-2">
             <span
-              className="tnum text-[11px] font-semibold"
-              style={{ color: visited ? accent : 'var(--color-fg-mute)' }}
+              className={`tnum text-[11px] font-semibold ${
+                visited ? 'text-marine' : 'text-fg-mute'
+              }`}
             >
               {String(no).padStart(2, '0')}
               <span className="text-fg-mute">/{total}</span>
@@ -76,10 +67,7 @@ function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
           </div>
 
           {/* 球場の絵 */}
-          <div
-            className="mt-1.5"
-            style={{ color: visited ? accent : 'rgba(107,124,141,0.38)' }}
-          >
+          <div className={`mt-1.5 ${visited ? 'text-marine' : 'text-stamp-off'}`}>
             <StadiumArt id={stadium.id} shape={stadium.shape} className="h-16 w-full" />
           </div>
 
@@ -93,8 +81,9 @@ function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
 
           {/* 半券：行った日と点数 */}
           <div
-            className="mt-2 border-t border-dashed pt-1.5"
-            style={{ borderColor: visited ? alpha(accent, '4d') : undefined }}
+            className={`mt-2 border-t border-dashed pt-1.5 ${
+              visited ? 'border-marine/30' : 'border-line'
+            }`}
           >
             <div className="text-[8px] tracking-[0.2em] text-fg-mute">VISITED</div>
             {visited && head ? (
@@ -216,8 +205,7 @@ export default function StampClient({
                   </div>
                   <span
                     aria-hidden
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: stamp.stadium.accent }}
+                    className="bg-marine/70 h-2 w-2 shrink-0 rounded-full"
                   />
                 </div>
               ))}

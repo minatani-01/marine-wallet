@@ -14,9 +14,9 @@
  * 古い試合の place は当時の表記のままなので、alias を消すと過去の
  * スタンプが外れる。
  *
- * パスポートの券面に出す文字（英名・都道府県・地方・差し色・外観）も
- * ここに置く。スタンプの絵は球場ごとに描かず、外観の型（ドーム／屋根付き／
- * 屋根なし）で描き分ける。
+ * パスポートの券面に出す文字（英名・都道府県・地方・外観の型）もここに置く。
+ * 色は持たない。券の色はアプリのマリン色ひとつで、球団カラーは使わない
+ * （黄色の球団だけが明るく浮いて、券が揃って見えないため）。
  */
 
 export type StadiumKind = 'home' | 'regional'
@@ -41,8 +41,6 @@ export type Stadium = {
   team: string | null
   kind: StadiumKind
   shape: StadiumShape
-  /** 券面の差し色。暗い背景で読める明るさに寄せた球団カラー */
-  accent: string
   /** npb.jp や手入力で現れる表記。name と short も暗黙に含む */
   aliases: string[]
 }
@@ -60,7 +58,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'marines',
     kind: 'home',
     shape: 'open',
-    accent: '#22d3ee',
     aliases: ['千葉マリン', 'QVCマリン'],
   },
   {
@@ -74,7 +71,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'fighters',
     kind: 'home',
     shape: 'roof',
-    accent: '#5aa9de',
     aliases: ['エスコンＦ', 'エスコンフィールド', '札幌ドーム'],
   },
   {
@@ -88,7 +84,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'eagles',
     kind: 'home',
     shape: 'open',
-    accent: '#e05f70',
     aliases: ['楽天生命パーク', 'Koboパーク宮城'],
   },
   {
@@ -102,7 +97,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'lions',
     kind: 'home',
     shape: 'roof',
-    accent: '#6b8fe0',
     aliases: ['メットライフドーム', '西武ドーム'],
   },
   {
@@ -116,7 +110,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'buffaloes',
     kind: 'home',
     shape: 'dome',
-    accent: '#d8ac55',
     aliases: ['大阪ドーム'],
   },
   {
@@ -130,7 +123,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'hawks',
     kind: 'home',
     shape: 'dome',
-    accent: '#f2ca4d',
     aliases: ['PayPayドーム', '福岡ドーム', 'ヤフオクドーム'],
   },
   {
@@ -144,7 +136,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'giants',
     kind: 'home',
     shape: 'dome',
-    accent: '#ef9450',
     aliases: [],
   },
   {
@@ -158,7 +149,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'swallows',
     kind: 'home',
     shape: 'open',
-    accent: '#a8cf5e',
     aliases: ['神 宮', '神宮球場'],
   },
   {
@@ -172,7 +162,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'baystars',
     kind: 'home',
     shape: 'open',
-    accent: '#4aa3e0',
     aliases: ['ハマスタ'],
   },
   {
@@ -186,7 +175,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'dragons',
     kind: 'home',
     shape: 'dome',
-    accent: '#5f86e6',
     aliases: ['ナゴヤドーム', 'バンテリンドーム'],
   },
   {
@@ -200,7 +188,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'tigers',
     kind: 'home',
     shape: 'open',
-    accent: '#edd75a',
     aliases: [],
   },
   {
@@ -214,7 +201,6 @@ export const HOME_STADIUMS: Stadium[] = [
     team: 'carp',
     kind: 'home',
     shape: 'open',
-    accent: '#ef5b68',
     aliases: ['マツダスタジアム', 'マツダZoom-Zoom'],
   },
 ]
@@ -237,7 +223,6 @@ export const REGIONAL_STADIUMS: Stadium[] = [
     team: null,
     kind: 'regional',
     shape: 'open',
-    accent: '#8fa8bd',
     aliases: [],
   },
   {
@@ -251,7 +236,6 @@ export const REGIONAL_STADIUMS: Stadium[] = [
     team: null,
     kind: 'regional',
     shape: 'open',
-    accent: '#8fa8bd',
     aliases: ['熊 本', '藤崎台'],
   },
   {
@@ -265,7 +249,6 @@ export const REGIONAL_STADIUMS: Stadium[] = [
     team: null,
     kind: 'regional',
     shape: 'open',
-    accent: '#8fa8bd',
     aliases: ['前 橋', '敷島'],
   },
   {
@@ -279,7 +262,6 @@ export const REGIONAL_STADIUMS: Stadium[] = [
     team: null,
     kind: 'regional',
     shape: 'open',
-    accent: '#8fa8bd',
     aliases: ['郡 山', '開成山'],
   },
   {
@@ -293,7 +275,6 @@ export const REGIONAL_STADIUMS: Stadium[] = [
     team: null,
     kind: 'regional',
     shape: 'open',
-    accent: '#8fa8bd',
     aliases: ['鹿児島'],
   },
 ]

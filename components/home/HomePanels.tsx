@@ -32,11 +32,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'record', label: '記録' },
 ]
 
-/** 差し色に透明度を足す */
-function alpha(hex: string, aa: string): string {
-  return `${hex}${aa}`
-}
-
 /** 'YYYY-MM-DD' → '2026.09.16' */
 function stampDate(iso: string): string {
   return iso.replaceAll('-', '.')
@@ -124,27 +119,22 @@ export default function HomePanels({
                   {log.map(({ no, visit, id }) => {
                     const stadium = stadiumById(id)
                     if (!stadium) return null
-                    const accent = stadium.accent
 
                     return (
                       <div
                         key={visit.visitId}
-                        className="w-[104px] shrink-0 rounded-xl border px-2 pt-1.5 pb-2"
-                        style={{
-                          borderColor: alpha(accent, '66'),
-                          background: `linear-gradient(180deg, ${alpha(accent, '1f')}, rgba(255,255,255,0.02) 62%)`,
-                        }}
+                        className="border-marine/45 from-marine/12 w-[104px] shrink-0 rounded-xl border bg-gradient-to-b to-white/[0.02] px-2 pt-1.5 pb-2"
                       >
                         <div className="flex items-baseline justify-between gap-1">
                           {/* 通し番号はスタンプ帳と同じもの。地方球場は番号を持たない */}
-                          <span className="tnum text-[10px] font-semibold" style={{ color: accent }}>
+                          <span className="tnum text-marine text-[10px] font-semibold">
                             {stadium.kind === 'home' ? String(no).padStart(2, '0') : ''}
                           </span>
                           <span className="truncate text-[7px] tracking-[0.16em] text-fg-mute">
                             {stadium.prefectureEn}
                           </span>
                         </div>
-                        <div style={{ color: accent }}>
+                        <div className="text-marine">
                           <StadiumArt id={stadium.id} shape={stadium.shape} className="h-10 w-full" />
                         </div>
                         <div className="mt-0.5 truncate text-[11px]">{stadium.short}</div>
