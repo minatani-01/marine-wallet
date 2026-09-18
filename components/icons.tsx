@@ -310,6 +310,16 @@ export function IconTarget(props: IconProps) {
   )
 }
 
+/** 虫めがね。名前で探すときに使う */
+export function IconSearch(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="10.8" cy="10.8" r="6.4" />
+      <path d="M15.4 15.4 20 20" />
+    </Icon>
+  )
+}
+
 /** 地図。ピンと折り目のある紙の地図 */
 export function IconMap(props: IconProps) {
   return (

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Button,
   Card,
+  Chip,
   EmptyState,
   IconButton,
   IconFrame,
@@ -22,7 +23,9 @@ import {
 import PlaceSheet from '@/components/places/PlaceSheet'
 import PlacesMap from '@/components/places/PlacesMap'
 import { createClient } from '@/lib/supabase/client'
+import { parseTakeoutPlaces } from '@/lib/csv'
 import {
+  PLACE_KINDS,
   filterByKind,
   groupByStadium,
   mapsUrl,
@@ -170,6 +173,11 @@ export default function PlacesClient({
   const [locating, setLocating] = useState(false)
   const [locateNote, setLocateNote] = useState<string | null>(null)
 
+  // 保存リストの取り込み
+  const [importKind, setImportKind] = useState<PlaceKind>('food')
+  const [importing, setImporting] = useState(false)
+  const [importNote, setImportNote] = useState<string | null>(null)
+
   const lists = useMemo(() => splitPlaces(places), [places])
   const shown = useMemo(
     () => filterByKind(tab === 'wish' ? lists.wish : lists.visited, kind === 'all' ? null : kind),
@@ -229,6 +237,62 @@ export default function PlacesClient({
           (targets.length < unlocated.length
             ? ` 残り ${unlocated.length - targets.length} 件は、もう一度押してください。`
             : '')
+    )
+    router.refresh()
+  }
+
+  /**
+   * Google マップの保存リスト（Takeout の CSV）を取り込む。
+   *
+   * 保存リストを読む API は公開されていないので、書き出したファイルを
+   * 読むしかない。取り込むのは名前とメモだけで、座標はあとから
+   * 「位置をまとめて取り込む」で引く。1件ずつ引くと、大きなリストで
+   * 上限に当たって途中で止まるため。
+   *
+   * すでに同じ名前がある場所は入れない。何度読ませても増えない。
+   */
+  const importList = async (file: File) => {
+    setImporting(true)
+    setImportNote(null)
+
+    const rows = parseTakeoutPlaces(await file.text())
+    if (rows.length === 0) {
+      setImporting(false)
+      setImportNote('読み取れませんでした。Takeout の保存済みリストの CSV を選んでください。')
+      return
+    }
+
+    const known = new Set(places.map((p) => p.name))
+    const fresh = rows.filter((row) => !known.has(row.name))
+
+    if (fresh.length === 0) {
+      setImporting(false)
+      setImportNote(`${rows.length} 件すべて、すでに入っています。`)
+      return
+    }
+
+    const supabase = createClient()
+    const { error: saveError } = await supabase.from('places').insert(
+      fresh.map((row) => ({
+        kind: importKind,
+        name: row.name,
+        area: '',
+        url: row.url,
+        note: row.note,
+        created_by: userId,
+      }))
+    )
+
+    setImporting(false)
+    if (saveError) {
+      setImportNote('取り込めませんでした。')
+      return
+    }
+
+    setImportNote(
+      `${fresh.length} 件を取り込みました。` +
+        (rows.length > fresh.length ? `（${rows.length - fresh.length} 件は登録済み）` : '') +
+        ' 地図に出すには「位置をまとめて取り込む」を押してください。'
     )
     router.refresh()
   }
@@ -352,6 +416,46 @@ export default function PlacesClient({
           ))}
         </div>
       )}
+
+      {/* Google マップの保存リストの取り込み。初回の引っ越し用なので一番下 */}
+      <details className="glass rounded-2xl px-4 py-3">
+        <summary className="cursor-pointer text-[13px] text-fg-dim">
+          Google マップの保存リストを取り込む
+        </summary>
+        <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">
+          Google Takeout で「マップ（あなたの地図）」の保存済みリストを書き出し、
+          その CSV を選んでください。取り込むのは名前とメモだけで、
+          位置はあとから「位置をまとめて取り込む」で引きます。
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {PLACE_KINDS.map((k) => (
+            <Chip key={k} selected={importKind === k} onClick={() => setImportKind(k)}>
+              {placeKindLabel(k)}として取り込む
+            </Chip>
+          ))}
+        </div>
+
+        <label className="mt-3 flex min-h-[44px] w-full cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-4 text-[13px] text-fg-dim transition-colors hover:border-marine/50 hover:text-marine">
+          {importing ? '取り込んでいます' : 'CSV を選ぶ'}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            disabled={importing}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              // 同じファイルを続けて選べるようにする
+              e.target.value = ''
+              if (file) void importList(file)
+            }}
+          />
+        </label>
+
+        {importNote ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{importNote}</p>
+        ) : null}
+      </details>
 
       {sheet ? (
         <PlaceSheet place={sheet.place} userId={userId} onClose={() => setSheet(null)} />

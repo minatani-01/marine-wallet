@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '@/components/ui'
+import { IconTarget } from '@/components/icons'
+import { tapFeedback } from '@/lib/haptics'
 import { isVisited, placeKindLabel } from '@/lib/places'
 import type { Place } from '@/types'
 
@@ -72,6 +74,11 @@ export default function PlacesMap({ places }: { places: Place[] }) {
   const infoRef = useRef<any>(null)
   const [gate, setGate] = useState<Gate>('loading')
   const ready = gate === 'ready'
+
+  // 現在位置。押したときだけ取りに行く（常時追いかけない）
+  const hereRef = useRef<any>(null)
+  const [locating, setLocating] = useState(false)
+  const [hereError, setHereError] = useState<string | null>(null)
 
   const pinned = places.filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number')
 
@@ -170,6 +177,56 @@ export default function PlacesMap({ places }: { places: Place[] }) {
     }
   }, [ready, pinned])
 
+  /**
+   * 現在位置へ寄せる。
+   *
+   * 端末の位置情報を使う（Google の API は呼ばないので、回数も課金も増えない）。
+   * 押したときだけ取りに行き、追いかけ続けない。電池を使ううえ、
+   * 見ているあいだ地図が勝手に動くのは邪魔になる。
+   */
+  const goToHere = () => {
+    if (!ready || !mapRef.current) return
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setHereError('この端末では現在位置を取れません')
+      return
+    }
+
+    tapFeedback()
+    setLocating(true)
+    setHereError(null)
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false)
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+
+        hereRef.current?.setMap(null)
+        hereRef.current = new window.google.maps.Marker({
+          map: mapRef.current,
+          position: here,
+          title: '現在位置',
+          zIndex: 999,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: '#ffffff',
+            fillOpacity: 1,
+            strokeColor: '#22d3ee',
+            strokeWeight: 4,
+          },
+        })
+
+        mapRef.current.setCenter(here)
+        mapRef.current.setZoom(15)
+      },
+      () => {
+        setLocating(false)
+        setHereError('現在位置を取れませんでした（位置情報の許可を確認してください）')
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    )
+  }
+
   if (gate === 'off') {
     return (
       <Card>
@@ -212,10 +269,25 @@ export default function PlacesMap({ places }: { places: Place[] }) {
   }
 
   return (
-    <div
-      ref={boxRef}
-      className="h-[280px] w-full overflow-hidden rounded-2xl border border-line"
-    />
+    <div>
+      <div className="relative">
+        <div
+          ref={boxRef}
+          className="h-[280px] w-full overflow-hidden rounded-2xl border border-line"
+        />
+        <button
+          type="button"
+          aria-label="現在位置に戻る"
+          title="現在位置に戻る"
+          disabled={!ready || locating}
+          onClick={goToHere}
+          className="glass absolute bottom-3 left-3 inline-flex h-11 w-11 items-center justify-center rounded-full border border-line text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
+        >
+          <IconTarget size={19} />
+        </button>
+      </div>
+      {hereError ? <p className="mt-1.5 text-[11px] text-fg-mute">{hereError}</p> : null}
+    </div>
   )
 }
 
