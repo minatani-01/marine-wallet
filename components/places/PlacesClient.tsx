@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Button,
@@ -35,9 +36,15 @@ import {
   searchPlaces,
   splitPlaces,
 } from '@/lib/places'
+import {
+  CLOSED_FILTER,
+  filterClosed,
+  isClosed,
+  statusLabel,
+} from '@/lib/places-status'
 import { shortDate, today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceKind } from '@/types'
+import type { Place, PlaceGenre, PlaceKind } from '@/types'
 
 /**
  * 行きたい場所と、行った場所。
@@ -68,6 +75,16 @@ const KIND_TABS: { id: KindTab; label: string }[] = [
   { id: 'food', label: '飲食' },
 ]
 
+/**
+ * ジャンル、または「閉店」で絞る。
+ *
+ * 「閉店」はジャンルの並びに置いてあるが、ジャンルの言葉ではない（0045）。
+ * 選ばれたときだけ、状態のほうで絞る。
+ */
+function narrowBy(rows: Place[], genre: string | null): Place[] {
+  return genre === CLOSED_FILTER ? filterClosed(rows) : filterByGenre(rows, genre)
+}
+
 function PlaceCard({
   place,
   busy,
@@ -82,11 +99,13 @@ function PlaceCard({
   onDelete: (place: Place) => void
 }) {
   const visited = Boolean(place.visited_on)
+  const closed = isClosed(place)
+  const closedLabel = statusLabel(place.business_status)
 
   return (
-    <Card className="!p-3.5">
+    <Card className={`!p-3.5${closed ? ' opacity-70' : ''}`}>
       <div className="flex items-start gap-3">
-        <IconFrame tone={visited ? 'marine' : 'default'}>
+        <IconFrame tone={visited && !closed ? 'marine' : 'default'}>
           {place.kind === 'food' ? <IconFood size={17} /> : <IconCamera size={17} />}
         </IconFrame>
 
@@ -101,7 +120,16 @@ function PlaceCard({
               <span className="tnum shrink-0 text-marine">{shortDate(place.visited_on!)}</span>
             ) : null}
           </div>
-          <div className="mt-1 truncate text-sm">{place.name}</div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
+              {place.name}
+            </span>
+            {closedLabel ? (
+              <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
+                {closedLabel}
+              </span>
+            ) : null}
+          </div>
           {place.note ? (
             <p className="mt-1 truncate text-[11px] text-fg-mute">{place.note}</p>
           ) : null}
@@ -164,9 +192,12 @@ function PlaceCard({
 export default function PlacesClient({
   userId,
   places,
+  genreOptions,
 }: {
   userId: string
   places: Place[]
+  /** 飲食のジャンルの候補。設定画面で足せる */
+  genreOptions: PlaceGenre[]
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('wish')
@@ -197,8 +228,11 @@ export default function PlacesClient({
   /** いま出ている場所に実際に入っているジャンルだけを出す */
   const genres = useMemo(() => genresOf(byKind), [byKind])
 
+  /** 閉店・休業の数。0 なら「閉店」の絞り込みも出さない */
+  const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
+
   const shown = useMemo(
-    () => searchPlaces(filterByGenre(byKind, genre), words),
+    () => searchPlaces(narrowBy(byKind, genre), words),
     [byKind, genre, words]
   )
 
@@ -206,7 +240,7 @@ export default function PlacesClient({
   const onMap = useMemo(
     () =>
       searchPlaces(
-        filterByGenre(filterByKind(places, kind === 'all' ? null : kind), genre),
+        narrowBy(filterByKind(places, kind === 'all' ? null : kind), genre),
         words
       ),
     [places, kind, genre, words]
@@ -362,18 +396,29 @@ export default function PlacesClient({
             行きたい場所を追加
           </span>
         </Button>
+        <Link
+          href="/places/genres"
+          prefetch={false}
+          className="mt-2 block text-center text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+        >
+          飲食のジャンルを編集
+        </Link>
       </Card>
 
       <Segmented value={tab} options={TABS} onChange={setTab} />
       <Segmented value={kind} options={KIND_TABS} onChange={setKind} />
 
-      {/* ジャンル。登録されている言葉だけを出す */}
-      {genres.length > 0 ? (
+      {/* ジャンル。登録されている言葉だけを出す（観光地にジャンルは無い）。
+          閉店した店があるときだけ、並びの最後に「閉店」を足す */}
+      {kind !== 'sight' && (genres.length > 0 || closedCount > 0) ? (
         <PillTabs
           value={genre ?? ''}
           options={[
             { id: '', label: 'ジャンル問わず' },
             ...genres.map((g) => ({ id: g, label: g })),
+            ...(closedCount > 0
+              ? [{ id: CLOSED_FILTER, label: `閉店 ${closedCount}` }]
+              : []),
           ]}
           onChange={(id) => setGenre(id === '' ? null : id)}
         />
@@ -479,7 +524,12 @@ export default function PlacesClient({
       </details>
 
       {sheet ? (
-        <PlaceSheet place={sheet.place} userId={userId} onClose={() => setSheet(null)} />
+        <PlaceSheet
+          place={sheet.place}
+          genres={genreOptions}
+          userId={userId}
+          onClose={() => setSheet(null)}
+        />
       ) : null}
     </div>
   )

@@ -33,6 +33,7 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/history': { title: '履歴・グラフ' },
   '/stadiums': { title: '球場スタンプ', back: '/history' },
   '/places': { title: 'マップ' },
+  '/places/genres': { title: 'ジャンルの設定', back: '/places' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }

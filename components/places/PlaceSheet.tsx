@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import { Button, Chip, Field, Sheet, inputClassCompact } from '@/components/ui'
 import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
-import { GENRE_SUGGESTIONS, PLACE_KINDS, placeKindLabel } from '@/lib/places'
+import { PLACE_KINDS, hasGenre, placeKindLabel } from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceKind } from '@/types'
+import type { Place, PlaceGenre, PlaceKind } from '@/types'
 
 /**
  * 行きたい場所の登録と編集。
@@ -24,10 +24,13 @@ import type { Place, PlaceKind } from '@/types'
 type Hit = { name: string; address: string; lat: number; lng: number }
 export default function PlaceSheet({
   place,
+  genres,
   userId,
   onClose,
 }: {
   place: Place | null
+  /** 飲食のジャンルの候補。設定画面で足せる */
+  genres: PlaceGenre[]
   userId: string
   onClose: () => void
 }) {
@@ -106,7 +109,7 @@ export default function PlaceSheet({
       area: area.trim(),
       url: url.trim(),
       note: note.trim(),
-      genre: genre.trim(),
+      genre: hasGenre(kind) ? genre.trim() : '',
       // 検索で選んだなら座標は分かっている。引き直す必要は無い
       ...(picked
         ? {
@@ -215,6 +218,8 @@ export default function PlaceSheet({
                 onClick={() => {
                   tapFeedback()
                   setKind(k)
+                  // 観光地にジャンルは無い。切り替えたら持ち越さない
+                  if (!hasGenre(k)) setGenre('')
                 }}
               >
                 {placeKindLabel(k)}
@@ -241,29 +246,33 @@ export default function PlaceSheet({
           />
         </Field>
 
-        <Field label="ジャンル" hint="あとで絞り込めます">
-          <input
-            className={inputClassCompact}
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-            placeholder="例）焼肉"
-          />
-          {/* 候補は入力を早くするためのもの。ここに無い言葉も入れられる */}
-          <div className="mt-2 flex flex-wrap gap-2">
-            {GENRE_SUGGESTIONS[kind].map((g) => (
-              <Chip
-                key={g}
-                selected={genre === g}
-                onClick={() => {
-                  tapFeedback()
-                  setGenre(genre === g ? '' : g)
-                }}
-              >
-                {g}
-              </Chip>
-            ))}
-          </div>
-        </Field>
+        {hasGenre(kind) ? (
+          <Field label="ジャンル" hint="あとで絞り込めます">
+            <input
+              className={inputClassCompact}
+              value={genre}
+              onChange={(e) => setGenre(e.target.value)}
+              placeholder="例）焼肉"
+            />
+            {/* 候補は設定画面で足せる。ここに無い言葉も直接入れられる */}
+            {genres.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {genres.map((g) => (
+                  <Chip
+                    key={g.id}
+                    selected={genre === g.name}
+                    onClick={() => {
+                      tapFeedback()
+                      setGenre(genre === g.name ? '' : g.name)
+                    }}
+                  >
+                    {g.name}
+                  </Chip>
+                ))}
+              </div>
+            ) : null}
+          </Field>
+        ) : null}
 
         <Field label="リンク" hint="任意">
           <input

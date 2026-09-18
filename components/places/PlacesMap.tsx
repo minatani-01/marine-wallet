@@ -5,6 +5,7 @@ import { Card } from '@/components/ui'
 import { IconTarget } from '@/components/icons'
 import { tapFeedback } from '@/lib/haptics'
 import { isVisited, placeKindLabel } from '@/lib/places'
+import { isClosed, statusLabel } from '@/lib/places-status'
 import type { Place } from '@/types'
 
 /**
@@ -139,17 +140,22 @@ export default function PlacesMap({ places }: { places: Place[] }) {
 
     for (const place of pinned) {
       const visited = isVisited(place)
+      const closed = isClosed(place)
+      // 閉店した店は灰色にして小さくする。消しはしない。
+      // 地図から消すと「あそこは無くなった」ことも分からなくなる
+      const color = closed ? '#6b7c8d' : '#22d3ee'
       const marker = new window.google.maps.Marker({
         map: mapRef.current,
         position: { lat: place.lat as number, lng: place.lng as number },
         title: place.name,
+        zIndex: closed ? 1 : 2,
         icon: {
           path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 7,
+          scale: closed ? 5 : 7,
           // 行った場所は塗りつぶし、行きたい場所は輪郭だけ
-          fillColor: '#22d3ee',
+          fillColor: color,
           fillOpacity: visited ? 0.95 : 0.15,
-          strokeColor: '#22d3ee',
+          strokeColor: color,
           strokeWeight: 2,
         },
       })
@@ -160,6 +166,7 @@ export default function PlacesMap({ places }: { places: Place[] }) {
              <strong>${escapeHtml(place.name)}</strong><br />
              ${escapeHtml(placeKindLabel(place.kind))}${place.area ? ` / ${escapeHtml(place.area)}` : ''}
              ${visited ? '<br />行った' : ''}
+             ${closed ? `<br /><span style="color:#b91c1c">${escapeHtml(statusLabel(place.business_status) ?? '')}</span>` : ''}
            </div>`
         )
         infoRef.current.open({ map: mapRef.current, anchor: marker })

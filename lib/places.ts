@@ -20,15 +20,13 @@ export function placeKindLabel(kind: PlaceKind): string {
 }
 
 /**
- * 登録するときに出すジャンルの候補。
+ * ジャンルを持つ種別かどうか。
  *
- * ここに無い言葉も入れられる（「立ち食いそば」など）。候補は入力を早くする
- * ためのもので、決まった一覧ではない。絞り込みは実際に入っている言葉から
- * 作るので、候補を増やしても画面が散らからない。
+ * 観光地には付けない。「名所」「公園」と分けても、行きたい場所が20件も
+ * 並ぶことがなく、分ける意味が薄い。ジャンルは飲食だけのものとする。
  */
-export const GENRE_SUGGESTIONS: Record<PlaceKind, string[]> = {
-  food: ['焼肉', '寿司', 'ラーメン', '居酒屋', '海鮮', '定食', 'カフェ', 'スイーツ', 'B級グルメ'],
-  sight: ['名所', '温泉・銭湯', '公園', '博物館・美術館', '展望', '買い物', 'イベント'],
+export function hasGenre(kind: PlaceKind): boolean {
+  return kind === 'food'
 }
 
 /**

@@ -180,6 +180,20 @@ export type Place = {
   /** 名前と場所から引いた座標（0041）。引けなければ null で、地図には出ない */
   lat: number | null
   lng: number | null
+  /**
+   * Google が返した営業状態（0045）。OPERATIONAL / CLOSED_TEMPORARILY /
+   * CLOSED_PERMANENTLY のいずれか。空は「まだ確かめていない」
+   */
+  business_status: string
+  /** 最後に確かめた日時。null なら一度も確かめていない */
+  status_checked_at: string | null
+}
+
+/** 飲食のジャンルの候補（0044）。設定画面から足せる */
+export type PlaceGenre = {
+  id: string
+  name: string
+  sort_order: number
 }
 
 /** 貯金を共にしている人。同行者を選ぶときに使う（名前だけ） */

@@ -5,6 +5,7 @@ import {
   filterByGenre,
   filterByKind,
   genresOf,
+  hasGenre,
   isVisited,
   mapsUrl,
   placeKindLabel,
@@ -25,6 +26,8 @@ const place = (over: Partial<Place> = {}): Place => ({
   created_by: 'u1',
   lat: null,
   lng: null,
+  business_status: '',
+  status_checked_at: null,
   ...over,
 })
 
@@ -106,4 +109,10 @@ test('ラベル', () => {
   assert.equal(placeKindLabel('food'), '飲食')
   assert.equal(isVisited({ visited_on: '2026-09-01' }), true)
   assert.equal(isVisited({ visited_on: null }), false)
+})
+
+test('ジャンルを持つのは飲食だけ', () => {
+  // 観光地は「名所」「公園」と分けても、並ぶ数が少なく分ける意味が薄い
+  assert.equal(hasGenre('food'), true)
+  assert.equal(hasGenre('sight'), false)
 })

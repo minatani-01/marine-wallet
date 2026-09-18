@@ -35,14 +35,25 @@ export type Spend = {
 }
 
 /**
+ * rpc が呼べれば何でもよい。ログイン中のユーザーがいる画面からは
+ * server クライアント、Cron からは admin クライアントを渡す。
+ */
+type RpcClient = {
+  rpc: (
+    fn: 'spend_api_call',
+    args: { p_api: string; p_daily: number; p_monthly: number }
+  ) => PromiseLike<{ data: unknown; error: unknown }>
+}
+
+/**
  * 1回ぶん使う。上限に達していれば allowed=false を返し、数は増やさない。
  *
  * 数えられなかったとき（DBに届かないなど）は使わせない。
  * 数えずに呼ぶより、地図が出ないほうがましである。
  */
-export async function spendApiCall(api: ApiName): Promise<Spend> {
+export async function spendApiCall(api: ApiName, client?: RpcClient): Promise<Spend> {
   const { daily, monthly } = API_BUDGET[api]
-  const supabase = await createClient()
+  const supabase = client ?? (await createClient())
 
   const { data, error } = await supabase.rpc('spend_api_call', {
     p_api: api,
