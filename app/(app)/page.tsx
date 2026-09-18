@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { Amount, Card, SectionLabel, StatusPill } from '@/components/ui'
 import { IconChevronRight, IconUsers, IconWallet } from '@/components/icons'
 import SavingsTrend from '@/components/home/SavingsTrend'
+import HomePanels from '@/components/home/HomePanels'
 import type { ChartPoint } from '@/components/charts/CumulativeChart'
 import {
   getMonthlySavings,
@@ -10,17 +11,17 @@ import {
   getSessionUser,
   getSavingCircleTotals,
   getUpcomingMilestones,
+  getStadiumVisits,
+  getGamesByIds,
 } from '@/lib/queries'
 import {
   depositedMonthSet,
   depositedTotal,
-  formatWinRate,
   seasonRecord,
   streakDays,
 } from '@/lib/insights'
-import { currentMonth, isMonthClosed, monthLabel, shortDate, today, yen } from '@/lib/format'
-import { MONTHLY_STATUS_LABEL, countdownUnit } from '@/lib/constants'
-import { familyName } from '@/lib/npb/milestones'
+import { currentMonth, isMonthClosed, monthLabel, today, yen } from '@/lib/format'
+import { MONTHLY_STATUS_LABEL } from '@/lib/constants'
 import type { MonthlyStatus } from '@/types'
 
 const STATUS_TONE: Record<MonthlyStatus, 'neutral' | 'marine' | 'warn' | 'done'> = {
@@ -34,13 +35,20 @@ export default async function HomePage() {
   if (!user) redirect('/login')
 
   // ホームは貯金ルールを使わない（年間目標を外したため）。1クエリ減らす
-  const [entries, monthlySavings, circle, upcoming] = await Promise.all([
+  const [entries, monthlySavings, circle, upcoming, visits] = await Promise.all([
     getSavingEntries(user.id),
     getMonthlySavings(user.id),
     getSavingCircleTotals(),
     // まもなく達成する記録。近いものから3件だけ
     getUpcomingMilestones(3),
+    // 現地観戦の記録。スタンプに使う
+    getStadiumVisits(user.id),
   ])
+
+  // スタンプに点数を刻むぶんだけ試合を引く（全試合は要らない）
+  const stampGames = await getGamesByIds(
+    visits.map((v) => v.game_id).filter((id): id is string => Boolean(id))
+  )
 
   const month = currentMonth()
   // 累計貯金額は「ワンバンクへ入金した月」の合計。確定しただけの月は含めない。
@@ -190,68 +198,8 @@ export default async function HomePage() {
         </Link>
       </div>
 
-      {/* 試合数ではなく戦績を出す。登録は試合のあとになるので、
-          「何試合ぶん記録したか」より「今季どうだったか」の方が読む意味がある。
-          どこまでの結果かが分かるよう、最後に記録した試合の日付を添える */}
-      <Card>
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
-            <div className="tnum mt-1.5 text-xl font-semibold text-marine">
-              {formatWinRate(record.rate)}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="tnum text-[13px] text-fg-dim">
-              {record.win}勝{record.lose}敗{record.draw}分
-            </div>
-            {record.lastGameDate ? (
-              <div className="tnum mt-0.5 text-[11px] text-fg-mute">
-                {shortDate(record.lastGameDate)}まで
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </Card>
-
-      {/* まもなく達成する記録。達成すると自動登録で貯金に入るので、
-          ここに出しておくと「次に何が入るか」が先に分かる */}
-      <Card>
-        <div className="text-[10px] tracking-wider text-fg-mute">まもなく達成する記録</div>
-        {upcoming.length === 0 ? (
-          <p className="mt-2 text-[13px] text-fg-mute">
-            近いうちに届きそうな記録はありません。
-          </p>
-        ) : (
-          <div className="mt-1 divide-hairline">
-            {upcoming.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="truncate text-sm">
-                    {item.uniform_number ? `#${item.uniform_number}` : ''}
-                    {familyName(item.holder)}
-                  </div>
-                  <div className="tnum truncate text-[11px] text-fg-mute">
-                    通算{item.record_label} / 現在 {item.current.toLocaleString()}
-                    {item.unit}
-                  </div>
-                </div>
-                {/* 行をまたいで「あと」の位置を揃える。数と単位はどちらも
-                    長さが変わるので、それぞれ幅を決めて数は右寄せ・単位は左寄せ */}
-                <div className="flex shrink-0 items-baseline">
-                  <span className="text-lg font-semibold text-marine">あと</span>
-                  <span className="tnum w-10 text-right text-lg font-semibold text-marine">
-                    {item.remaining.toLocaleString()}
-                  </span>
-                  <span className="ml-1 w-12 text-[11px] text-fg-mute">
-                    {countdownUnit(item.unit)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+      {/* 勝率・観戦・記録。3枚並べるとホームが縦に伸びるので1枠で切り替える */}
+      <HomePanels record={record} upcoming={upcoming} visits={visits} games={stampGames} />
 
       {/* 月末の入金誘導 */}
       {alertMonth ? (

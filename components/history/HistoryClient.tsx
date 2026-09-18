@@ -2,7 +2,8 @@
 
 import { useMemo } from 'react'
 import { Card, EmptyState, IconFrame, SectionLabel } from '@/components/ui'
-import { IconBaseball, IconSpark } from '@/components/icons'
+import Link from 'next/link'
+import { IconBaseball, IconChevronRight, IconSpark } from '@/components/icons'
 import CategoryIcon from '@/components/CategoryIcon'
 import { shortDate, yen } from '@/lib/format'
 import { categoryLabel, opponentLabel, resultLabel } from '@/lib/constants'
@@ -61,6 +62,19 @@ export default function HistoryClient({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* 球場スタンプ。行った球場を数えるところなので、履歴の並びに置く */}
+      <Link
+        href="/stadiums"
+        prefetch={false}
+        className="glass flex min-h-[54px] items-center justify-between gap-3 rounded-2xl px-4 transition-colors hover:border-marine/50"
+      >
+        <span className="flex min-w-0 items-center gap-2.5 text-sm">
+          <IconBaseball size={19} />
+          球場スタンプ
+        </span>
+        <IconChevronRight size={18} />
+      </Link>
+
       <div>
         <SectionLabel>最近の取引</SectionLabel>
         {timeline.length === 0 ? (

@@ -23,6 +23,7 @@ import {
   IconEdit,
   IconRules,
   IconSpark,
+  IconTicket,
   IconTrash,
 } from '@/components/icons'
 import { CopyAmountButton, OpenAppButton } from '@/components/HandoffActions'
@@ -30,6 +31,9 @@ import GameSheet from '@/components/savings/GameSheet'
 import CustomSavingSheet from '@/components/savings/CustomSavingSheet'
 import { createClient } from '@/lib/supabase/client'
 import { BREAKDOWN_GROUP_LABEL, calcSaving, groupBreakdown } from '@/lib/savings'
+import { visitFromGame, visitOfGame } from '@/lib/stadium-stamp'
+import { stadiumOf } from '@/lib/stadiums'
+import { tapFeedback } from '@/lib/haptics'
 import { depositedTotal, notDepositedTotal } from '@/lib/insights'
 import { notifyMonthConfirmed } from '@/lib/notify-client'
 import { currentMonth, monthLabel, monthLabelEn, shortDate, yen } from '@/lib/format'
@@ -45,6 +49,7 @@ import type {
   MonthlySaving,
   MonthlyStatus,
   Game,
+  StadiumVisit,
   SavingEntryRow,
   SavingCustomPreset,
   SavingRules,
@@ -68,6 +73,7 @@ export default function SavingsClient({
   goals,
   isMaster,
   games,
+  visits,
 }: {
   userId: string
   entries: SavingEntryRow[]
@@ -81,6 +87,8 @@ export default function SavingsClient({
   isMaster: boolean
   /** 共通の試合データ。まだ自分が積み立てていないものを拾う */
   games: Game[]
+  /** 現地観戦の記録。球場スタンプ帳（/stadiums）と同じもの */
+  visits: StadiumVisit[]
 }) {
   const router = useRouter()
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null)
@@ -94,6 +102,9 @@ export default function SavingsClient({
   // 記録達成の取り込み
   const [fetchingMilestones, setFetchingMilestones] = useState(false)
   const [milestoneNote, setMilestoneNote] = useState<string | null>(null)
+
+  // 現地観戦を押したときのエラー
+  const [attendError, setAttendError] = useState<string | null>(null)
 
   // 確定が何人に反映されたか。押した直後だけ出す
   const [sharedCount, setSharedCount] = useState<number | null>(null)
@@ -319,6 +330,42 @@ export default function SavingsClient({
     setBusy(false)
     if (error) {
       setMonthError('積立の登録に失敗しました')
+      return
+    }
+    router.refresh()
+  }
+
+  /**
+   * 現地観戦の記録。押すと球場スタンプ帳（/stadiums）にスタンプが付き、
+   * もう一度押すと外れる。金額には一切効かない。貯金は試合の結果だけで
+   * 決まるもので、球場へ行ったかどうかは本人しか知らない別の事実なので、
+   * 試合データではなく自分の訪問記録（0038）に書く。
+   */
+  const toggleAttendance = async (game: Game) => {
+    const place = visitFromGame(game)
+    if (!place) {
+      setAttendError('この試合の球場はスタンプ帳にありません')
+      return
+    }
+
+    tapFeedback()
+    setBusy(true)
+    setAttendError(null)
+
+    const supabase = createClient()
+    const recorded = visitOfGame(game.id, visits)
+    const { error } = recorded
+      ? await supabase.from('stadium_visits').delete().eq('id', recorded.id)
+      : await supabase.from('stadium_visits').insert({
+          user_id: userId,
+          stadium_id: place.stadium_id,
+          visited_on: place.visited_on,
+          game_id: game.id,
+        })
+
+    setBusy(false)
+    if (error) {
+      setAttendError('現地観戦を記録できませんでした')
       return
     }
     router.refresh()
@@ -598,6 +645,10 @@ export default function SavingsClient({
       <div>
         <SectionLabel>Records</SectionLabel>
 
+        {attendError ? (
+          <p className="mb-2 text-[13px] text-danger">{attendError}</p>
+        ) : null}
+
         {monthEntries.length === 0 ? (
           <EmptyState
             title="この月の記録はまだありません"
@@ -621,6 +672,9 @@ export default function SavingsClient({
                     entry.other_note || null,
                   ].filter(Boolean)
                 : [entry.other_note || null].filter(Boolean)
+
+              // 現地観戦を押したかどうか。球場を引ける試合にだけボタンを出す
+              const attended = g ? visitOfGame(g.id, visits) !== null : false
 
               return (
                 <Card key={entry.id} className="!p-3.5">
@@ -660,11 +714,26 @@ export default function SavingsClient({
                       {details.length > 0 ? (
                         <p className="mt-1 truncate text-[11px] text-fg-mute">{details.join(' / ')}</p>
                       ) : null}
+
                     </div>
 
                     <div className="flex shrink-0 flex-col items-end gap-2">
                       <Amount value={entry.amount} size="sm" tone="marine" />
                       <div className="flex gap-1.5">
+                        {/* 現地観戦。押すと球場スタンプ帳にスタンプが付く */}
+                        {g && stadiumOf(g.stadium) ? (
+                          <IconButton
+                            label={attended ? '現地観戦（取り消す）' : '現地観戦'}
+                            aria-pressed={attended}
+                            disabled={busy}
+                            onClick={() => toggleAttendance(g)}
+                            className={
+                              attended ? '!border-marine/60 bg-marine/12 !text-marine' : ''
+                            }
+                          >
+                            <IconTicket size={15} />
+                          </IconButton>
+                        ) : null}
                         <IconButton
                           label="編集"
                           onClick={() => {
