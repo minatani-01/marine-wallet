@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getSessionUser } from '@/lib/queries'
 import { geocode, geocodeConfigured, geocodeQuery } from '@/lib/geocode'
+import { spendApiCall } from '@/lib/api-budget'
 
 /**
  * 場所の座標を引いて保存する。
@@ -39,6 +40,15 @@ export async function POST(request: Request) {
   // 同じ文字列で引いた座標があるなら、もう一度払う理由が無い
   if (place.lat !== null && place.geocoded_query === query) {
     return NextResponse.json({ ok: true, cached: true })
+  }
+
+  // 上限に達していたら呼ばない。座標が無いだけで、保存は済んでいる
+  const spend = await spendApiCall('geocoding')
+  if (!spend.allowed) {
+    return NextResponse.json(
+      { ok: false, reason: 'over_budget', used_today: spend.used_today, daily: spend.daily },
+      { status: 429 }
+    )
   }
 
   const point = await geocode(query)

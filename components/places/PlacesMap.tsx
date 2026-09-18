@@ -8,13 +8,13 @@ import type { Place } from '@/types'
 /**
  * Google マップに、自分たちのリストのピンを並べる。
  *
- * 地図そのものは Maps JavaScript API で描く。読み込みは月10,000回まで
- * 無料で、個人利用なら届かない。鍵はブラウザに出るので、Google Cloud 側で
- * 参照元（marine-wallet.vercel.app）と API を絞っておく。
+ * 地図そのものは Maps JavaScript API で描く。鍵はページに埋め込まず、
+ * 開くときにサーバーへ取りに行く。埋め込むと読み込みの回数を数えられず、
+ * 上限で止められない（lib/api-budget.ts）。鍵はブラウザに出るので、
+ * Google Cloud 側で参照元と API も絞っておく。
  *
- * 鍵が無いときは地図を出さない。エラーは出さず、下のリストとリンクで
- * これまでどおり使える。鍵は各自が自分の Google アカウントで作るもので、
- * リポジトリには置かない。
+ * 鍵が無いとき・その日の上限に達したときは地図を出さない。エラーで
+ * 画面を壊さず、下のリストとリンクでこれまでどおり使える。
  *
  * ピンは座標を持つ場所だけに立つ。座標は保存したときに1回だけ引いており
  * （0041）、引けなかった場所は地図に出ない。
@@ -63,43 +63,64 @@ function loadMaps(key: string): Promise<void> {
   return window.__marineMapsLoader
 }
 
+type Gate = 'loading' | 'ready' | 'off' | 'over' | 'failed'
+
 export default function PlacesMap({ places }: { places: Place[] }) {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? ''
   const boxRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const infoRef = useRef<any>(null)
-  const [ready, setReady] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const [gate, setGate] = useState<Gate>('loading')
+  const ready = gate === 'ready'
 
   const pinned = places.filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number')
 
   useEffect(() => {
-    if (!key) return
     let alive = true
 
-    loadMaps(key)
-      .then(() => {
-        if (!alive || !boxRef.current) return
-        mapRef.current ??= new window.google.maps.Map(boxRef.current, {
-          center: CENTER_JP,
-          zoom: 5,
-          styles: DARK_STYLE,
-          disableDefaultUI: true,
-          zoomControl: true,
-          gestureHandling: 'greedy',
-        })
-        infoRef.current ??= new window.google.maps.InfoWindow()
-        setReady(true)
+    const start = async () => {
+      // 鍵をもらう。ここで1回ぶん数えられる（上限に達していれば断られる）
+      const res = await fetch('/api/maps/key', { method: 'POST' }).catch(() => null)
+      if (!alive) return
+
+      if (!res || !res.ok) {
+        setGate(res?.status === 429 ? 'over' : 'off')
+        return
+      }
+
+      const { key } = (await res.json()) as { key?: string }
+      if (!alive) return
+      if (!key) {
+        setGate('off')
+        return
+      }
+
+      try {
+        await loadMaps(key)
+      } catch {
+        if (alive) setGate('failed')
+        return
+      }
+
+      if (!alive || !boxRef.current) return
+      mapRef.current ??= new window.google.maps.Map(boxRef.current, {
+        center: CENTER_JP,
+        zoom: 5,
+        styles: DARK_STYLE,
+        disableDefaultUI: true,
+        zoomControl: true,
+        gestureHandling: 'greedy',
       })
-      .catch(() => {
-        if (alive) setFailed(true)
-      })
+      infoRef.current ??= new window.google.maps.InfoWindow()
+      setGate('ready')
+    }
+
+    void start()
 
     return () => {
       alive = false
     }
-  }, [key])
+  }, [])
 
   useEffect(() => {
     if (!ready || !mapRef.current) return
@@ -149,7 +170,7 @@ export default function PlacesMap({ places }: { places: Place[] }) {
     }
   }, [ready, pinned])
 
-  if (!key) {
+  if (gate === 'off') {
     return (
       <Card>
         <div className="eyebrow">地図</div>
@@ -163,7 +184,22 @@ export default function PlacesMap({ places }: { places: Place[] }) {
     )
   }
 
-  if (failed) {
+  if (gate === 'over') {
+    return (
+      <Card>
+        <div className="eyebrow">地図</div>
+        <p className="mt-2 text-[13px] leading-relaxed text-fg-dim">
+          今日はここまでにしておきます。
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+          課金が出ないよう、1日に地図を開ける回数に上限を置いています。
+          明朝また出ます。各場所の「地図で開く」は使えます。
+        </p>
+      </Card>
+    )
+  }
+
+  if (gate === 'failed') {
     return (
       <Card>
         <div className="eyebrow">地図</div>
