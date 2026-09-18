@@ -11,6 +11,7 @@ import {
 import { registerYesterdayGame } from '@/lib/npb/register'
 import { snapshotSourcePages } from '@/lib/npb/pages'
 import { registerMilestones } from '@/lib/npb/milestone-register'
+import { refreshStandings, saveLeagueGames } from '@/lib/npb/league'
 import { jstDate } from '@/lib/jst'
 import { opponentLabel } from '@/lib/constants'
 import { sendPushToAll } from '@/lib/push'
@@ -97,6 +98,17 @@ export async function GET(request: Request) {
       if (error) throw new Error(`スナップショットの保存に失敗しました: ${error.message}`)
     }
 
+    // 12球団ぶんの試合と、そこから出す順位。日程ページは1枚で全球団ぶんが
+    // 載っているので、ここで保存しても取りに行くページは増えない。
+    // 失敗しても取り込み全体は止めない（試合の登録のほうが大事）
+    let standings: unknown = null
+    try {
+      await saveLeagueGames(supabase, result.leagueGames)
+      standings = await refreshStandings(supabase, Number(jstDate(now).slice(0, 4)))
+    } catch (cause) {
+      standings = { error: cause instanceof Error ? cause.message : String(cause) }
+    }
+
     // 前日の1試合だけを貯金へ入れる。ここで初めて金額が動く
     const yesterday = jstYesterday(now)
     const registered = await registerYesterdayGame(supabase, yesterday)
@@ -145,6 +157,7 @@ export async function GET(request: Request) {
       pitchingAsOf: result.pitchingAsOf,
       warnings: result.warnings,
       registered,
+      standings,
       sourcePages,
       milestones,
       notified,

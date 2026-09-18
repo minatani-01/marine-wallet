@@ -14,6 +14,7 @@ import {
   getStadiumVisits,
   getGamesByIds,
   getCircleMembers,
+  getStandings,
 } from '@/lib/queries'
 import {
   depositedMonthSet,
@@ -36,17 +37,21 @@ export default async function HomePage() {
   if (!user) redirect('/login')
 
   // ホームは貯金ルールを使わない（年間目標を外したため）。1クエリ減らす
-  const [entries, monthlySavings, circle, upcoming, visits, members] = await Promise.all([
-    getSavingEntries(user.id),
-    getMonthlySavings(user.id),
-    getSavingCircleTotals(),
-    // まもなく達成する記録。近いものから3件だけ
-    getUpcomingMilestones(3),
-    // 現地観戦の記録。スタンプに使う
-    getStadiumVisits(user.id),
-    // 同行者の名前
-    getCircleMembers(),
-  ])
+  const thisYear = Number(today().slice(0, 4))
+  const [entries, monthlySavings, circle, upcoming, visits, members, standings] =
+    await Promise.all([
+      getSavingEntries(user.id),
+      getMonthlySavings(user.id),
+      getSavingCircleTotals(),
+      // まもなく達成する記録。近いものから3件だけ
+      getUpcomingMilestones(3),
+      // 現地観戦の記録。スタンプに使う
+      getStadiumVisits(user.id),
+      // 同行者の名前
+      getCircleMembers(),
+      // パ・リーグの順位。毎朝の取り込みで計算済みのものを読む
+      getStandings(thisYear, 'p'),
+    ])
 
   // スタンプに点数を刻むぶんだけ試合を引く（全試合は要らない）
   const stampGames = await getGamesByIds(
@@ -68,7 +73,6 @@ export default async function HomePage() {
   // 貯金推移。入金済みの月だけを積む（累計貯金額と同じ定義）。
   // 当年の月別と、全期間の年別の2本を作り、画面側で切り替える
   const deposited = depositedMonthSet(monthlySavings)
-  const thisYear = Number(today().slice(0, 4))
 
   const byMonth = new Map<string, number>()
   const byYear = new Map<string, number>()
@@ -204,6 +208,7 @@ export default async function HomePage() {
       {/* 勝率・観戦・記録。3枚並べるとホームが縦に伸びるので1枠で切り替える */}
       <HomePanels
         record={record}
+        standings={standings}
         upcoming={upcoming}
         visits={visits}
         games={stampGames}
