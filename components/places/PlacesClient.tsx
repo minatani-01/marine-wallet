@@ -42,7 +42,7 @@ import {
   isClosed,
   statusLabel,
 } from '@/lib/places-status'
-import { shortDate, today } from '@/lib/format'
+import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceGenre, PlaceKind } from '@/types'
 
@@ -117,9 +117,6 @@ function PlaceCard({
               {place.genre ? ` / ${place.genre}` : ''}
             </span>
             {place.area ? <span className="truncate">{place.area}</span> : null}
-            {visited ? (
-              <span className="tnum shrink-0 text-marine">{shortDate(place.visited_on!)}</span>
-            ) : null}
           </div>
           <div className="mt-1 flex items-center gap-2">
             <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
