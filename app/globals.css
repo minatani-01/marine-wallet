@@ -99,6 +99,19 @@ button {
   background: rgba(34, 211, 238, 0.28);
 }
 
+/*
+ * 横に送る帯。スタンプのように「右へ行くほど過去」を並べるときに使う。
+ * 指で送る前提なのでバーは出さない。端でスナップさせ、途中で止まらないようにする。
+ */
+.scroll-x {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
 /* スクロールバー（デスクトップ） */
 ::-webkit-scrollbar {
   width: 10px;

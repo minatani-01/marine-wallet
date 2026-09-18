@@ -574,3 +574,13 @@ export async function getSharedGoals(): Promise<SharedGoalView[]> {
     }
   })
 }
+
+/** 指定した試合だけを引く。スタンプに点数を刻むときに使う */
+export async function getGamesByIds(ids: string[]): Promise<Game[]> {
+  if (ids.length === 0) return []
+  const supabase = await createClient()
+  const data = await read<Game[]>('games', () =>
+    supabase.from('games').select('*').in('id', ids)
+  )
+  return data ?? []
+}
