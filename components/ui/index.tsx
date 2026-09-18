@@ -121,7 +121,7 @@ export function IconButton({
     <button
       aria-label={label}
       title={label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine ${className}`}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine disabled:pointer-events-none disabled:opacity-30 ${className}`}
       {...props}
     >
       {children}

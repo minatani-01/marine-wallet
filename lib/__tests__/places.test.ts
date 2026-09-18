@@ -116,3 +116,24 @@ test('ジャンルを持つのは飲食だけ', () => {
   assert.equal(hasGenre('food'), true)
   assert.equal(hasGenre('sight'), false)
 })
+
+test('ジャンルの並びは設定した順に従う', () => {
+  const rows = [
+    place({ genre: 'カフェ' }),
+    place({ genre: '焼肉' }),
+    place({ genre: '立ち食いそば' }),
+    place({ genre: '寿司' }),
+  ]
+  // 候補に無い「立ち食いそば」は後ろへ回す
+  assert.deepEqual(genresOf(rows, ['焼肉', '寿司', 'カフェ']), [
+    '焼肉',
+    '寿司',
+    'カフェ',
+    '立ち食いそば',
+  ])
+  // 並びを渡さないときは五十音
+  assert.deepEqual(genresOf([place({ genre: '寿司' }), place({ genre: 'カフェ' })]), [
+    'カフェ',
+    '寿司',
+  ])
+})

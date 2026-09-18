@@ -79,13 +79,23 @@ export function filterByGenre(places: Place[], genre: string | null): Place[] {
  *
  * 候補の一覧ではなく、入っている言葉から作る。登録していないジャンルの
  * ボタンを押しても0件になるだけで、押す意味が無い。
+ *
+ * 並びは設定画面で決めた順（order）に合わせる。よく使うものを上に置いた
+ * のに、ここだけ五十音で並ぶと置いた意味が無い。候補に無い言葉（登録画面で
+ * 直接入れたもの）は後ろにまとめ、そのなかでは五十音で並べる。
  */
-export function genresOf(places: Place[]): string[] {
+export function genresOf(places: Place[], order: string[] = []): string[] {
   const seen = new Set<string>()
   for (const place of places) {
     if (place.genre) seen.add(place.genre)
   }
-  return [...seen].sort((a, b) => a.localeCompare(b, 'ja'))
+
+  const rank = new Map(order.map((name, index) => [name, index]))
+  return [...seen].sort((a, b) => {
+    const ra = rank.get(a) ?? Number.MAX_SAFE_INTEGER
+    const rb = rank.get(b) ?? Number.MAX_SAFE_INTEGER
+    return ra === rb ? a.localeCompare(b, 'ja') : ra - rb
+  })
 }
 
 /**

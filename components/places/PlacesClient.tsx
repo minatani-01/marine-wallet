@@ -225,8 +225,11 @@ export default function PlacesClient({
     [lists, tab, kind]
   )
 
-  /** いま出ている場所に実際に入っているジャンルだけを出す */
-  const genres = useMemo(() => genresOf(byKind), [byKind])
+  /** いま出ている場所に実際に入っているジャンルだけを、設定した順に出す */
+  const genres = useMemo(
+    () => genresOf(byKind, genreOptions.map((g) => g.name)),
+    [byKind, genreOptions]
+  )
 
   /** 閉店・休業の数。0 なら「閉店」の絞り込みも出さない */
   const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
