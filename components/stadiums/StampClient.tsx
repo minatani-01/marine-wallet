@@ -1,9 +1,9 @@
 import { Card, ProgressBar, SectionLabel } from '@/components/ui'
 import StadiumArt from '@/components/stadiums/StadiumArt'
-import { buildStampCard } from '@/lib/stadium-stamp'
+import { buildStampCard, companionLabel } from '@/lib/stadium-stamp'
 import type { StadiumStamp } from '@/lib/stadium-stamp'
 import { opponentLabel } from '@/lib/constants'
-import type { Game, StadiumVisit } from '@/types'
+import type { CircleMember, Game, StadiumVisit } from '@/types'
 
 /**
  * 球場スタンプ帳（パスポート）。
@@ -22,7 +22,15 @@ function stampDate(iso: string): string {
   return iso.replaceAll('-', '.')
 }
 
-function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
+function Ticket({
+  stamp,
+  total,
+  members,
+}: {
+  stamp: StadiumStamp
+  total: number
+  members: CircleMember[]
+}) {
   const { stadium, no, visited, log } = stamp
   const head = log[0] ?? null
 
@@ -103,6 +111,11 @@ function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
             ) : (
               <div className="mt-1.5 h-px w-full bg-white/12" />
             )}
+            {visited && head ? (
+              <div className="truncate text-[9px] text-fg-mute">
+                {companionLabel(head.companions, members) ?? '一人で'}
+              </div>
+            ) : null}
             {stamp.visits > 1 ? (
               <div className="tnum mt-0.5 text-[9px] text-fg-mute">ほか {stamp.visits - 1} 回</div>
             ) : null}
@@ -113,11 +126,19 @@ function Ticket({ stamp, total }: { stamp: StadiumStamp; total: number }) {
   )
 }
 
-function TicketGrid({ stamps, total }: { stamps: StadiumStamp[]; total: number }) {
+function TicketGrid({
+  stamps,
+  total,
+  members,
+}: {
+  stamps: StadiumStamp[]
+  total: number
+  members: CircleMember[]
+}) {
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
       {stamps.map((stamp) => (
-        <Ticket key={stamp.stadium.id} stamp={stamp} total={total} />
+        <Ticket key={stamp.stadium.id} stamp={stamp} total={total} members={members} />
       ))}
     </div>
   )
@@ -126,10 +147,13 @@ function TicketGrid({ stamps, total }: { stamps: StadiumStamp[]; total: number }
 export default function StampClient({
   visits,
   games,
+  members,
 }: {
   visits: StadiumVisit[]
   /** 券面に点数を刻むために使う。スタンプの有無には効かない */
   games: Game[]
+  /** 同行者の名前を引くために使う */
+  members: CircleMember[]
 }) {
   const card = buildStampCard(visits, games)
 
@@ -171,13 +195,13 @@ export default function StampClient({
       {/* 本拠地 */}
       <div>
         <SectionLabel>本拠地</SectionLabel>
-        <TicketGrid stamps={card.home} total={12} />
+        <TicketGrid stamps={card.home} total={12} members={members} />
       </div>
 
       {/* 地方球場 */}
       <div>
         <SectionLabel>地方球場</SectionLabel>
-        <TicketGrid stamps={card.regional} total={card.regional.length} />
+        <TicketGrid stamps={card.regional} total={card.regional.length} members={members} />
       </div>
 
       {/* 観戦した試合 */}
@@ -201,6 +225,8 @@ export default function StampClient({
                       {visit.game
                         ? `vs ${opponentLabel(visit.game.opponent)}${visit.score ? ` ${visit.score}` : ''}`
                         : '試合以外の来場'}
+                      {' / '}
+                      {companionLabel(visit.companions, members) ?? '一人で'}
                     </div>
                   </div>
                   <span

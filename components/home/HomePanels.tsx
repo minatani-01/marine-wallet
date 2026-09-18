@@ -4,14 +4,14 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Card, Segmented } from '@/components/ui'
 import StadiumArt from '@/components/stadiums/StadiumArt'
-import { buildStampCard } from '@/lib/stadium-stamp'
+import { buildStampCard, companionLabel } from '@/lib/stadium-stamp'
 import { stadiumById } from '@/lib/stadiums'
 import { countdownUnit, opponentLabel } from '@/lib/constants'
 import { formatWinRate } from '@/lib/insights'
 import { shortDate } from '@/lib/format'
 import { familyName } from '@/lib/npb/milestones'
 import type { SeasonRecord } from '@/lib/insights'
-import type { Game, StadiumVisit, UpcomingMilestoneRow } from '@/types'
+import type { CircleMember, Game, StadiumVisit, UpcomingMilestoneRow } from '@/types'
 
 /**
  * ホームの1枠を3つの見方で切り替える。
@@ -42,12 +42,15 @@ export default function HomePanels({
   upcoming,
   visits,
   games,
+  members,
 }: {
   record: SeasonRecord
   upcoming: UpcomingMilestoneRow[]
   visits: StadiumVisit[]
   /** スタンプに点数を刻むために使う */
   games: Game[]
+  /** 同行者の名前を引くために使う */
+  members: CircleMember[]
 }) {
   const [tab, setTab] = useState<Tab>('rate')
 
@@ -145,6 +148,9 @@ export default function HomePanels({
                           {visit.game
                             ? `vs ${opponentLabel(visit.game.opponent)}${visit.score ? ` ${visit.score}` : ''}`
                             : '来場'}
+                        </div>
+                        <div className="truncate text-[9px] text-fg-mute">
+                          {companionLabel(visit.companions, members) ?? '一人で'}
                         </div>
                       </div>
                     )

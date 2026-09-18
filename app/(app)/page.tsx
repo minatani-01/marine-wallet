@@ -13,6 +13,7 @@ import {
   getUpcomingMilestones,
   getStadiumVisits,
   getGamesByIds,
+  getCircleMembers,
 } from '@/lib/queries'
 import {
   depositedMonthSet,
@@ -35,7 +36,7 @@ export default async function HomePage() {
   if (!user) redirect('/login')
 
   // ホームは貯金ルールを使わない（年間目標を外したため）。1クエリ減らす
-  const [entries, monthlySavings, circle, upcoming, visits] = await Promise.all([
+  const [entries, monthlySavings, circle, upcoming, visits, members] = await Promise.all([
     getSavingEntries(user.id),
     getMonthlySavings(user.id),
     getSavingCircleTotals(),
@@ -43,6 +44,8 @@ export default async function HomePage() {
     getUpcomingMilestones(3),
     // 現地観戦の記録。スタンプに使う
     getStadiumVisits(user.id),
+    // 同行者の名前
+    getCircleMembers(),
   ])
 
   // スタンプに点数を刻むぶんだけ試合を引く（全試合は要らない）
@@ -199,7 +202,13 @@ export default async function HomePage() {
       </div>
 
       {/* 勝率・観戦・記録。3枚並べるとホームが縦に伸びるので1枠で切り替える */}
-      <HomePanels record={record} upcoming={upcoming} visits={visits} games={stampGames} />
+      <HomePanels
+        record={record}
+        upcoming={upcoming}
+        visits={visits}
+        games={stampGames}
+        members={members}
+      />
 
       {/* 月末の入金誘導 */}
       {alertMonth ? (

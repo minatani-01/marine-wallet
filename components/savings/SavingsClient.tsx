@@ -25,13 +25,15 @@ import {
   IconSpark,
   IconTicket,
   IconTrash,
+  IconUsers,
 } from '@/components/icons'
 import { CopyAmountButton, OpenAppButton } from '@/components/HandoffActions'
 import GameSheet from '@/components/savings/GameSheet'
+import CompanionSheet from '@/components/savings/CompanionSheet'
 import CustomSavingSheet from '@/components/savings/CustomSavingSheet'
 import { createClient } from '@/lib/supabase/client'
 import { BREAKDOWN_GROUP_LABEL, calcSaving, groupBreakdown } from '@/lib/savings'
-import { visitFromGame, visitOfGame } from '@/lib/stadium-stamp'
+import { companionLabel, visitFromGame, visitOfGame } from '@/lib/stadium-stamp'
 import { stadiumOf } from '@/lib/stadiums'
 import { tapFeedback } from '@/lib/haptics'
 import { depositedTotal, notDepositedTotal } from '@/lib/insights'
@@ -46,6 +48,7 @@ import {
   resultLabel,
 } from '@/lib/constants'
 import type {
+  CircleMember,
   MonthlySaving,
   MonthlyStatus,
   Game,
@@ -74,6 +77,7 @@ export default function SavingsClient({
   isMaster,
   games,
   visits,
+  members,
 }: {
   userId: string
   entries: SavingEntryRow[]
@@ -89,6 +93,8 @@ export default function SavingsClient({
   games: Game[]
   /** 現地観戦の記録。球場スタンプ帳（/stadiums）と同じもの */
   visits: StadiumVisit[]
+  /** 貯金を共にしている人。一緒に行った人を選ぶのに使う */
+  members: CircleMember[]
 }) {
   const router = useRouter()
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null)
@@ -105,6 +111,9 @@ export default function SavingsClient({
 
   // 現地観戦を押したときのエラー
   const [attendError, setAttendError] = useState<string | null>(null)
+
+  // 一緒に行った人を選ぶシート。開いている来場記録と、その試合
+  const [companionOf, setCompanionOf] = useState<{ visit: StadiumVisit; game: Game } | null>(null)
 
   // 確定が何人に反映されたか。押した直後だけ出す
   const [sharedCount, setSharedCount] = useState<number | null>(null)
@@ -674,7 +683,8 @@ export default function SavingsClient({
                 : [entry.other_note || null].filter(Boolean)
 
               // 現地観戦を押したかどうか。球場を引ける試合にだけボタンを出す
-              const attended = g ? visitOfGame(g.id, visits) !== null : false
+              const visit = g ? visitOfGame(g.id, visits) : null
+              const attended = visit !== null
 
               return (
                 <Card key={entry.id} className="!p-3.5">
@@ -753,6 +763,23 @@ export default function SavingsClient({
                       </div>
                     </div>
                   </div>
+
+                  {/* 現地観戦の一行。押すと一緒に行った人を選べる。
+                      アイコンを4つ並べると対戦相手の名前が切れるので、
+                      幅の要る同行者はここに置く */}
+                  {attended && visit ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setCompanionOf({ visit, game: g! })}
+                      className="mt-2 flex w-full items-center gap-1.5 text-left text-[11px] text-marine transition-colors hover:text-marine/80 disabled:opacity-40"
+                    >
+                      <IconUsers size={13} />
+                      <span className="truncate">
+                        現地観戦 / {companionLabel(visit.companions, members) ?? '一人で'}
+                      </span>
+                    </button>
+                  ) : null}
                 </Card>
               )
             })}
@@ -834,6 +861,15 @@ export default function SavingsClient({
       ) : null}
       {sheetMode === 'custom' ? (
         <CustomSavingSheet entry={editing} presets={presets} userId={userId} onClose={closeSheet} />
+      ) : null}
+      {companionOf ? (
+        <CompanionSheet
+          visit={companionOf.visit}
+          game={companionOf.game}
+          members={members}
+          userId={userId}
+          onClose={() => setCompanionOf(null)}
+        />
       ) : null}
     </div>
   )

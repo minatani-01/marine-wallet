@@ -25,6 +25,7 @@ import type {
   SplitMemberView,
   SplitRecord,
   StadiumVisit,
+  CircleMember,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -299,7 +300,7 @@ export async function getStadiumVisits(userId: string): Promise<StadiumVisit[]> 
   const data = await read<StadiumVisit[]>('stadium_visits', () =>
     supabase
       .from('stadium_visits')
-      .select('id, user_id, stadium_id, visited_on, game_id, note')
+      .select('id, user_id, stadium_id, visited_on, game_id, note, companions, created_by')
       .eq('user_id', userId)
       .order('visited_on', { ascending: true })
   )
@@ -573,6 +574,18 @@ export async function getSharedGoals(): Promise<SharedGoalView[]> {
       pending_total: progress.reduce((sum, row) => sum + row.pending, 0),
     }
   })
+}
+
+/**
+ * 貯金を共にしている人の id と名前。同行者を選ぶのに使う。
+ * 金額も連絡先も返さない（saving_circle_members）。
+ */
+export async function getCircleMembers(): Promise<CircleMember[]> {
+  const supabase = await createClient()
+  const rows = await read<CircleMember[]>('saving_circle_members', () =>
+    supabase.rpc('saving_circle_members')
+  )
+  return rows ?? []
 }
 
 /** 指定した試合だけを引く。スタンプに点数を刻むときに使う */

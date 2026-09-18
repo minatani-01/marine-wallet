@@ -1,5 +1,5 @@
 import { HOME_STADIUMS, REGIONAL_STADIUMS, stadiumOf, type Stadium } from '@/lib/stadiums'
-import type { Game, StadiumVisit } from '@/types'
+import type { CircleMember, Game, StadiumVisit } from '@/types'
 
 /**
  * 球場スタンプの集計。
@@ -25,6 +25,8 @@ export type StampVisit = {
   game: Game | null
   /** 券面に刻む点数（'5-1'）。点数の無い試合は null */
   score: string | null
+  /** 一緒に行った人。空なら一人で行った */
+  companions: string[]
 }
 
 export type StadiumStamp = {
@@ -64,7 +66,14 @@ function stampFor(stadium: Stadium, no: number, visits: StadiumVisit[], byGame: 
     .sort((a, b) => a.visited_on.localeCompare(b.visited_on))
     .map((v) => {
       const game = (v.game_id ? byGame.get(v.game_id) : null) ?? null
-      return { visitId: v.id, date: v.visited_on, gameId: v.game_id, game, score: scoreOf(game) }
+      return {
+        visitId: v.id,
+        date: v.visited_on,
+        gameId: v.game_id,
+        game,
+        score: scoreOf(game),
+        companions: v.companions ?? [],
+      }
     })
 
   return {
@@ -95,6 +104,21 @@ export function buildStampCard(visits: StadiumVisit[], games: Game[] = []): Stam
     homeVisited: home.filter((s) => s.visited).length,
     regionalVisited: regional.filter((s) => s.visited).length,
   }
+}
+
+/**
+ * 同行者の見出し。'一緒に 良将' のように出す。
+ *
+ * 名前を引けない id（消えたアカウント）は落とす。id をそのまま出すと
+ * 券面に意味の無い文字列が並ぶ。
+ */
+export function companionLabel(ids: string[], members: CircleMember[]): string | null {
+  const names = ids
+    .map((id) => members.find((m) => m.id === id)?.member_name)
+    .filter((name): name is string => Boolean(name))
+
+  if (names.length === 0) return null
+  return `一緒に ${names.join('・')}`
 }
 
 /** その試合の来場記録。押していなければ null */
