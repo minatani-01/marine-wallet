@@ -14,55 +14,111 @@ import type { StadiumShape } from '@/lib/stadiums'
  * 知らない球場（地方球場や新設）は共通の型で描く。
  */
 
-/** スタンドの外壁。すり鉢の厚みを出す */
+/**
+ * 繰り返す線はここにまとめる。角度から座標を出して並べたもので、
+ * 手で書くと1本ずれても気付けない。
+ */
+/** 放射状の通路（内野の縁からスタンドの外縁へ） */
+const AISLES =
+  'M123.2 56.5L142.8 56.3M116.6 61.2L133.2 64.2M104.4 64.8L115.6 70.3M88.6 66.8L92.5 73.6M71.4 66.8L67.5 73.6M55.6 64.8L44.4 70.3M43.4 61.2L26.8 64.2M36.8 56.5L17.2 56.3M36.8 51.5L17.2 47.7M43.4 46.8L26.8 39.8M55.6 43.2L44.4 33.7M71.4 41.2L67.5 30.4M88.6 41.2L92.5 30.4M104.4 43.2L115.6 33.7M116.6 46.8L133.2 39.8M123.2 51.5L142.8 47.7'
+
+/** 外壁の柱 */
+const PILLARS =
+  'M143.4 55.1v11M138.3 61.1v11M128.4 66.4v11M114.7 70.5v11M98.1 73.1v11M80 74v11M61.9 73.1v11M45.3 70.5v11M31.6 66.4v11M21.7 61.1v11M16.6 55.1v11'
+
+/** 入場ゲート */
+const GATES =
+  'M126 77.1v-4a3 4 0 0 1 6 0v4M98.9 83.7v-4a3 4 0 0 1 6 0v4M55.1 83.7v-4a3 4 0 0 1 6 0v4M28 77.1v-4a3 4 0 0 1 6 0v4'
+
+/** 屋根のリブ（一周ぶん） */
+const RIBS_FULL =
+  'M124.4 49.6L143.8 50M112.5 55.9L126.7 60.3M91.9 59.5L97.1 66.2M68.1 59.5L62.9 66.2M47.5 55.9L33.3 60.3M35.6 49.6L16.2 50M35.6 42.4L16.2 38M47.5 36.1L33.3 27.7M68.1 32.5L62.9 21.8M91.9 32.5L97.1 21.8M112.5 36.1L126.7 27.7M124.4 42.4L143.8 38'
+
+/** 屋根のリブ（奥側だけ） */
+const RIBS_BACK =
+  'M34 46L14 44M40.2 39L22.8 32.5M57 33.9L47 24.1M80 32L80 21M103 33.9L113 24.1M119.8 39L137.2 32.5M126 46L146 44'
+
+/** ドームの経線 */
+const DOME_MERIDIANS =
+  'M80 14Q123.3 31.8 140.1 59.5M80 14Q106.4 37 116.7 70M80 14Q53.6 37 43.3 70M80 14Q36.7 31.8 19.9 59.5'
+
+/** スタンドの外壁。すり鉢の厚みと、柱・ゲートを出す */
 function Wall() {
   return (
     <>
       <path d="M16 52v11a64 22 0 0 0 128 0V52" fill="currentColor" fillOpacity="0.12" />
       <path d="M16 63a64 22 0 0 0 128 0" />
       <path d="M16 52v11M144 52v11" />
-      <g strokeWidth="0.9" opacity="0.55">
-        <path d="M56 72.4v11M80 74v11M104 72.4v11M32 66.5v11M128 66.5v11" />
+      <path d="M16 57.5a64 22 0 0 0 128 0" strokeWidth="0.6" opacity="0.35" />
+      <g strokeWidth="0.6" opacity="0.45">
+        <path d={PILLARS} />
+      </g>
+      <g strokeWidth="0.7" opacity="0.6">
+        <path d={GATES} />
       </g>
     </>
   )
 }
 
-/** 座席帯と通路 */
+/** 座席。上段・コンコース・下段の3層と、段と通路 */
 function Stands() {
   return (
     <>
       <path
         fillRule="evenodd"
         fill="currentColor"
+        fillOpacity="0.17"
+        d="M144 52a64 22 0 1 1-128 0 64 22 0 1 1 128 0ZM135 52.7a55 18 0 1 0-110 0 55 18 0 1 0 110 0Z"
+      />
+      <path
+        fillRule="evenodd"
+        fill="currentColor"
+        fillOpacity="0.06"
+        d="M135 52.7a55 18 0 1 1-110 0 55 18 0 1 1 110 0ZM130 53.2a50 16 0 1 0-100 0 50 16 0 1 0 100 0Z"
+      />
+      <path
+        fillRule="evenodd"
+        fill="currentColor"
         fillOpacity="0.15"
-        d="M144 52a64 22 0 1 1-128 0 64 22 0 1 1 128 0ZM124 54a44 13 0 1 0-88 0 44 13 0 1 0 88 0Z"
+        d="M130 53.2a50 16 0 1 1-100 0 50 16 0 1 1 100 0ZM124 54a44 13 0 1 0-88 0 44 13 0 1 0 88 0Z"
       />
       <ellipse cx="80" cy="52" rx="64" ry="22" />
+      <ellipse cx="80" cy="52.7" rx="55" ry="18" strokeWidth="0.9" opacity="0.7" />
+      <ellipse cx="80" cy="53.2" rx="50" ry="16" strokeWidth="0.8" opacity="0.5" />
       <ellipse cx="80" cy="54" rx="44" ry="13" />
-      <g strokeWidth="0.9" opacity="0.6">
-        <path d="M36 54 16 52M124 54l20-2M80 67v7M80 41V30" />
-        <path d="M111 63l14 5M49 63l-14 5M111 45l14-9M49 45l-14-9" />
+      {/* 座席の段 */}
+      <g strokeWidth="0.45" opacity="0.35">
+        <ellipse cx="80" cy="52.2" rx="61" ry="20.8" />
+        <ellipse cx="80" cy="52.4" rx="58" ry="19.4" />
+        <ellipse cx="80" cy="53.5" rx="47" ry="14.5" />
+      </g>
+      <g strokeWidth="0.55" opacity="0.45">
+        <path d={AISLES} />
       </g>
     </>
   )
 }
 
-/** グラウンド。内野の土とファウルラインまで入れる */
+/** グラウンド。芝の刈り跡・ウォーニングトラック・内野の土・塁 */
 function Field() {
   return (
     <>
       <ellipse cx="80" cy="54" rx="44" ry="13" fill="currentColor" fillOpacity="0.1" />
-      <path
-        d="M62 65q18-15 36 0z"
-        fill="currentColor"
-        fillOpacity="0.22"
-        stroke="none"
-      />
-      <g strokeWidth="0.9" opacity="0.85">
-        <path d="M80 65 40 54M80 65l40-11" />
-        <path d="M80 65l15-5-15-5-15 5z" />
+      <g strokeWidth="0.45" opacity="0.25">
+        <ellipse cx="80" cy="54" rx="38" ry="11" />
+        <ellipse cx="80" cy="54" rx="30" ry="8.5" />
       </g>
+      <ellipse cx="80" cy="54" rx="41.5" ry="12" strokeWidth="0.55" opacity="0.45" />
+      <path d="M58 64A24 12 0 0 1 102 64Z" fill="currentColor" fillOpacity="0.22" stroke="none" />
+      <path d="M58 64A24 12 0 0 1 102 64" strokeWidth="0.55" opacity="0.6" />
+      <g strokeWidth="0.75" opacity="0.9">
+        <path d="M80 65.5 93 60.5 80 55.5 67 60.5z" />
+      </g>
+      <g strokeWidth="0.6" opacity="0.6">
+        <path d="M80 65.5 40 54M80 65.5 120 54" />
+      </g>
+      <circle cx="80" cy="60.5" r="1.8" strokeWidth="0.6" opacity="0.8" />
+      <path d="M77 66.4a3.2 1.6 0 0 1 6 0" strokeWidth="0.55" opacity="0.8" />
     </>
   )
 }
@@ -78,6 +134,7 @@ function Bowl() {
 }
 
 /** 照明塔 */
+
 function Tower({ x, y }: { x: number; y: number }) {
   return (
     <g strokeWidth="1.1">
@@ -96,6 +153,9 @@ function Dome({ children }: { children?: ReactNode }) {
       <path d="M16 52C16 27 44 14 80 14s64 13 64 38" fill="currentColor" fillOpacity="0.16" />
       <path d="M16 52C16 27 44 14 80 14s64 13 64 38" />
       <path d="M16 52a64 22 0 0 0 128 0" strokeWidth="0.9" opacity="0.5" />
+      <g strokeWidth="0.45" opacity="0.28">
+        <path d={DOME_MERIDIANS} />
+      </g>
       {children}
     </>
   )
@@ -116,6 +176,9 @@ function Canopy({ full = false }: { full?: boolean }) {
       />
       <ellipse cx="80" cy="44" rx="66" ry="23" />
       <ellipse cx="80" cy="46" rx="46" ry="14" />
+      <g strokeWidth="0.5" opacity="0.4">
+        <path d={RIBS_FULL} />
+      </g>
     </>
   ) : (
     <>
@@ -127,6 +190,9 @@ function Canopy({ full = false }: { full?: boolean }) {
       <path d="M14 44a66 23 0 0 1 132 0" />
       <path d="M34 46a46 14 0 0 1 92 0" />
       <path d="M14 44l20 2M146 44l-20 2" />
+      <g strokeWidth="0.5" opacity="0.4">
+        <path d={RIBS_BACK} />
+      </g>
     </>
   )
 }
@@ -148,19 +214,23 @@ const ART: Record<string, ReactNode> = {
   // エスコンフィールド：切妻の大屋根とガラス面。球場全体が建物の中にある
   escon: (
     <>
-      <Wall />
-      {/* 手前の斜面 */}
-      <path d="M14 48 100 66 121 30 35 12z" fill="currentColor" fillOpacity="0.2" />
-      {/* 奥の斜面 */}
-      <path d="M35 12 121 30 146 40 60 22z" fill="currentColor" fillOpacity="0.1" />
-      {/* 妻面（ガラス） */}
-      <path d="M14 48 60 22 35 12z" fill="currentColor" fillOpacity="0.14" />
-      <path d="M100 66 146 40 121 30z" fill="currentColor" fillOpacity="0.14" />
-      <path d="M14 48 100 66 146 40 60 22z" />
-      <path d="M35 12 121 30" />
-      <path d="M14 48 35 12M100 66 121 30M60 22 35 12M146 40 121 30" />
-      <g strokeWidth="0.8" opacity="0.55">
-        <path d="M21 36 107 54M28 24l86 18M57 57 78 21" />
+      {/* 建物。丸いすり鉢ではなく四角い箱の中に球場がある */}
+      <path d="M14 50 94 68v12L14 62z" fill="currentColor" fillOpacity="0.1" />
+      <path d="M94 68 146 42v12L94 80z" fill="currentColor" fillOpacity="0.16" />
+      <path d="M14 50 94 68 146 42" />
+      <path d="M14 50v12l80 18 52-26V42" />
+      <path d="M94 68v12" strokeWidth="0.8" opacity="0.6" />
+      <g strokeWidth="0.6" opacity="0.45">
+        <path d="M34 54.5v12M54 59v12M74 63.5v12M107 61.5v12M120 55v12M133 48.5v12" />
+      </g>
+      {/* 切妻の大屋根 */}
+      <path d="M14 50 94 68 120 43 40 25z" fill="currentColor" fillOpacity="0.2" />
+      <path d="M40 25 120 43 146 42 66 24z" fill="currentColor" fillOpacity="0.1" />
+      <path d="M14 50 40 25 66 24z" fill="currentColor" fillOpacity="0.14" />
+      <path d="M94 68 120 43 146 42z" fill="currentColor" fillOpacity="0.14" />
+      <path d="M14 50 94 68 120 43 40 25zM40 25 66 24 146 42 120 43" />
+      <g strokeWidth="0.6" opacity="0.5">
+        <path d="M22.7 44.1 102.7 62.1M31.3 34.6 111.3 52.6M40.4 55.9 66.4 30.9M66.8 61.9 92.8 36.9" />
       </g>
     </>
   ),
