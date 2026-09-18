@@ -20,7 +20,6 @@ import {
 import {
   IconBaseball,
   IconChevronRight,
-  IconCheck,
   IconEdit,
   IconRules,
   IconSpark,
@@ -674,6 +673,9 @@ export default function SavingsClient({
                   ].filter(Boolean)
                 : [entry.other_note || null].filter(Boolean)
 
+              // 現地観戦を押したかどうか。球場を引ける試合にだけボタンを出す
+              const attended = g ? visitOfGame(g.id, visits) !== null : false
+
               return (
                 <Card key={entry.id} className="!p-3.5">
                   <div className="flex items-start gap-3">
@@ -713,34 +715,25 @@ export default function SavingsClient({
                         <p className="mt-1 truncate text-[11px] text-fg-mute">{details.join(' / ')}</p>
                       ) : null}
 
-                      {/* 現地観戦。押すと球場スタンプ帳にスタンプが付く */}
-                      {g && stadiumOf(g.stadium) ? (
-                        (() => {
-                          const attended = visitOfGame(g.id, visits) !== null
-                          return (
-                            <button
-                              type="button"
-                              aria-pressed={attended}
-                              disabled={busy}
-                              onClick={() => toggleAttendance(g)}
-                              className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40 ${
-                                attended
-                                  ? 'border-marine/60 bg-marine/12 text-marine'
-                                  : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
-                              }`}
-                            >
-                              <IconTicket size={12} />
-                              現地観戦
-                              {attended ? <IconCheck size={12} /> : null}
-                            </button>
-                          )
-                        })()
-                      ) : null}
                     </div>
 
                     <div className="flex shrink-0 flex-col items-end gap-2">
                       <Amount value={entry.amount} size="sm" tone="marine" />
                       <div className="flex gap-1.5">
+                        {/* 現地観戦。押すと球場スタンプ帳にスタンプが付く */}
+                        {g && stadiumOf(g.stadium) ? (
+                          <IconButton
+                            label={attended ? '現地観戦（取り消す）' : '現地観戦'}
+                            aria-pressed={attended}
+                            disabled={busy}
+                            onClick={() => toggleAttendance(g)}
+                            className={
+                              attended ? '!border-marine/60 bg-marine/12 !text-marine' : ''
+                            }
+                          >
+                            <IconTicket size={15} />
+                          </IconButton>
+                        ) : null}
                         <IconButton
                           label="編集"
                           onClick={() => {
