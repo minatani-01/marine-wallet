@@ -58,10 +58,11 @@ import type { Place, PlaceGenre, PlaceKind } from '@/types'
  * スマートフォンではアプリが開く。
  */
 
-type Tab = 'wish' | 'visited'
+type Tab = 'all' | 'wish' | 'visited'
 type KindTab = 'all' | PlaceKind
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'all', label: 'すべて' },
   { id: 'wish', label: '行きたい' },
   { id: 'visited', label: '行った' },
 ]
@@ -150,9 +151,13 @@ function PlaceCard({
       </div>
 
       <div className="mt-2 flex items-center gap-3">
+        {/* 行った／行きたいの切り替え。言葉は「行った」だけにして、
+            押してあるかどうかは色で出す。もう一度押すと戻る */}
         <button
           type="button"
           disabled={busy}
+          aria-pressed={visited}
+          title={visited ? '行った（押すと行きたいに戻ります）' : '行ったことにする'}
           onClick={() => onToggleVisited(place)}
           className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
             visited
@@ -160,7 +165,7 @@ function PlaceCard({
               : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
           }`}
         >
-          {visited ? '行った' : '行ったことにする'}
+          行った
         </button>
 
         <a
@@ -200,7 +205,7 @@ export default function PlacesClient({
   genreOptions: PlaceGenre[]
 }) {
   const router = useRouter()
-  const [tab, setTab] = useState<Tab>('wish')
+  const [tab, setTab] = useState<Tab>('all')
   const [kind, setKind] = useState<KindTab>('all')
   const [genre, setGenre] = useState<string | null>(null)
   const [words, setWords] = useState('')
@@ -220,10 +225,12 @@ export default function PlacesClient({
   const lists = useMemo(() => splitPlaces(places), [places])
 
   /** 種別で絞ったぶん。ジャンルの選択肢はここから作る */
-  const byKind = useMemo(
-    () => filterByKind(tab === 'wish' ? lists.wish : lists.visited, kind === 'all' ? null : kind),
-    [lists, tab, kind]
-  )
+  const byKind = useMemo(() => {
+    // 「すべて」は行きたいを先に出す。これから行く場所のほうを上に置きたい
+    const rows =
+      tab === 'all' ? [...lists.wish, ...lists.visited] : tab === 'wish' ? lists.wish : lists.visited
+    return filterByKind(rows, kind === 'all' ? null : kind)
+  }, [lists, tab, kind])
 
   /** いま出ている場所に実際に入っているジャンルだけを、設定した順に出す */
   const genres = useMemo(
@@ -464,11 +471,13 @@ export default function PlacesClient({
 
       {shown.length === 0 ? (
         <EmptyState
-          title={tab === 'wish' ? '行きたい場所がまだありません' : '行った場所がまだありません'}
+          title={
+            tab === 'visited' ? '行った場所がまだありません' : '行きたい場所がまだありません'
+          }
           description={
-            tab === 'wish'
-              ? '観光地や店を思い付いたときに足しておくと、遠征のときに迷いません。'
-              : '行きたい場所で「行ったことにする」を押すと、こちらに移ります。'
+            tab === 'visited'
+              ? '行きたい場所で「行った」を押すと、こちらに移ります。'
+              : '観光地や店を思い付いたときに足しておくと、遠征のときに迷いません。'
           }
         />
       ) : (
