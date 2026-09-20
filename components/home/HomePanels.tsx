@@ -11,7 +11,8 @@ import { formatWinRate } from '@/lib/insights'
 import { shortDate } from '@/lib/format'
 import { familyName } from '@/lib/npb/milestones'
 import type { SeasonRecord } from '@/lib/insights'
-import type { CircleMember, Game, StadiumVisit, UpcomingMilestoneRow } from '@/types'
+import { MARINES_TEAM_LABEL as MARINES_TEAM } from '@/lib/npb/fetch'
+import type { CircleMember, Game, StadiumVisit, Standing, UpcomingMilestoneRow } from '@/types'
 
 /**
  * ホームの1枠を3つの見方で切り替える。
@@ -37,14 +38,22 @@ function stampDate(iso: string): string {
   return iso.replaceAll('-', '.')
 }
 
+/** ゲーム差。0.5 刻みなので、整数のときも小数第1位まで出さない */
+function formatGamesBehind(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
 export default function HomePanels({
   record,
+  standings,
   upcoming,
   visits,
   games,
   members,
 }: {
   record: SeasonRecord
+  /** パ・リーグの順位。取り込みがまだなら空 */
+  standings: Standing[]
   upcoming: UpcomingMilestoneRow[]
   visits: StadiumVisit[]
   /** スタンプに点数を刻むために使う */
@@ -53,6 +62,11 @@ export default function HomePanels({
   members: CircleMember[]
 }) {
   const [tab, setTab] = useState<Tab>('rate')
+
+  /** 自分たちの球団。順位表に無ければ出さない */
+  const standing = standings.find((s) => s.team === MARINES_TEAM) ?? null
+  /** 首位のときだけ、2位との差を出す（首位と0.0差では何も言っていない） */
+  const runnerUpBehind = standings.find((s) => s.rank === 2)?.games_behind ?? 0
 
   const card = useMemo(() => buildStampCard(visits, games), [visits, games])
 
@@ -71,23 +85,43 @@ export default function HomePanels({
 
       <Card className="mt-2">
         {tab === 'rate' ? (
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
-              <div className="tnum mt-1.5 text-xl font-semibold text-marine">
-                {formatWinRate(record.rate)}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="tnum text-[13px] text-fg-dim">
-                {record.win}勝{record.lose}敗{record.draw}分
-              </div>
-              {record.lastGameDate ? (
-                <div className="tnum mt-0.5 text-[11px] text-fg-mute">
-                  {shortDate(record.lastGameDate)}まで
+          <div>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <div className="text-[10px] tracking-wider text-fg-mute">今季の勝率</div>
+                <div className="tnum mt-1.5 text-xl font-semibold text-marine">
+                  {formatWinRate(record.rate)}
                 </div>
-              ) : null}
+              </div>
+              <div className="text-right">
+                <div className="tnum text-[13px] text-fg-dim">
+                  {record.win}勝{record.lose}敗{record.draw}分
+                </div>
+                {record.lastGameDate ? (
+                  <div className="tnum mt-0.5 text-[11px] text-fg-mute">
+                    {shortDate(record.lastGameDate)}まで
+                  </div>
+                ) : null}
+              </div>
             </div>
+
+            {/* パ・リーグの順位。取り込みがまだなら出さない（0埋めの順位を
+                出すと、本当に最下位なのかどうかが分からなくなる） */}
+            {standing ? (
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-line-soft pt-2.5">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[11px] text-fg-mute">パ・リーグ</span>
+                  <span className="tnum text-[15px] font-semibold text-marine">
+                    {standing.rank}位
+                  </span>
+                </div>
+                <div className="tnum text-[11px] text-fg-mute">
+                  {standing.rank === 1
+                    ? `2位と${formatGamesBehind(runnerUpBehind)}ゲーム差`
+                    : `首位と${formatGamesBehind(standing.games_behind)}ゲーム差`}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

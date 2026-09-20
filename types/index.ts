@@ -201,6 +201,25 @@ export type PlaceGenre = {
   sort_order: number
 }
 
+/**
+ * リーグ順位（0047）。毎朝の取り込みで計算して入れ替える。
+ * 順位は「いま何位か」を出すためだけに使う。
+ */
+export type Standing = {
+  team: string
+  /** 'p' パ・リーグ / 'c' セ・リーグ */
+  league: string
+  win: number
+  lose: number
+  draw: number
+  rate: number | null
+  rank: number
+  /** 首位とのゲーム差 */
+  games_behind: number
+  /** 集計に入れた最後の試合日 */
+  as_of: string | null
+}
+
 /** 貯金を共にしている人。同行者を選ぶときに使う（名前だけ） */
 export type CircleMember = {
   id: string

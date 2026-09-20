@@ -20,6 +20,7 @@ import {
 import { parseBoxScore } from './boxscore'
 import { gamesOf, losePitcherOf, parseSchedule, winPitcherOf, type ScheduleGame } from './schedule'
 import { parseTeamStats, type StatSnapshot } from './stats'
+import { leagueRows, type LeagueGameRow } from './league'
 
 /** ページ取得を差し替えられるようにしておく（テストで実際の通信をしないため） */
 export type PageFetcher = (url: string) => Promise<string>
@@ -54,6 +55,11 @@ export type SyncResult = {
   /** 取得したページ数 */
   pages: number
   games: NpbGameRow[]
+  /**
+   * 12球団すべての試合（順位の計算に使う）。
+   * 日程ページは1枚で全球団ぶんが載っているので、取得は増えない
+   */
+  leagueGames: LeagueGameRow[]
   snapshots: SnapshotRow[]
   /** スナップショットの基準日。打撃と投手で違えば警告になる */
   battingAsOf: string | null
@@ -185,6 +191,7 @@ export async function runNpbSync(
   return {
     pages,
     games,
+    leagueGames: leagueRows(allGames),
     snapshots: [...toSnapshotRows(batting, 'batting'), ...toSnapshotRows(pitching, 'pitching')],
     battingAsOf: batting.asOf,
     pitchingAsOf: pitching.asOf,

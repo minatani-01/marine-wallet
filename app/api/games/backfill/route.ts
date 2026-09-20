@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getProfile, getSessionUser } from '@/lib/queries'
 import { backfillGames } from '@/lib/npb/backfill'
 import { collectBoxScores, collectMissingMonths, repairGames } from '@/lib/npb/repair'
+import { collectLeagueMonths, refreshStandings } from '@/lib/npb/league'
 import { jstDate } from '@/lib/jst'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -13,11 +14,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * 取り込みに失敗した試合は残ったままになる。ここはそれを拾うための、
  * 人が押して動かす口。
  *
- * 3段構えで動く。
+ * 5段構えで動く。
  *   1. 取得データの無い月の日程・結果を取る（1回につき3か月まで）
  *   2. ボックススコアをまだ取っていない試合を取る（1回につき8試合まで）
  *   3. すでにある試合の、金額に関わらない項目を直す
  *   4. まだ登録していない試合を取り込む
+ *   5. 順位のために、12球団ぶんの日程を取る（1回につき3か月まで）
  *
  * 3 で直すのは 対戦相手 / ホーム・ビジター / 球場 / 得点 だけで、
  * 勝敗もフェーズも本塁打も触らない。この操作で金額は動かない。
@@ -64,7 +66,20 @@ export async function POST() {
     // 4. まだ登録していない試合を取り込む
     const result = await backfillGames(admin)
 
-    return NextResponse.json({ ok: true, ...result, collected, boxes, repaired })
+    // 5. 順位のための12球団ぶんの日程。仕組みを入れる前の月を埋める。
+    //    ここも npb.jp へ出るので、1回に取る月を絞ってある
+    const league = await collectLeagueMonths(admin, season)
+    const standings = await refreshStandings(admin, season)
+
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      collected,
+      boxes,
+      repaired,
+      league,
+      standings,
+    })
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause)
     return NextResponse.json({ error: message }, { status: 500 })

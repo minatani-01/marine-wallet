@@ -25,6 +25,7 @@ import type {
   SplitMemberView,
   SplitRecord,
   StadiumVisit,
+  Standing,
   CircleMember,
   Place,
   PlaceGenre,
@@ -592,6 +593,25 @@ export async function getPlaces(): Promise<Place[]> {
       )
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })
+  )
+  return data ?? []
+}
+
+/**
+ * リーグ順位（0047）。ホームでマリーンズが今何位かを出すために使う。
+ *
+ * 毎朝の取り込みで計算済みのものを読むだけ。ここで試合を集計すると、
+ * シーズン終盤には800行を超える。
+ */
+export async function getStandings(season: number, league: string): Promise<Standing[]> {
+  const supabase = await createClient()
+  const data = await read<Standing[]>('npb_standings', () =>
+    supabase
+      .from('npb_standings')
+      .select('team, league, win, lose, draw, rate, rank, games_behind, as_of')
+      .eq('season', season)
+      .eq('league', league)
+      .order('rank', { ascending: true })
   )
   return data ?? []
 }
