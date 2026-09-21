@@ -4,7 +4,7 @@ import { getProfile, getSessionUser } from '@/lib/queries'
 import { backfillGames } from '@/lib/npb/backfill'
 import { collectBoxScores, collectMissingMonths, repairGames } from '@/lib/npb/repair'
 import { collectLeagueMonths, refreshStandings } from '@/lib/npb/league'
-import { refreshSchedule, remainingMonths } from '@/lib/npb/schedule-refresh'
+import { refreshSchedule, remainingMonths, sweepPastScheduled } from '@/lib/npb/schedule-refresh'
 import { jstDate } from '@/lib/jst'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -80,6 +80,9 @@ export async function POST() {
 
     // 5. 順位のための12球団ぶんの日程。仕組みを入れる前の月を埋める。
     //    ここも npb.jp へ出るので、1回に取る月を絞ってある
+    // 古い月に残った「予定のままの過去の試合」を中止に直す
+    const swept = await sweepPastScheduled(admin, jstDate(now))
+
     const league = await collectLeagueMonths(admin, season)
     const standings = await refreshStandings(admin, season)
 
@@ -87,6 +90,7 @@ export async function POST() {
       ok: true,
       ...result,
       schedule,
+      swept,
       collected,
       boxes,
       repaired,

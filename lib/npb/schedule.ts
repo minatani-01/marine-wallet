@@ -118,7 +118,11 @@ export function parseSchedule(html: string, year: number): ScheduleGame[] {
  *
  * npb.jp が中止と書いてくれれば parseSchedule で拾えるが、書き方は
  * 一定ではなく、何も書かないまま行だけ残ることがある。その日を過ぎても
- * 得点もボックススコアも無いなら、試合は行われていない。
+ * 得点が入っていないなら、試合は行われていない。
+ *
+ * ボックススコアへのリンクは目印にならない。中止になった試合にもリンクは
+ * 残っている（リンク先に中止と出る）。それを理由に除いていたせいで、
+ * 4月・6月・8月の中止が予定のまま残っていた。
  *
  * 判断は日付が変わったあとにだけ行う。当日の試合前・試合中に
  * 「中止」と決めつけないため、today より前の試合だけを見る。
@@ -130,7 +134,6 @@ export function withCancelled(games: ScheduleGame[], today: string): ScheduleGam
     if (game.status !== 'scheduled') return game
     if (game.gameDate >= today) return game
     if (game.homeScore !== null || game.awayScore !== null) return game
-    if (game.boxScorePath) return game
     return { ...game, status: 'cancelled' as const, note: game.note || '中止' }
   })
 }
