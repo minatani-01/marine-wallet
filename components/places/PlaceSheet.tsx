@@ -7,7 +7,7 @@ import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
 import { PLACE_KINDS, hasGenre, placeKindLabel } from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceGenre, PlaceKind } from '@/types'
+import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
 
 /**
  * 行きたい場所の登録と編集。
@@ -22,25 +22,80 @@ import type { Place, PlaceGenre, PlaceKind } from '@/types'
  */
 
 type Hit = { name: string; address: string; lat: number; lng: number }
+
+/** 押した言葉を入れる・外す。同じ言葉は二度入れない */
+function toggle(list: string[], name: string): string[] {
+  return list.includes(name) ? list.filter((item) => item !== name) : [...list, name]
+}
+
+/**
+ * 候補の札。
+ *
+ * 候補に無い言葉も選んだものとして出す。設定画面から消したあとも、
+ * その場所に付いている言葉は残るため（0044）。
+ */
+function TagChips({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: PlaceGenre[]
+  selected: string[]
+  onToggle: (name: string) => void
+}) {
+  const names = [...options.map((o) => o.name)]
+  for (const name of selected) if (!names.includes(name)) names.push(name)
+
+  if (names.length === 0) {
+    return <p className="text-[11px] text-fg-mute">候補がありません。下から足せます。</p>
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {names.map((name) => (
+        <Chip
+          key={name}
+          selected={selected.includes(name)}
+          onClick={() => {
+            tapFeedback()
+            onToggle(name)
+          }}
+        >
+          {name}
+        </Chip>
+      ))}
+    </div>
+  )
+}
 export default function PlaceSheet({
   place,
-  genres,
+  genres: genreOptions,
   userId,
   onClose,
 }: {
   place: Place | null
-  /** 飲食のジャンルの候補。設定画面で足せる */
+  /** ジャンルと食材の候補。設定画面で足せる */
   genres: PlaceGenre[]
   userId: string
   onClose: () => void
 }) {
   const router = useRouter()
+
+  /** 候補をジャンルと食材に分ける */
+  const options: Record<PlaceTagKind, PlaceGenre[]> = {
+    genre: genreOptions.filter((g) => g.kind !== 'ingredient'),
+    ingredient: genreOptions.filter((g) => g.kind === 'ingredient'),
+  }
+
   const [kind, setKind] = useState<PlaceKind>(place?.kind ?? 'food')
   const [name, setName] = useState(place?.name ?? '')
   const [area, setArea] = useState(place?.area ?? '')
   const [url, setUrl] = useState(place?.url ?? '')
   const [note, setNote] = useState(place?.note ?? '')
-  const [genre, setGenre] = useState(place?.genre ?? '')
+  const [genres, setGenres] = useState<string[]>(place?.genres ?? [])
+  const [ingredients, setIngredients] = useState<string[]>(place?.ingredients ?? [])
+  /** 候補に無い言葉を足すための入力。押したときだけ足す */
+  const [adding, setAdding] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -109,7 +164,8 @@ export default function PlaceSheet({
       area: area.trim(),
       url: url.trim(),
       note: note.trim(),
-      genre: hasGenre(kind) ? genre.trim() : '',
+      genres: hasGenre(kind) ? genres : [],
+      ingredients: hasGenre(kind) ? ingredients : [],
       // 検索で選んだなら座標は分かっている。引き直す必要は無い
       ...(picked
         ? {
@@ -218,8 +274,11 @@ export default function PlaceSheet({
                 onClick={() => {
                   tapFeedback()
                   setKind(k)
-                  // 観光地にジャンルは無い。切り替えたら持ち越さない
-                  if (!hasGenre(k)) setGenre('')
+                  // 観光地にジャンル・食材は無い。切り替えたら持ち越さない
+                  if (!hasGenre(k)) {
+                    setGenres([])
+                    setIngredients([])
+                  }
                 }}
               >
                 {placeKindLabel(k)}
@@ -247,31 +306,60 @@ export default function PlaceSheet({
         </Field>
 
         {hasGenre(kind) ? (
-          <Field label="ジャンル" hint="あとで絞り込めます">
-            <input
-              className={inputClassCompact}
-              value={genre}
-              onChange={(e) => setGenre(e.target.value)}
-              placeholder="例）焼肉"
-            />
-            {/* 候補は設定画面で足せる。ここに無い言葉も直接入れられる */}
-            {genres.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {genres.map((g) => (
-                  <Chip
-                    key={g.id}
-                    selected={genre === g.name}
-                    onClick={() => {
-                      tapFeedback()
-                      setGenre(genre === g.name ? '' : g.name)
-                    }}
-                  >
-                    {g.name}
-                  </Chip>
-                ))}
+          <>
+            <Field label="ジャンル" hint="いくつでも選べます">
+              <TagChips
+                options={options.genre}
+                selected={genres}
+                onToggle={(name) => setGenres(toggle(genres, name))}
+              />
+            </Field>
+
+            {/* 食材はジャンルとは別の軸。焼肉の中の牛・豚・鶏を分ける */}
+            <Field label="食材" hint="いくつでも選べます">
+              <TagChips
+                options={options.ingredient}
+                selected={ingredients}
+                onToggle={(name) => setIngredients(toggle(ingredients, name))}
+              />
+            </Field>
+
+            {/* 候補に無い言葉を、その場で足す */}
+            <Field label="候補に無い言葉を足す" hint="押した側に入ります">
+              <div className="flex gap-2">
+                <input
+                  className={inputClassCompact}
+                  value={adding}
+                  onChange={(e) => setAdding(e.target.value)}
+                  placeholder="例）立ち食いそば"
+                />
+                <Button
+                  variant="outline"
+                  className="!min-h-[42px] shrink-0 !px-3"
+                  disabled={adding.trim().length === 0}
+                  onClick={() => {
+                    tapFeedback()
+                    setGenres(toggle(genres, adding.trim()))
+                    setAdding('')
+                  }}
+                >
+                  <span className="text-[13px]">ジャンル</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="!min-h-[42px] shrink-0 !px-3"
+                  disabled={adding.trim().length === 0}
+                  onClick={() => {
+                    tapFeedback()
+                    setIngredients(toggle(ingredients, adding.trim()))
+                    setAdding('')
+                  }}
+                >
+                  <span className="text-[13px]">食材</span>
+                </Button>
               </div>
-            ) : null}
-          </Field>
+            </Field>
+          </>
         ) : null}
 
         <Field label="リンク" hint="任意">

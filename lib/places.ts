@@ -97,10 +97,15 @@ export function filterByKind(places: Place[], kind: PlaceKind | null): Place[] {
   return places.filter((p) => p.kind === kind)
 }
 
-/** ジャンルで絞る。genre が null なら全部 */
-export function filterByGenre(places: Place[], genre: string | null): Place[] {
-  if (!genre) return places
-  return places.filter((p) => p.genre === genre)
+/**
+ * ジャンル・食材で絞る。tag が null なら全部。
+ *
+ * 1つの店が焼肉と居酒屋を兼ねることはある（0049）。どちらで絞っても
+ * 出るようにしたいので、持っている言葉のどれかに当たれば残す。
+ */
+export function filterByTag(places: Place[], tag: string | null): Place[] {
+  if (!tag) return places
+  return places.filter((p) => p.genres.includes(tag) || p.ingredients.includes(tag))
 }
 
 /**
@@ -116,7 +121,7 @@ export function filterByGenre(places: Place[], genre: string | null): Place[] {
 export function genresOf(places: Place[], order: string[] = []): string[] {
   const seen = new Set<string>()
   for (const place of places) {
-    if (place.genre) seen.add(place.genre)
+    for (const genre of place.genres) if (genre) seen.add(genre)
   }
 
   const rank = new Map(order.map((name, index) => [name, index]))
@@ -128,7 +133,24 @@ export function genresOf(places: Place[], order: string[] = []): string[] {
 }
 
 /**
- * 言葉で探す。名前・場所・ジャンル・メモのどれかに含まれていれば残す。
+ * いま出ている場所に実際に入っている食材。ジャンルと同じ考え方で作る。
+ */
+export function ingredientsOf(places: Place[], order: string[] = []): string[] {
+  const seen = new Set<string>()
+  for (const place of places) {
+    for (const item of place.ingredients) if (item) seen.add(item)
+  }
+
+  const rank = new Map(order.map((name, index) => [name, index]))
+  return [...seen].sort((a, b) => {
+    const ra = rank.get(a) ?? Number.MAX_SAFE_INTEGER
+    const rb = rank.get(b) ?? Number.MAX_SAFE_INTEGER
+    return ra === rb ? a.localeCompare(b, 'ja') : ra - rb
+  })
+}
+
+/**
+ * 言葉で探す。名前・場所・ジャンル・食材・メモのどれかに含まれていれば残す。
  *
  * 大文字小文字は区別しない。空白で区切った語は「すべて含む」で扱う。
  * 「幕張 焼肉」で、幕張にある焼肉だけを出せるようにするため。
@@ -138,7 +160,7 @@ export function searchPlaces(places: Place[], text: string): Place[] {
   if (words.length === 0) return places
 
   return places.filter((place) => {
-    const haystack = [place.name, place.area, place.genre, place.note]
+    const haystack = [place.name, place.area, ...place.genres, ...place.ingredients, place.note]
       .join(' ')
       .toLowerCase()
     return words.every((word) => haystack.includes(word))

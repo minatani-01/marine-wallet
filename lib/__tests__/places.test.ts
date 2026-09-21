@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  filterByGenre,
+  filterByTag,
   filterByKind,
   genresOf,
   hasGenre,
@@ -20,7 +20,8 @@ const place = (over: Partial<Place> = {}): Place => ({
   kind: 'food',
   name: '店',
   area: '',
-  genre: '',
+  genres: [],
+  ingredients: [],
   url: '',
   note: '',
   visited_on: null,
@@ -62,18 +63,18 @@ test('種別で絞る', () => {
 
 test('ジャンルで絞る', () => {
   const list = [
-    place({ genre: '焼肉', name: '焼肉屋' }),
-    place({ genre: '寿司', name: '寿司屋' }),
-    place({ genre: '', name: 'ジャンル無し' }),
+    place({ genres: ['焼肉'], name: '焼肉屋' }),
+    place({ genres: ['寿司'], name: '寿司屋' }),
+    place({ genres: [], name: 'ジャンル無し' }),
   ]
 
-  assert.deepEqual(filterByGenre(list, '焼肉').map((p) => p.name), ['焼肉屋'])
-  assert.equal(filterByGenre(list, null).length, 3)
+  assert.deepEqual(filterByTag(list, '焼肉').map((p) => p.name), ['焼肉屋'])
+  assert.equal(filterByTag(list, null).length, 3)
 })
 
 test('絞り込みに出すジャンルは、実際に入っている言葉だけ', () => {
   // 候補の一覧から作ると、0件のボタンが並ぶ
-  const list = [place({ genre: '焼肉' }), place({ genre: '寿司' }), place({ genre: '焼肉' }), place({ genre: '' })]
+  const list = [place({ genres: ['焼肉'] }), place({ genres: ['寿司'] }), place({ genres: ['焼肉'] }), place({ genres: [] })]
 
   assert.deepEqual(genresOf(list), ['寿司', '焼肉'])
   assert.deepEqual(genresOf([]), [])
@@ -81,9 +82,9 @@ test('絞り込みに出すジャンルは、実際に入っている言葉だ�
 
 test('言葉で探す（名前・場所・ジャンル・メモ）', () => {
   const list = [
-    place({ name: '寿司大', area: '幕張', genre: '寿司' }),
-    place({ name: '焼肉たなか', area: '幕張', genre: '焼肉' }),
-    place({ name: 'カフェ', area: '横浜', genre: 'カフェ', note: '焼肉のあとに' }),
+    place({ name: '寿司大', area: '幕張', genres: ['寿司'] }),
+    place({ name: '焼肉たなか', area: '幕張', genres: ['焼肉'] }),
+    place({ name: 'カフェ', area: '横浜', genres: ['カフェ'], note: '焼肉のあとに' }),
   ]
 
   assert.deepEqual(searchPlaces(list, '寿司').map((p) => p.name), ['寿司大'])
@@ -121,10 +122,10 @@ test('ジャンルを持つのは飲食だけ', () => {
 
 test('ジャンルの並びは設定した順に従う', () => {
   const rows = [
-    place({ genre: 'カフェ' }),
-    place({ genre: '焼肉' }),
-    place({ genre: '立ち食いそば' }),
-    place({ genre: '寿司' }),
+    place({ genres: ['カフェ'] }),
+    place({ genres: ['焼肉'] }),
+    place({ genres: ['立ち食いそば'] }),
+    place({ genres: ['寿司'] }),
   ]
   // 候補に無い「立ち食いそば」は後ろへ回す
   assert.deepEqual(genresOf(rows, ['焼肉', '寿司', 'カフェ']), [
@@ -134,7 +135,7 @@ test('ジャンルの並びは設定した順に従う', () => {
     '立ち食いそば',
   ])
   // 並びを渡さないときは五十音
-  assert.deepEqual(genresOf([place({ genre: '寿司' }), place({ genre: 'カフェ' })]), [
+  assert.deepEqual(genresOf([place({ genres: ['寿司'] }), place({ genres: ['カフェ'] })]), [
     'カフェ',
     '寿司',
   ])
@@ -157,4 +158,37 @@ test('リピの札を押したときの書き込み', () => {
     visited_on: null,
     revisit: '',
   })
+})
+
+test('ジャンルでも食材でも絞れる', () => {
+  const rows = [
+    place({ name: '焼肉たなか', genres: ['焼肉'], ingredients: ['牛', '豚'] }),
+    place({ name: '鴨せいろ', genres: ['蕎麦'], ingredients: ['鴨'] }),
+    place({ name: '寿司大', genres: ['寿司'], ingredients: ['魚介'] }),
+  ]
+  assert.deepEqual(filterByTag(rows, '焼肉').map((p) => p.name), ['焼肉たなか'])
+  assert.deepEqual(filterByTag(rows, '鴨').map((p) => p.name), ['鴨せいろ'])
+  assert.deepEqual(filterByTag(rows, '牛').map((p) => p.name), ['焼肉たなか'])
+})
+
+test('ジャンルを複数持てる', () => {
+  const rows = [place({ name: '大衆焼肉', genres: ['焼肉', '居酒屋'] })]
+  // どちらで絞っても出る
+  assert.equal(filterByTag(rows, '焼肉').length, 1)
+  assert.equal(filterByTag(rows, '居酒屋').length, 1)
+  assert.deepEqual(genresOf(rows, ['焼肉', '居酒屋']), ['焼肉', '居酒屋'])
+})
+
+test('食材の一覧も設定した順に出す', async () => {
+  const { ingredientsOf } = await import('../places')
+  const rows = [place({ ingredients: ['鴨', '牛'] }), place({ ingredients: ['豚'] })]
+  assert.deepEqual(ingredientsOf(rows, ['牛', '豚', '鴨']), ['牛', '豚', '鴨'])
+})
+
+test('食材も言葉で探せる', () => {
+  const rows = [
+    place({ name: 'そば処', genres: ['蕎麦'], ingredients: ['鴨'] }),
+    place({ name: '寿司大', genres: ['寿司'], ingredients: ['魚介'] }),
+  ]
+  assert.deepEqual(searchPlaces(rows, '鴨').map((p) => p.name), ['そば処'])
 })

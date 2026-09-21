@@ -5,7 +5,12 @@ import { reorderGenres } from '../place-genres'
 import type { PlaceGenre } from '../../types'
 
 const list = (...names: string[]): PlaceGenre[] =>
-  names.map((name, index) => ({ id: name, name, sort_order: (index + 1) * 10 }))
+  names.map((name, index) => ({
+    id: name,
+    name,
+    sort_order: (index + 1) * 10,
+    kind: 'genre' as const,
+  }))
 
 test('1つ上へ動かす', () => {
   const { rows, changed } = reorderGenres(list('焼肉', '寿司', 'ラーメン'), 'ラーメン', -1)
@@ -33,9 +38,9 @@ test('端では何も起きない', () => {
 test('同じ並び順が並んでいても動く', () => {
   // 既定値のまま足すと 100 が並ぶ。隣と入れ替えるだけだと何も起きない
   const genres: PlaceGenre[] = [
-    { id: 'a', name: 'あ', sort_order: 100 },
-    { id: 'b', name: 'い', sort_order: 100 },
-    { id: 'c', name: 'う', sort_order: 100 },
+    { id: 'a', name: 'あ', sort_order: 100, kind: 'genre' },
+    { id: 'b', name: 'い', sort_order: 100, kind: 'genre' },
+    { id: 'c', name: 'う', sort_order: 100, kind: 'genre' },
   ]
   const { rows, changed } = reorderGenres(genres, 'c', -1)
   assert.deepEqual(rows.map((r) => r.id), ['a', 'c', 'b'])
