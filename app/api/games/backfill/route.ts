@@ -4,7 +4,7 @@ import { getProfile, getSessionUser } from '@/lib/queries'
 import { backfillGames } from '@/lib/npb/backfill'
 import { collectBoxScores, collectMissingMonths, repairGames } from '@/lib/npb/repair'
 import { collectLeagueMonths, refreshStandings } from '@/lib/npb/league'
-import { refreshSchedule } from '@/lib/npb/schedule-refresh'
+import { refreshSchedule, remainingMonths } from '@/lib/npb/schedule-refresh'
 import { jstDate } from '@/lib/jst'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -16,7 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * 人が押して動かす口。
  *
  * 6段構えで動く。
- *   0. 当月と翌月の日程を取り直す（中止はその日に決まるので、翌朝を待たない）
+ *   0. シーズンの残りの日程を取り直す（中止はその日に決まるので、翌朝を待たない）
  *   1. 取得データの無い月の日程・結果を取る（1回につき3か月まで）
  *   2. ボックススコアをまだ取っていない試合を取る（1回につき8試合まで）
  *   3. すでにある試合の、金額に関わらない項目を直す
@@ -57,8 +57,14 @@ export async function POST() {
     const now = new Date()
     const season = Number(jstDate(now).slice(0, 4))
 
-    // 0. 当月と翌月の日程を取り直す。中止や開始時刻の変更はその日に決まる
-    const schedule = await refreshSchedule(admin, now)
+    // 0. シーズンの残りの日程を取り直す。中止や開始時刻の変更はその日に決まり、
+    //    先の月ぶんもここでまとめて入る
+    const schedule = await refreshSchedule(
+      admin,
+      now,
+      undefined,
+      remainingMonths(now.getFullYear(), now.getMonth() + 1)
+    )
 
     // 1. 取得データの無い月を取りに行く。ここで npb.jp へ出る
     const collected = await collectMissingMonths(admin, season)

@@ -62,6 +62,9 @@ import type {
   SharedGoalView,
 } from '@/types'
 
+/** はじめに出すこれからの試合の数。残りは「詳細を見る」で開く */
+const SCHEDULE_STEP = 5
+
 const STATUS_TONE: Record<MonthlyStatus, 'neutral' | 'marine' | 'warn' | 'done'> = {
   calculating: 'neutral',
   ready: 'marine',
@@ -162,8 +165,12 @@ export default function SavingsClient({
    * 中止の日は貯金が入らない。記録だけを並べると、その日は何も無かったのか
    * 入れ忘れたのかが分からない。
    */
-  /** これからの試合。月の選択とは関係なく、常に直近の5件を出す */
-  const next = useMemo(() => upcomingOf(scheduled), [scheduled])
+  /** これからの試合。月の選択とは関係なく、先の予定をすべて持つ */
+  const next = useMemo(() => upcomingOf(scheduled, Number.MAX_SAFE_INTEGER), [scheduled])
+
+  /** 一覧は長くなるので、はじめは直近5件だけ出す */
+  const [allSchedule, setAllSchedule] = useState(false)
+  const shownNext = allSchedule ? next : next.slice(0, SCHEDULE_STEP)
 
   /** 日付ごとの観戦予定。自分のぶんと、相手のぶんを分けて持つ */
   const planOf = useMemo(() => {
@@ -638,22 +645,14 @@ export default function SavingsClient({
 
           <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
             {status === 'calculating' ? (
-              <>
-                <Button
-                  variant="primary"
-                  full
-                  disabled={busy || monthTotal <= 0}
-                  onClick={() => confirmMonth(true)}
-                >
-                  この月の金額を確定する
-                </Button>
-                {isMaster ? (
-                  <p className="text-[11px] leading-relaxed text-fg-mute">
-                    確定すると、貯金に参加している接続済みメンバーの同じ月も確定します。
-                    入金は各自で行うため、入金済みは相手には反映しません。
-                  </p>
-                ) : null}
-              </>
+              <Button
+                variant="primary"
+                full
+                disabled={busy || monthTotal <= 0}
+                onClick={() => confirmMonth(true)}
+              >
+                この月の金額を確定する
+              </Button>
             ) : null}
 
             {status === 'ready' ? (
@@ -723,7 +722,7 @@ export default function SavingsClient({
             </p>
           ) : (
             <div className="divide-hairline mt-1.5">
-              {next.map((game) => {
+              {shownNext.map((game) => {
                 const plan = planOf.get(game.date) ?? { mine: false, others: [] }
 
                 return (
@@ -779,6 +778,16 @@ export default function SavingsClient({
               })}
             </div>
           )}
+
+          {next.length > SCHEDULE_STEP ? (
+            <button
+              type="button"
+              onClick={() => setAllSchedule((on) => !on)}
+              className="mt-3 block w-full text-center text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+            >
+              {allSchedule ? '閉じる' : `詳細を見る（残り ${next.length - SCHEDULE_STEP} 試合）`}
+            </button>
+          ) : null}
         </Card>
       </div>
 

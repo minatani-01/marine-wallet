@@ -70,14 +70,29 @@ export type ScheduleRefreshResult = {
   league: number
 }
 
+/**
+ * シーズンの残りの月。
+ *
+ * 日程は先の月ぶんも出ているので、取れるだけ取っておけば「次にいつ
+ * 行けるか」をまとめて見られる。公式戦は3月から10月、ポストシーズンは
+ * 11月まであるので、そこまでを対象にする。
+ */
+export function remainingMonths(year: number, month: number): { year: number; month: number }[] {
+  const from = Math.max(month, 3)
+  const months: { year: number; month: number }[] = []
+  for (let m = from; m <= 11; m += 1) months.push({ year, month: m })
+  return months
+}
+
 export async function refreshSchedule(
   supabase: Admin,
   now: Date,
-  fetchPage: (url: string) => Promise<string> = fetchNpbPage
+  fetchPage: (url: string) => Promise<string> = fetchNpbPage,
+  targets?: { year: number; month: number }[]
 ): Promise<ScheduleRefreshResult> {
   const year = now.getFullYear()
   const month = now.getMonth() + 1
-  const months = scheduleMonths(year, month)
+  const months = targets ?? scheduleMonths(year, month)
 
   const parsed: ScheduleGame[] = []
   for (const [index, target] of months.entries()) {
@@ -156,5 +171,48 @@ export async function refreshSchedule(
     updated,
     added: fresh.length,
     league,
+  }
+}
+
+/**
+ * まだ1試合も入っていない先の月を埋める。
+ *
+ * 毎朝の取り込みが見るのは当月と翌月だけで、その先は空のままになる。
+ * ここで1回につき1か月だけ取りに行く。毎日少しずつ埋まり、シーズンの
+ * 残りが揃う。相手に負担をかけないよう、1回で取る月は増やさない。
+ */
+export async function fillFutureMonths(
+  supabase: Admin,
+  now: Date,
+  fetchPage: (url: string) => Promise<string> = fetchNpbPage,
+  limit = 1
+): Promise<{ filled: string[]; missing: number }> {
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+
+  // 当月と翌月は毎朝取っているので、その先だけを見る
+  const done = new Set(scheduleMonths(year, month).map((m) => m.month))
+  const targets = remainingMonths(year, month).filter((m) => !done.has(m.month))
+  if (targets.length === 0) return { filled: [], missing: 0 }
+
+  const { data, error } = await supabase
+    .from('npb_games')
+    .select('game_date')
+    .gte('game_date', `${year}-${String(targets[0].month).padStart(2, '0')}-01`)
+    .lte('game_date', `${year}-12-31`)
+  if (error) throw new Error(`取得データを読めませんでした: ${error.message}`)
+
+  const have = new Set(
+    ((data ?? []) as { game_date: string }[]).map((row) => Number(row.game_date.slice(5, 7)))
+  )
+  const missing = targets.filter((m) => !have.has(m.month))
+  if (missing.length === 0) return { filled: [], missing: 0 }
+
+  const picked = missing.slice(0, limit)
+  await refreshSchedule(supabase, now, fetchPage, picked)
+
+  return {
+    filled: picked.map((m) => `${m.year}-${String(m.month).padStart(2, '0')}`),
+    missing: missing.length - picked.length,
   }
 }

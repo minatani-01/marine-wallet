@@ -154,3 +154,19 @@ test('変わったかどうかの判定', () => {
   assert.equal(changed(before, { ...before, status: 'cancelled' }), true)
   assert.equal(changed(before, { ...before, start_time: '17:00' }), true)
 })
+
+test('シーズンの残りの月', async () => {
+  const { remainingMonths } = await import('../schedule-refresh')
+  // 9月なら 9〜11月（ポストシーズンまで）
+  assert.deepEqual(
+    remainingMonths(2026, 9).map((m) => m.month),
+    [9, 10, 11]
+  )
+  // 開幕前は3月から
+  assert.deepEqual(
+    remainingMonths(2026, 1).map((m) => m.month),
+    [3, 4, 5, 6, 7, 8, 9, 10, 11]
+  )
+  // シーズンが終わっていれば何も取りに行かない
+  assert.deepEqual(remainingMonths(2026, 12), [])
+})
