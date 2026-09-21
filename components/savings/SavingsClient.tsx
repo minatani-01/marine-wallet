@@ -561,11 +561,6 @@ export default function SavingsClient({
             ]}
             onChange={(v) => setAddMode(v as SheetMode)}
           />
-          <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">
-            {addMode === 'game'
-              ? '試合結果を登録すると、貯金ルールに沿って積立予定額を自動計算します。'
-              : 'マルチ安打や打点など、試合結果から自動計算できない分をここで積み立てます。フェーズ倍率は適用されません。'}
-          </p>
           <Button variant="primary" full className="mt-3" onClick={openAdd}>
             {addMode === 'game' ? '試合を登録する' : 'カスタム登録を追加する'}
             <IconChevronRight size={16} />
@@ -582,14 +577,6 @@ export default function SavingsClient({
               >
                 {backfilling ? '取り込んでいます' : '未登録の試合をまとめて取り込む'}
               </button>
-              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                毎朝の取り込みは前日ぶんだけです。それ以前の試合が抜けているときに使います。
-                すでにある試合も、ホーム・ビジターや得点を npb.jp
-                に合わせて直します。勝敗・フェーズ・本塁打は触らないので、金額は変わりません。
-                食い違っていれば件数だけ知らせます。
-                古い月は3か月ぶん、ボックススコアは8試合ぶんずつ取りに行くので、
-                残っていれば続けて押してください。
-              </p>
               {backfillNote ? (
                 <p className="mt-2 text-[12px] text-teal">{backfillNote}</p>
               ) : null}
@@ -602,10 +589,6 @@ export default function SavingsClient({
               >
                 {fetchingMilestones ? '取り込んでいます' : '記録達成を取り込む'}
               </button>
-              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                名球会記録・生涯記録・シーズン記録を読み取り、達成していれば貯金に入れます。
-                毎朝の取り込みでも同じことをしています。同じ記録は一度しか入りません。
-              </p>
               {milestoneNote ? (
                 <p className="mt-2 text-[12px] text-teal">{milestoneNote}</p>
               ) : null}
@@ -764,36 +747,33 @@ export default function SavingsClient({
                           {game.note}
                         </span>
                       ) : (
-                        <span className="tnum shrink-0 text-[11px] text-marine">
-                          {game.startTime}
-                        </span>
+                        <>
+                          <span className="tnum shrink-0 text-[11px] text-marine">
+                            {game.startTime}
+                          </span>
+                          {/* 観戦予定。記録一覧の「現地観戦」と同じボタンにする。
+                              中止の試合には出さない（行く先が無い） */}
+                          <IconButton
+                            label={plan.mine ? '観戦予定（取り消す）' : '観戦予定'}
+                            aria-pressed={plan.mine}
+                            disabled={busy}
+                            onClick={() => togglePlan(game.date, plan.mine)}
+                            className={
+                              plan.mine ? '!border-marine/60 bg-marine/12 !text-marine' : ''
+                            }
+                          >
+                            <IconTicket size={15} />
+                          </IconButton>
+                        </>
                       )}
                     </div>
 
-                    {/* 観戦予定。中止の試合には出さない（行く先が無い） */}
-                    {game.cancelled ? null : (
-                      <div className="mt-1.5 flex items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          aria-pressed={plan.mine}
-                          onClick={() => togglePlan(game.date, plan.mine)}
-                          className={`inline-flex min-h-[28px] items-center gap-1.5 rounded-full border px-2.5 text-[11px] transition-colors disabled:opacity-40 ${
-                            plan.mine
-                              ? 'border-marine/60 bg-marine/12 text-marine'
-                              : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
-                          }`}
-                        >
-                          <IconTicket size={13} />
-                          観戦予定
-                        </button>
-                        {plan.others.length > 0 ? (
-                          <span className="truncate text-[11px] text-fg-mute">
-                            {plan.others.join('・')}も予定
-                          </span>
-                        ) : null}
+                    {/* 相手も行くなら名前を出す。待ち合わせの相談になる */}
+                    {!game.cancelled && plan.others.length > 0 ? (
+                      <div className="mt-1 truncate text-[11px] text-marine">
+                        {plan.others.join('・')}も予定
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )
               })}
@@ -977,10 +957,6 @@ export default function SavingsClient({
               <div className="min-w-0">
                 <p className="text-[13px]">
                   この月に {monthUnregistered.length} 試合ぶん、まだ積み立てていません。
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                  試合データは全員共通です。共通の貯金ルールで計算して積み立てます。
-                  接続済みのアカウントには自動で立つので、ここに出るのは取りこぼしだけです。
                 </p>
               </div>
               <Amount value={unregisteredTotal} size="sm" tone="marine" />
