@@ -202,6 +202,16 @@ export type PlaceGenre = {
 }
 
 /**
+ * これからの試合の観戦予定（0048）。日付で試合を指す。
+ * 自分のぶんと、接続している相手のぶんが入る。
+ */
+export type GamePlan = {
+  id: string
+  user_id: string
+  game_date: string
+}
+
+/**
  * これからの試合（npb_games 由来）。
  * 日程ページに載っている内容をそのまま持つ。中止もここに入る。
  */

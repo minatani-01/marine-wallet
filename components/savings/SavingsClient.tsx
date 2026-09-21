@@ -50,6 +50,7 @@ import {
 } from '@/lib/constants'
 import type {
   CircleMember,
+  GamePlan,
   MonthlySaving,
   ScheduledGame,
   MonthlyStatus,
@@ -82,6 +83,7 @@ export default function SavingsClient({
   members,
   cancelled,
   scheduled,
+  plans,
 }: {
   userId: string
   entries: SavingEntryRow[]
@@ -103,6 +105,8 @@ export default function SavingsClient({
   cancelled: ScheduledGame[]
   /** これからの試合。中止もそのまま入る */
   scheduled: ScheduledGame[]
+  /** 観戦予定。自分のぶんと、接続している相手のぶん */
+  plans: GamePlan[]
 }) {
   const router = useRouter()
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null)
@@ -160,6 +164,45 @@ export default function SavingsClient({
    */
   /** これからの試合。月の選択とは関係なく、常に直近の5件を出す */
   const next = useMemo(() => upcomingOf(scheduled), [scheduled])
+
+  /** 日付ごとの観戦予定。自分のぶんと、相手のぶんを分けて持つ */
+  const planOf = useMemo(() => {
+    const map = new Map<string, { mine: boolean; others: string[] }>()
+    for (const plan of plans) {
+      const row = map.get(plan.game_date) ?? { mine: false, others: [] }
+      if (plan.user_id === userId) row.mine = true
+      else {
+        const name = members.find((m) => m.id === plan.user_id)?.member_name
+        if (name) row.others.push(name)
+      }
+      map.set(plan.game_date, row)
+    }
+    return map
+  }, [plans, members, userId])
+
+  /**
+   * 観戦予定を付け外しする。
+   *
+   * 予定は人ごとに持つ。押した人のぶんだけを書き、相手のぶんには触らない。
+   * 同じ日を二度付けないよう、DB 側でも重複を止めてある（0048）。
+   */
+  const togglePlan = async (date: string, on: boolean) => {
+    tapFeedback()
+    setBusy(true)
+    setAttendError(null)
+
+    const supabase = createClient()
+    const { error: saveError } = on
+      ? await supabase.from('game_plans').delete().eq('user_id', userId).eq('game_date', date)
+      : await supabase.from('game_plans').insert({ user_id: userId, game_date: date })
+
+    setBusy(false)
+    if (saveError) {
+      setAttendError('観戦予定を記録できませんでした')
+      return
+    }
+    router.refresh()
+  }
 
   const records = useMemo(
     () => mergeCancelled(monthEntries, cancelledOf(cancelled, month)),
@@ -697,30 +740,63 @@ export default function SavingsClient({
             </p>
           ) : (
             <div className="divide-hairline mt-1.5">
-              {next.map((game) => (
-                <div
-                  key={`${game.date}-${game.opponent}-${game.startTime}`}
-                  className={`flex items-center gap-2.5 py-2 ${game.cancelled ? 'opacity-60' : ''}`}
-                >
-                  <span className="tnum shrink-0 text-[11px] text-fg-mute">
-                    {shortDate(game.date)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">
-                    <span className="text-fg-mute">{game.isHome ? 'vs' : '@'}</span>{' '}
-                    {game.opponent}
-                    {game.place ? (
-                      <span className="text-[11px] text-fg-mute"> / {game.place}</span>
-                    ) : null}
-                  </span>
-                  {game.cancelled ? (
-                    <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
-                      {game.note}
-                    </span>
-                  ) : (
-                    <span className="tnum shrink-0 text-[11px] text-marine">{game.startTime}</span>
-                  )}
-                </div>
-              ))}
+              {next.map((game) => {
+                const plan = planOf.get(game.date) ?? { mine: false, others: [] }
+
+                return (
+                  <div
+                    key={`${game.date}-${game.opponent}-${game.startTime}`}
+                    className={`py-2 ${game.cancelled ? 'opacity-60' : ''}`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="tnum shrink-0 text-[11px] text-fg-mute">
+                        {shortDate(game.date)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[13px]">
+                        <span className="text-fg-mute">{game.isHome ? 'vs' : '@'}</span>{' '}
+                        {game.opponent}
+                        {game.place ? (
+                          <span className="text-[11px] text-fg-mute"> / {game.place}</span>
+                        ) : null}
+                      </span>
+                      {game.cancelled ? (
+                        <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
+                          {game.note}
+                        </span>
+                      ) : (
+                        <span className="tnum shrink-0 text-[11px] text-marine">
+                          {game.startTime}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 観戦予定。中止の試合には出さない（行く先が無い） */}
+                    {game.cancelled ? null : (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          aria-pressed={plan.mine}
+                          onClick={() => togglePlan(game.date, plan.mine)}
+                          className={`inline-flex min-h-[28px] items-center gap-1.5 rounded-full border px-2.5 text-[11px] transition-colors disabled:opacity-40 ${
+                            plan.mine
+                              ? 'border-marine/60 bg-marine/12 text-marine'
+                              : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
+                          }`}
+                        >
+                          <IconTicket size={13} />
+                          観戦予定
+                        </button>
+                        {plan.others.length > 0 ? (
+                          <span className="truncate text-[11px] text-fg-mute">
+                            {plan.others.join('・')}も予定
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </Card>
