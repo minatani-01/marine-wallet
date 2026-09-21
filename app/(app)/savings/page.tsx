@@ -11,14 +11,25 @@ import {
   getSharedGoals,
   getStadiumVisits,
   getCircleMembers,
+  getCancelledGames,
 } from '@/lib/queries'
 
 export default async function SavingsPage() {
   const user = await getSessionUser()
   if (!user) redirect('/login')
 
-  const [entries, monthlySavings, rules, presets, goals, profile, games, visits, members] =
-    await Promise.all([
+  const [
+    entries,
+    monthlySavings,
+    rules,
+    presets,
+    goals,
+    profile,
+    games,
+    visits,
+    members,
+    cancelled,
+  ] = await Promise.all([
       getSavingEntries(user.id),
       getMonthlySavings(user.id),
       getSavingRules(),
@@ -31,6 +42,8 @@ export default async function SavingsPage() {
       getStadiumVisits(user.id),
       // 一緒に行った人を選ぶための名前
       getCircleMembers(),
+      // 中止になった試合。記録一覧に混ぜて出す
+      getCancelledGames(),
     ])
 
   return (
@@ -45,6 +58,7 @@ export default async function SavingsPage() {
       games={games}
       visits={visits}
       members={members}
+      cancelled={cancelled}
     />
   )
 }

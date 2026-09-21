@@ -15,6 +15,7 @@ import {
   getGamesByIds,
   getCircleMembers,
   getStandings,
+  getScheduledGames,
 } from '@/lib/queries'
 import {
   depositedMonthSet,
@@ -38,7 +39,7 @@ export default async function HomePage() {
 
   // ホームは貯金ルールを使わない（年間目標を外したため）。1クエリ減らす
   const thisYear = Number(today().slice(0, 4))
-  const [entries, monthlySavings, circle, upcoming, visits, members, standings] =
+  const [entries, monthlySavings, circle, upcoming, visits, members, standings, scheduled] =
     await Promise.all([
       getSavingEntries(user.id),
       getMonthlySavings(user.id),
@@ -51,6 +52,8 @@ export default async function HomePage() {
       getCircleMembers(),
       // パ・リーグの順位。毎朝の取り込みで計算済みのものを読む
       getStandings(thisYear, 'p'),
+      // これからの試合。中止もここに入る
+      getScheduledGames(today()),
     ])
 
   // スタンプに点数を刻むぶんだけ試合を引く（全試合は要らない）
@@ -209,6 +212,7 @@ export default async function HomePage() {
       <HomePanels
         record={record}
         standings={standings}
+        scheduled={scheduled}
         upcoming={upcoming}
         visits={visits}
         games={stampGames}

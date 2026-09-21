@@ -39,6 +39,7 @@ import { tapFeedback } from '@/lib/haptics'
 import { depositedTotal, notDepositedTotal } from '@/lib/insights'
 import { notifyMonthConfirmed } from '@/lib/notify-client'
 import { currentMonth, monthLabel, monthLabelEn, shortDate, yen } from '@/lib/format'
+import { cancelledOf, mergeCancelled } from '@/lib/upcoming'
 import {
   MONTHLY_STATUS_LABEL,
   homeAwayLabel,
@@ -50,6 +51,7 @@ import {
 import type {
   CircleMember,
   MonthlySaving,
+  ScheduledGame,
   MonthlyStatus,
   Game,
   StadiumVisit,
@@ -78,6 +80,7 @@ export default function SavingsClient({
   games,
   visits,
   members,
+  cancelled,
 }: {
   userId: string
   entries: SavingEntryRow[]
@@ -95,6 +98,8 @@ export default function SavingsClient({
   visits: StadiumVisit[]
   /** 貯金を共にしている人。一緒に行った人を選ぶのに使う */
   members: CircleMember[]
+  /** 中止になった試合。記録一覧に混ぜて出す */
+  cancelled: ScheduledGame[]
 }) {
   const router = useRouter()
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null)
@@ -142,6 +147,17 @@ export default function SavingsClient({
         .filter((e) => e.month === month)
         .sort((a, b) => b.entry_date.localeCompare(a.entry_date)),
     [entries, month]
+  )
+
+  /**
+   * 記録一覧に出す並び。中止になった試合を日付の位置に挟む。
+   *
+   * 中止の日は貯金が入らない。記録だけを並べると、その日は何も無かったのか
+   * 入れ忘れたのかが分からない。
+   */
+  const records = useMemo(
+    () => mergeCancelled(monthEntries, cancelledOf(cancelled, month)),
+    [monthEntries, cancelled, month]
   )
 
   const monthTotal = useMemo(
@@ -658,14 +674,43 @@ export default function SavingsClient({
           <p className="mb-2 text-[13px] text-danger">{attendError}</p>
         ) : null}
 
-        {monthEntries.length === 0 ? (
+        {records.length === 0 ? (
           <EmptyState
             title="この月の記録はまだありません"
             description="試合を登録するか、カスタム登録で任意の金額を積み立ててください。"
           />
         ) : (
           <div className="flex flex-col gap-2">
-            {monthEntries.map((entry) => {
+            {records.map((record) => {
+              // 中止の日。貯金は入らないので、日付と印だけを出す
+              if (record.kind === 'cancelled') {
+                const game = record.game
+                return (
+                  <Card key={`cancelled-${record.date}`} className="!p-3.5 opacity-70">
+                    <div className="flex items-center gap-3">
+                      <IconFrame tone="default">
+                        <IconBaseball size={17} />
+                      </IconFrame>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 text-[11px] text-fg-mute">
+                          <span className="tnum">{shortDate(record.date)}</span>
+                          <span>{game.isHome ? 'ホーム' : 'ビジター'}</span>
+                        </div>
+                        <div className="mt-1 truncate text-sm text-fg-mute">
+                          <span className="line-through">vs {game.opponent}</span>
+                        </div>
+                      </div>
+
+                      <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
+                        {game.note}
+                      </span>
+                    </div>
+                  </Card>
+                )
+              }
+
+              const entry = record.entry
               const g = entry.game
               const details = g
                 ? [

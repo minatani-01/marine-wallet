@@ -24,6 +24,7 @@ import type {
   SplitMember,
   SplitMemberView,
   SplitRecord,
+  ScheduledGame,
   StadiumVisit,
   Standing,
   CircleMember,
@@ -593,6 +594,45 @@ export async function getPlaces(): Promise<Place[]> {
       )
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })
+  )
+  return data ?? []
+}
+
+/**
+ * これからの試合。ホームの「予定」に出す。
+ *
+ * 毎朝の取り込みが当月と翌月の日程を入れ直しているので、中止や
+ * 開始時刻の変更もここに反映される。終わった試合は返さない。
+ */
+export async function getScheduledGames(from: string, limit = 6): Promise<ScheduledGame[]> {
+  const supabase = await createClient()
+  const data = await read<ScheduledGame[]>('npb_games', () =>
+    supabase
+      .from('npb_games')
+      .select('game_date, home_team, away_team, place, start_time, status, note')
+      .gte('game_date', from)
+      .neq('status', 'finished')
+      .order('game_date', { ascending: true })
+      .limit(limit)
+  )
+  return data ?? []
+}
+
+/**
+ * 中止になった試合。貯金の記録一覧に混ぜて出す。
+ *
+ * 中止の日は貯金が入らない。記録だけを並べると、その日は何も無かったのか
+ * 入れ忘れたのかが分からない。件数は多くないので全期間ぶんを読む。
+ */
+export async function getCancelledGames(limit = 200): Promise<ScheduledGame[]> {
+  const supabase = await createClient()
+  const data = await read<ScheduledGame[]>('npb_games', () =>
+    supabase
+      .from('npb_games')
+      .select('game_date, home_team, away_team, place, start_time, status, note')
+      .eq('status', 'cancelled')
+      .order('game_date', { ascending: false })
+      .limit(limit)
   )
   return data ?? []
 }

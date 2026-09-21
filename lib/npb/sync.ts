@@ -110,13 +110,41 @@ function toSnapshotRows(snap: StatSnapshot, kind: 'batting' | 'pitching'): Snaps
 }
 
 /**
+ * 先の予定を取りに行く月。
+ *
+ * 当月だけだと、月末には次の試合が数日ぶんしか分からない。翌月も取って
+ * おけば、ひと月以上先まで見える。シーズン中（3〜10月）だけにして、
+ * 試合の無い月を取りに行かない。
+ */
+export function scheduleMonths(year: number, month: number): { year: number; month: number }[] {
+  const months = [{ year, month }]
+  if (month >= 3 && month <= 10) months.push({ year, month: month + 1 })
+  return months
+}
+
+/** 同じ試合を二度入れない。月をまたいで同じページに載ることがある */
+function dedupe<T extends { gameDate: string; homeTeam: string; awayTeam: string; startTime: string }>(
+  games: T[]
+): T[] {
+  const seen = new Map<string, T>()
+  for (const game of games) {
+    seen.set(`${game.gameDate}|${game.homeTeam}|${game.awayTeam}|${game.startTime}`, game)
+  }
+  return [...seen.values()]
+}
+
+/**
  * 1回分の取得を行う。
  *
- * 取るページは次の4つまで。
+ * 取るページは次の5つまで。
  *   1. 当月の日程・結果
- *   2. 直近で終わったマリーンズ戦のボックススコア（1件）
- *   3. 個人打撃成績
- *   4. 個人投手成績
+ *   2. 翌月の日程・結果（先の予定と、中止の知らせを早めに拾うため）
+ *   3. 直近で終わったマリーンズ戦のボックススコア（1件）
+ *   4. 個人打撃成績
+ *   5. 個人投手成績
+ *
+ * 日程ページは終わった試合も、これからの試合も、中止も同じ表に載る。
+ * 取り込みは上書きなので、雨天中止や開始時刻の変更は次の朝に反映される。
  *
  * @param today 実行日。ここから対象の年月を決める
  */
@@ -130,10 +158,23 @@ export async function runNpbSync(
   const year = today.getFullYear()
   const month = today.getMonth() + 1
 
-  // 1. 当月の日程・結果
-  const scheduleHtml = await fetchPage(scheduleUrl(year, month))
-  pages += 1
-  const allGames = parseSchedule(scheduleHtml, year)
+  // 1-2. 当月と翌月の日程・結果。これからの試合と中止もここに載る
+  const schedule: ScheduleGame[] = []
+  for (const [index, target] of scheduleMonths(year, month).entries()) {
+    if (index > 0) await sleep(FETCH_INTERVAL_MS)
+    try {
+      const html = await fetchPage(scheduleUrl(target.year, target.month))
+      pages += 1
+      schedule.push(...parseSchedule(html, target.year))
+    } catch (cause) {
+      // 翌月のページがまだ無いことがある。当月が取れていれば続ける
+      warnings.push(
+        `${target.year}年${target.month}月の日程を取得できませんでした: ${String(cause)}`
+      )
+    }
+  }
+
+  const allGames = dedupe(schedule)
   const marinesGames = gamesOf(allGames, MARINES_TEAM_LABEL)
   if (marinesGames.length === 0) {
     warnings.push(`${year}年${month}月の日程にマリーンズの試合が見つかりませんでした`)
