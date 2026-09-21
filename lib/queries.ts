@@ -602,10 +602,13 @@ export async function getPlaces(): Promise<Place[]> {
 /**
  * これからの試合。ホームの「予定」に出す。
  *
- * 毎朝の取り込みが当月と翌月の日程を入れ直しているので、中止や
- * 開始時刻の変更もここに反映される。終わった試合は返さない。
+ * 毎朝の取り込みが日程を入れ直しているので、中止や開始時刻の変更も
+ * ここに反映される。終わった試合は返さない。
+ *
+ * シーズンの残りぶんをまとめて読む。画面では5件だけ出して、
+ * 「詳細を見る」で残りを開く。
  */
-export async function getScheduledGames(from: string, limit = 6): Promise<ScheduledGame[]> {
+export async function getScheduledGames(from: string, limit = 80): Promise<ScheduledGame[]> {
   const supabase = await createClient()
   const data = await read<ScheduledGame[]>('npb_games', () =>
     supabase
