@@ -39,7 +39,7 @@ import { tapFeedback } from '@/lib/haptics'
 import { depositedTotal, notDepositedTotal } from '@/lib/insights'
 import { notifyMonthConfirmed } from '@/lib/notify-client'
 import { currentMonth, monthLabel, monthLabelEn, shortDate, yen } from '@/lib/format'
-import { cancelledOf, mergeCancelled } from '@/lib/upcoming'
+import { cancelledOf, mergeCancelled, upcomingOf } from '@/lib/upcoming'
 import {
   MONTHLY_STATUS_LABEL,
   homeAwayLabel,
@@ -81,6 +81,7 @@ export default function SavingsClient({
   visits,
   members,
   cancelled,
+  scheduled,
 }: {
   userId: string
   entries: SavingEntryRow[]
@@ -100,6 +101,8 @@ export default function SavingsClient({
   members: CircleMember[]
   /** 中止になった試合。記録一覧に混ぜて出す */
   cancelled: ScheduledGame[]
+  /** これからの試合。中止もそのまま入る */
+  scheduled: ScheduledGame[]
 }) {
   const router = useRouter()
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null)
@@ -155,6 +158,9 @@ export default function SavingsClient({
    * 中止の日は貯金が入らない。記録だけを並べると、その日は何も無かったのか
    * 入れ忘れたのかが分からない。
    */
+  /** これからの試合。月の選択とは関係なく、常に直近の5件を出す */
+  const next = useMemo(() => upcomingOf(scheduled), [scheduled])
+
   const records = useMemo(
     () => mergeCancelled(monthEntries, cancelledOf(cancelled, month)),
     [monthEntries, cancelled, month]
@@ -663,6 +669,48 @@ export default function SavingsClient({
               </>
             ) : null}
           </div>
+        </Card>
+      </div>
+
+      {/* これからの試合。中止もここに出る */}
+      <div>
+        <SectionLabel>Schedule</SectionLabel>
+
+        <Card>
+          <div className="eyebrow">これからの試合</div>
+
+          {next.length === 0 ? (
+            <p className="mt-3 text-[13px] leading-relaxed text-fg-mute">
+              予定がまだありません。日程は毎朝取り込んでいます。
+            </p>
+          ) : (
+            <div className="divide-hairline mt-1.5">
+              {next.map((game) => (
+                <div
+                  key={`${game.date}-${game.opponent}-${game.startTime}`}
+                  className={`flex items-center gap-2.5 py-2 ${game.cancelled ? 'opacity-60' : ''}`}
+                >
+                  <span className="tnum shrink-0 text-[11px] text-fg-mute">
+                    {shortDate(game.date)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px]">
+                    <span className="text-fg-mute">{game.isHome ? 'vs' : '@'}</span>{' '}
+                    {game.opponent}
+                    {game.place ? (
+                      <span className="text-[11px] text-fg-mute"> / {game.place}</span>
+                    ) : null}
+                  </span>
+                  {game.cancelled ? (
+                    <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
+                      {game.note}
+                    </span>
+                  ) : (
+                    <span className="tnum shrink-0 text-[11px] text-marine">{game.startTime}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 

@@ -1,6 +1,7 @@
 import { FETCH_INTERVAL_MS, fetchNpbPage, scheduleUrl, sleep } from './fetch'
-import { parseSchedule, type ScheduleGame } from './schedule'
+import { parseSchedule, withCancelled, type ScheduleGame } from './schedule'
 import { standingsOf, type LeagueGame } from './standings'
+import { jstDate } from '@/lib/jst'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -121,7 +122,8 @@ export async function collectLeagueMonths(
   for (const [index, month] of targets.entries()) {
     if (index > 0) await sleep(FETCH_INTERVAL_MS)
     const html = await fetchPage(scheduleUrl(season, Number(month.slice(5, 7))))
-    saved += await saveLeagueGames(supabase, leagueRows(parseSchedule(html, season)))
+    const games = withCancelled(parseSchedule(html, season), jstDate(new Date()))
+    saved += await saveLeagueGames(supabase, leagueRows(games))
   }
 
   return { months: targets, saved, remaining: missing.length - targets.length }

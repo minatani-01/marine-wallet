@@ -18,8 +18,16 @@ import {
   sleep,
 } from './fetch'
 import { parseBoxScore } from './boxscore'
-import { gamesOf, losePitcherOf, parseSchedule, winPitcherOf, type ScheduleGame } from './schedule'
+import {
+  gamesOf,
+  losePitcherOf,
+  parseSchedule,
+  winPitcherOf,
+  withCancelled,
+  type ScheduleGame,
+} from './schedule'
 import { parseTeamStats, type StatSnapshot } from './stats'
+import { jstDate } from '@/lib/jst'
 import { leagueRows, type LeagueGameRow } from './league'
 
 /** ページ取得を差し替えられるようにしておく（テストで実際の通信をしないため） */
@@ -174,7 +182,9 @@ export async function runNpbSync(
     }
   }
 
-  const allGames = dedupe(schedule)
+  // 日付が変わっても得点の無い試合は中止として扱う（npb.jp が
+  // 何も書かないまま行だけ残すことがある）
+  const allGames = withCancelled(dedupe(schedule), jstDate(today))
   const marinesGames = gamesOf(allGames, MARINES_TEAM_LABEL)
   if (marinesGames.length === 0) {
     warnings.push(`${year}年${month}月の日程にマリーンズの試合が見つかりませんでした`)

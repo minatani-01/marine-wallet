@@ -88,7 +88,10 @@ export function parseSchedule(html: string, year: number): ScheduleGame[] {
 
     const boxScorePath = match1(row, /href="(\/scores\/[^"]+)"/) ?? ''
 
-    const cancelled = CANCELLED_MARKERS.some((m) => note.includes(m))
+    // 中止は備考や天候に入るが、得点欄にそのまま書かれることもある。
+    // 欄を決め打ちにすると取りこぼすので、その行のどこかに出ていれば中止とする
+    const marker = CANCELLED_MARKERS.find((m) => note.includes(m) || row.includes(m)) ?? ''
+    const cancelled = marker !== ''
     const finished = homeScore !== null && awayScore !== null
 
     games.push({
@@ -99,7 +102,8 @@ export function parseSchedule(html: string, year: number): ScheduleGame[] {
       awayScore,
       place: divText(row, 'place'),
       startTime: divText(row, 'time'),
-      note,
+      // 中止だと分かったのに言葉が残らないと、画面で理由を出せない
+      note: note || marker,
       boxScorePath,
       pitchers,
       status: cancelled ? 'cancelled' : finished ? 'finished' : 'scheduled',
@@ -107,6 +111,28 @@ export function parseSchedule(html: string, year: number): ScheduleGame[] {
   }
 
   return games
+}
+
+/**
+ * 終わった日なのに得点の無い試合を、中止として扱う。
+ *
+ * npb.jp が中止と書いてくれれば parseSchedule で拾えるが、書き方は
+ * 一定ではなく、何も書かないまま行だけ残ることがある。その日を過ぎても
+ * 得点もボックススコアも無いなら、試合は行われていない。
+ *
+ * 判断は日付が変わったあとにだけ行う。当日の試合前・試合中に
+ * 「中止」と決めつけないため、today より前の試合だけを見る。
+ *
+ * @param today 'YYYY-MM-DD'（日本時間の今日）
+ */
+export function withCancelled(games: ScheduleGame[], today: string): ScheduleGame[] {
+  return games.map((game) => {
+    if (game.status !== 'scheduled') return game
+    if (game.gameDate >= today) return game
+    if (game.homeScore !== null || game.awayScore !== null) return game
+    if (game.boxScorePath) return game
+    return { ...game, status: 'cancelled' as const, note: game.note || '中止' }
+  })
 }
 
 /** 指定したチームが関わる試合だけに絞る */
