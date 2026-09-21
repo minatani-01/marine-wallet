@@ -638,22 +638,14 @@ export default function SavingsClient({
 
           <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
             {status === 'calculating' ? (
-              <>
-                <Button
-                  variant="primary"
-                  full
-                  disabled={busy || monthTotal <= 0}
-                  onClick={() => confirmMonth(true)}
-                >
-                  この月の金額を確定する
-                </Button>
-                {isMaster ? (
-                  <p className="text-[11px] leading-relaxed text-fg-mute">
-                    確定すると、貯金に参加している接続済みメンバーの同じ月も確定します。
-                    入金は各自で行うため、入金済みは相手には反映しません。
-                  </p>
-                ) : null}
-              </>
+              <Button
+                variant="primary"
+                full
+                disabled={busy || monthTotal <= 0}
+                onClick={() => confirmMonth(true)}
+              >
+                この月の金額を確定する
+              </Button>
             ) : null}
 
             {status === 'ready' ? (
