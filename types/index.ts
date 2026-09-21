@@ -173,8 +173,10 @@ export type Place = {
   kind: PlaceKind
   name: string
   area: string
-  /** ジャンル（焼肉・寿司・温泉など）。空でもよい */
-  genre: string
+  /** ジャンル（焼肉・寿司など）。複数可（0049） */
+  genres: string[]
+  /** 食材（牛・豚・鴨など）。ジャンルとは別の軸（0049） */
+  ingredients: string[]
   url: string
   note: string
   /** 行った日。null なら「行きたい」側 */
@@ -194,11 +196,14 @@ export type Place = {
   status_checked_at: string | null
 }
 
-/** 飲食のジャンルの候補（0044）。設定画面から足せる */
+/** ジャンルと食材の候補（0044 / 0049）。設定画面から足せる */
+export type PlaceTagKind = 'genre' | 'ingredient'
+
 export type PlaceGenre = {
   id: string
   name: string
   sort_order: number
+  kind: PlaceTagKind
 }
 
 /**

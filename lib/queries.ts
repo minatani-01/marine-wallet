@@ -591,7 +591,7 @@ export async function getPlaces(): Promise<Place[]> {
     supabase
       .from('places')
       .select(
-        'id, kind, name, area, genre, url, note, visited_on, revisit, created_by, lat, lng, business_status, status_checked_at'
+        'id, kind, name, area, genres, ingredients, url, note, visited_on, revisit, created_by, lat, lng, business_status, status_checked_at'
       )
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })
@@ -684,7 +684,7 @@ export async function getPlaceGenres(): Promise<PlaceGenre[]> {
   const data = await read<PlaceGenre[]>('place_genres', () =>
     supabase
       .from('place_genres')
-      .select('id, name, sort_order')
+      .select('id, name, sort_order, kind')
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true })
   )

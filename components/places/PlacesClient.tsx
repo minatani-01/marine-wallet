@@ -30,9 +30,10 @@ import {
   PLACE_KINDS,
   REVISIT_CHOICES,
   REVISIT_LABEL,
-  filterByGenre,
   filterByKind,
+  filterByTag,
   genresOf,
+  ingredientsOf,
   mapsUrl,
   placeKindLabel,
   revisitPatch,
@@ -85,8 +86,8 @@ const KIND_TABS: { id: KindTab; label: string }[] = [
  * 「閉店」はジャンルの並びに置いてあるが、ジャンルの言葉ではない（0045）。
  * 選ばれたときだけ、状態のほうで絞る。
  */
-function narrowBy(rows: Place[], genre: string | null): Place[] {
-  return genre === CLOSED_FILTER ? filterClosed(rows) : filterByGenre(rows, genre)
+function narrowBy(rows: Place[], tag: string | null): Place[] {
+  return tag === CLOSED_FILTER ? filterClosed(rows) : filterByTag(rows, tag)
 }
 
 function PlaceCard({
@@ -117,8 +118,11 @@ function PlaceCard({
           <div className="flex items-center gap-2 text-[11px] text-fg-mute">
             <span className="shrink-0">
               {placeKindLabel(place.kind)}
-              {place.genre ? ` / ${place.genre}` : ''}
+              {place.genres.length > 0 ? ` / ${place.genres.join('・')}` : ''}
             </span>
+            {place.ingredients.length > 0 ? (
+              <span className="shrink-0 text-fg-mute">{place.ingredients.join('・')}</span>
+            ) : null}
             {place.area ? <span className="truncate">{place.area}</span> : null}
           </div>
           <div className="mt-1 flex items-center gap-2">
@@ -237,11 +241,18 @@ export default function PlacesClient({
     return filterByKind(rows, kind === 'all' ? null : kind)
   }, [lists, tab, kind])
 
-  /** いま出ている場所に実際に入っているジャンルだけを、設定した順に出す */
-  const genres = useMemo(
-    () => genresOf(byKind, genreOptions.map((g) => g.name)),
-    [byKind, genreOptions]
+  /** 候補をジャンルと食材に分ける。並びは設定画面で決めた順 */
+  const tagOrder = useMemo(
+    () => ({
+      genre: genreOptions.filter((g) => g.kind !== 'ingredient').map((g) => g.name),
+      ingredient: genreOptions.filter((g) => g.kind === 'ingredient').map((g) => g.name),
+    }),
+    [genreOptions]
   )
+
+  /** いま出ている場所に実際に入っているジャンル・食材だけを出す */
+  const genres = useMemo(() => genresOf(byKind, tagOrder.genre), [byKind, tagOrder])
+  const ingredients = useMemo(() => ingredientsOf(byKind, tagOrder.ingredient), [byKind, tagOrder])
 
   /** 閉店・休業の数。0 なら「閉店」の絞り込みも出さない */
   const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
@@ -345,7 +356,6 @@ export default function PlacesClient({
         kind: importKind,
         name: row.name,
         area: '',
-        genre: '',
         url: row.url,
         note: row.note,
         created_by: userId,
@@ -432,13 +442,25 @@ export default function PlacesClient({
           閉店した店があるときだけ、並びの最後に「閉店」を足す */}
       {kind !== 'sight' && (genres.length > 0 || closedCount > 0) ? (
         <PillTabs
-          value={genre ?? ''}
+          value={genre && genres.includes(genre) ? genre : genre === CLOSED_FILTER ? genre : ''}
           options={[
             { id: '', label: 'ジャンル問わず' },
             ...genres.map((g) => ({ id: g, label: g })),
             ...(closedCount > 0
               ? [{ id: CLOSED_FILTER, label: `閉店 ${closedCount}` }]
               : []),
+          ]}
+          onChange={(id) => setGenre(id === '' ? null : id)}
+        />
+      ) : null}
+
+      {/* 食材。ジャンルとは別の軸で絞る（0049）。どちらか一方だけが効く */}
+      {kind !== 'sight' && ingredients.length > 0 ? (
+        <PillTabs
+          value={genre && ingredients.includes(genre) ? genre : ''}
+          options={[
+            { id: '', label: '食材問わず' },
+            ...ingredients.map((g) => ({ id: g, label: g })),
           ]}
           onChange={(id) => setGenre(id === '' ? null : id)}
         />

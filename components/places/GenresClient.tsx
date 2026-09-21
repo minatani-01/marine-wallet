@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button, Card, EmptyState, IconButton, SectionLabel, inputClassCompact } from '@/components/ui'
+import {
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  SectionLabel,
+  Segmented,
+  inputClassCompact,
+} from '@/components/ui'
 import {
   IconCheck,
   IconChevronDown,
@@ -15,10 +23,24 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { reorderGenres } from '@/lib/place-genres'
 import { tapFeedback } from '@/lib/haptics'
-import type { PlaceGenre } from '@/types'
+import type { PlaceGenre, PlaceTagKind } from '@/types'
+
+const TABS: { id: PlaceTagKind; label: string }[] = [
+  { id: 'genre', label: 'ジャンル' },
+  { id: 'ingredient', label: '食材' },
+]
+
+const PLACEHOLDER: Record<PlaceTagKind, string> = {
+  genre: '例）立ち食いそば',
+  ingredient: '例）鴨',
+}
 
 /**
- * 飲食のジャンルの候補を足す・直す・消す・並べ替える。
+ * ジャンルと食材の候補を足す・直す・消す・並べ替える。
+ *
+ * 食材はジャンルとは別の軸で持つ（0049）。焼肉に対する牛・豚・鶏のように、
+ * ジャンルの中でさらに分かれる。混ぜると「ジビエ（鴨）」のような
+ * 掛け合わせの言葉が増え、組み合わせの数だけ候補が膨らむ。
  *
  * 候補をコードに書いていると、「立ち食いそば」を足すのにデプロイが要る。
  * 貯金のカスタム登録の定型と同じで、ここから増やせるようにする。
@@ -33,6 +55,7 @@ import type { PlaceGenre } from '@/types'
  */
 export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
   const router = useRouter()
+  const [tab, setTab] = useState<PlaceTagKind>('genre')
   const [adding, setAdding] = useState('')
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -48,6 +71,9 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
   const [rows, setRows] = useState<PlaceGenre[]>(genres)
   useEffect(() => setRows(genres), [genres])
 
+  /** いま開いている側の候補だけを出す */
+  const shown = rows.filter((row) => row.kind === tab)
+
   const add = async () => {
     const name = adding.trim()
     if (!name) return
@@ -59,7 +85,7 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
     const supabase = createClient()
     const { error: saveError } = await supabase
       .from('place_genres')
-      .insert({ name, sort_order: (rows.at(-1)?.sort_order ?? 0) + 10 })
+      .insert({ name, kind: tab, sort_order: (shown.at(-1)?.sort_order ?? 0) + 10 })
 
     setBusy(false)
     if (saveError) {
@@ -102,12 +128,13 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
    * 同じ並び順が並んでいるとき（既定値のまま足したとき）に何も起きない。
    */
   const move = async (genre: PlaceGenre, direction: -1 | 1) => {
-    const { rows: next, changed } = reorderGenres(rows, genre.id, direction)
+    const { rows: next, changed } = reorderGenres(shown, genre.id, direction)
     if (changed.length === 0) return
 
     tapFeedback()
     const before = rows
-    setRows(next)
+    // 開いている側だけを入れ替え、もう一方はそのまま残す
+    setRows([...rows.filter((row) => row.kind !== tab), ...next])
     setBusy(true)
     setError(null)
 
@@ -148,14 +175,10 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <Card>
-        <div className="eyebrow">飲食のジャンル</div>
-        <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
-          場所を登録するときの候補です。ここに無い言葉も、登録画面で直接入れられます。
-          観光地にジャンルはありません。
-        </p>
+      <Segmented value={tab} options={TABS} onChange={setTab} />
 
-        <div className="mt-3 flex gap-2">
+      <Card>
+        <div className="flex gap-2">
           <input
             className={inputClassCompact}
             value={adding}
@@ -166,7 +189,7 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
                 void add()
               }
             }}
-            placeholder="例）立ち食いそば"
+            placeholder={PLACEHOLDER[tab]}
           />
           <Button
             variant="primary"
@@ -186,15 +209,15 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
 
       <div>
         <SectionLabel>候補</SectionLabel>
-        {rows.length === 0 ? (
+        {shown.length === 0 ? (
           <EmptyState
             title="候補がありません"
-            description="よく使うジャンルを足しておくと、登録が速くなります。"
+            description="よく使う言葉を足しておくと、登録が速くなります。"
           />
         ) : (
           <Card padded={false}>
             <div className="divide-hairline px-4">
-              {rows.map((genre, index) => (
+              {shown.map((genre, index) => (
                 <div key={genre.id} className="flex items-center gap-2 py-2.5">
                   {editing?.id === genre.id ? (
                     <>
@@ -233,7 +256,7 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
                         </IconButton>
                         <IconButton
                           label="下へ"
-                          disabled={busy || index === rows.length - 1}
+                          disabled={busy || index === shown.length - 1}
                           onClick={() => move(genre, 1)}
                           className="!h-[26px] !w-8"
                         >
@@ -269,10 +292,8 @@ export default function GenresClient({ genres }: { genres: PlaceGenre[] }) {
       </div>
 
       <p className="text-[11px] leading-relaxed text-fg-mute">
-        上下の矢印で並びを変えられます。ここの並びが、登録画面の候補とマップの
-        ジャンルの並びになります。
         名前を直すと、その言葉で登録済みの場所も一緒に直ります。
-        消した場合は、登録済みの場所のジャンルはそのまま残ります（候補から外れるだけです）。
+        消した場合も、登録済みの場所に付いた言葉は残ります（候補から外れるだけです）。
       </p>
     </div>
   )
