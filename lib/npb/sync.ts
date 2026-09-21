@@ -131,7 +131,7 @@ export function scheduleMonths(year: number, month: number): { year: number; mon
 }
 
 /** 同じ試合を二度入れない。月をまたいで同じページに載ることがある */
-function dedupe<T extends { gameDate: string; homeTeam: string; awayTeam: string; startTime: string }>(
+export function dedupe<T extends { gameDate: string; homeTeam: string; awayTeam: string; startTime: string }>(
   games: T[]
 ): T[] {
   const seen = new Map<string, T>()

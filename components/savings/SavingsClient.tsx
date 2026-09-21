@@ -223,6 +223,7 @@ export default function SavingsClient({
       const res = await fetch('/api/games/backfill', { method: 'POST' })
       const body = (await res.json()) as {
         error?: string
+        schedule?: { updated?: { game_date: string; status: string }[]; added?: number }
         created?: number
         skipped?: number
         remaining?: number
@@ -234,6 +235,17 @@ export default function SavingsClient({
         setBackfillNote(body.error ?? '取り込めませんでした')
       } else {
         const parts: string[] = []
+
+        // 中止や時刻の変更は押した目的そのものなので、先に出す
+        const schedule = body.schedule?.updated ?? []
+        const cancelled = schedule.filter((g) => g.status === 'cancelled').length
+        if (cancelled > 0) parts.push(`${cancelled} 試合が中止になっていました`)
+        if (schedule.length - cancelled > 0) {
+          parts.push(`${schedule.length - cancelled} 試合の日程を直しました`)
+        }
+        if ((body.schedule?.added ?? 0) > 0) {
+          parts.push(`${body.schedule?.added} 試合の予定を取り込みました`)
+        }
 
         const updated = body.repaired?.updated ?? 0
         if (updated > 0) parts.push(`${updated} 試合の内容を直しました`)
