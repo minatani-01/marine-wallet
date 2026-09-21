@@ -619,6 +619,25 @@ export async function getScheduledGames(from: string, limit = 6): Promise<Schedu
 }
 
 /**
+ * 中止になった試合。貯金の記録一覧に混ぜて出す。
+ *
+ * 中止の日は貯金が入らない。記録だけを並べると、その日は何も無かったのか
+ * 入れ忘れたのかが分からない。件数は多くないので全期間ぶんを読む。
+ */
+export async function getCancelledGames(limit = 200): Promise<ScheduledGame[]> {
+  const supabase = await createClient()
+  const data = await read<ScheduledGame[]>('npb_games', () =>
+    supabase
+      .from('npb_games')
+      .select('game_date, home_team, away_team, place, start_time, status, note')
+      .eq('status', 'cancelled')
+      .order('game_date', { ascending: false })
+      .limit(limit)
+  )
+  return data ?? []
+}
+
+/**
  * リーグ順位（0047）。ホームでマリーンズが今何位かを出すために使う。
  *
  * 毎朝の取り込みで計算済みのものを読むだけ。ここで試合を集計すると、

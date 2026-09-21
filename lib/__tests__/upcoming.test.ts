@@ -54,3 +54,43 @@ test('出す数を絞る', () => {
   assert.equal(upcomingOf(rows).length, 5)
   assert.equal(upcomingOf(rows, 3).length, 3)
 })
+
+test('その月の中止だけを新しい順に取り出す', async () => {
+  const { cancelledOf } = await import('../upcoming')
+  const rows = [
+    row({ game_date: '2026-09-03', status: 'cancelled', note: '雨天中止' }),
+    row({ game_date: '2026-09-18', status: 'cancelled', note: '雨天中止' }),
+    row({ game_date: '2026-09-19' }),
+    row({ game_date: '2026-08-30', status: 'cancelled', note: '雨天中止' }),
+  ]
+  assert.deepEqual(
+    cancelledOf(rows, '2026-09').map((g) => g.date),
+    ['2026-09-18', '2026-09-03']
+  )
+})
+
+test('記録と中止を日付順に混ぜる', async () => {
+  const { cancelledOf, mergeCancelled } = await import('../upcoming')
+  const entries = [{ entry_date: '2026-09-19' }, { entry_date: '2026-09-02' }]
+  const cancelled = cancelledOf(
+    [row({ game_date: '2026-09-18', status: 'cancelled', note: '雨天中止' })],
+    '2026-09'
+  )
+
+  assert.deepEqual(
+    mergeCancelled(entries, cancelled).map((r) => `${r.date}:${r.kind}`),
+    ['2026-09-19:entry', '2026-09-18:cancelled', '2026-09-02:entry']
+  )
+})
+
+test('同じ日は記録を先に置く', async () => {
+  const { cancelledOf, mergeCancelled } = await import('../upcoming')
+  const cancelled = cancelledOf(
+    [row({ game_date: '2026-09-18', status: 'cancelled', note: '雨天中止' })],
+    '2026-09'
+  )
+  assert.deepEqual(
+    mergeCancelled([{ entry_date: '2026-09-18' }], cancelled).map((r) => r.kind),
+    ['entry', 'cancelled']
+  )
+})
