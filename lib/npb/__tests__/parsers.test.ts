@@ -281,3 +281,50 @@ test('累計の差分からマルチ安打とQSを判定できる', () => {
   assert.equal(pAfter.appearances - pBefore.appearances, 1)
   assert.equal(dOuts >= 18 && dEarned <= 3, true, 'QS')
 })
+
+test('得点欄に「中止」と書かれていても拾う', async () => {
+  const { parseSchedule } = await import('../schedule')
+  // 備考も天候も空で、得点の代わりに中止と書かれている形
+  const html = `
+    <tr id="date0920">
+      <td><div class="team1">ロッテ</div></td>
+      <td><div class="score1">中止</div></td>
+      <td><div class="score2">中止</div></td>
+      <td><div class="team2">西武</div></td>
+      <td><div class="place">ZOZOマリン</div></td>
+      <td><div class="time">18:00</div></td>
+      <td><div class="comment"></div></td>
+    </tr>`
+  const [game] = parseSchedule(html, 2026)
+  assert.equal(game.status, 'cancelled')
+  assert.equal(game.note, '中止')
+})
+
+test('日付を過ぎても得点の無い試合は中止として扱う', async () => {
+  const { withCancelled } = await import('../schedule')
+  const base = {
+    gameDate: '2026-09-20',
+    homeTeam: 'ロッテ',
+    awayTeam: '西武',
+    homeScore: null,
+    awayScore: null,
+    place: 'ZOZOマリン',
+    startTime: '18:00',
+    note: '',
+    boxScorePath: '',
+    pitchers: [],
+    status: 'scheduled' as const,
+  }
+
+  const [past] = withCancelled([base], '2026-09-21')
+  assert.equal(past.status, 'cancelled')
+  assert.equal(past.note, '中止')
+
+  // 当日はまだ決めつけない（試合前・試合中がある）
+  const [today] = withCancelled([base], '2026-09-20')
+  assert.equal(today.status, 'scheduled')
+
+  // ボックススコアがあるなら行われている。触らない
+  const [played] = withCancelled([{ ...base, boxScorePath: '/scores/2026/0920/m-l-20/' }], '2026-09-21')
+  assert.equal(played.status, 'scheduled')
+})

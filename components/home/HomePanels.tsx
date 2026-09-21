@@ -8,7 +8,6 @@ import { buildStampCard, companionLabel } from '@/lib/stadium-stamp'
 import { stadiumById } from '@/lib/stadiums'
 import { countdownUnit, opponentLabel } from '@/lib/constants'
 import { formatWinRate } from '@/lib/insights'
-import { upcomingOf } from '@/lib/upcoming'
 import { shortDate } from '@/lib/format'
 import { familyName } from '@/lib/npb/milestones'
 import type { SeasonRecord } from '@/lib/insights'
@@ -16,7 +15,6 @@ import { MARINES_TEAM_LABEL as MARINES_TEAM } from '@/lib/npb/fetch'
 import type {
   CircleMember,
   Game,
-  ScheduledGame,
   StadiumVisit,
   Standing,
   UpcomingMilestoneRow,
@@ -33,13 +31,12 @@ import type {
  * 「過去へ戻る」になる。
  */
 
-type Tab = 'rate' | 'visit' | 'record' | 'next'
+type Tab = 'rate' | 'visit' | 'record'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'rate', label: '勝率' },
   { id: 'visit', label: '観戦' },
   { id: 'record', label: '記録' },
-  { id: 'next', label: '予定' },
 ]
 
 /** 'YYYY-MM-DD' → '2026.09.16' */
@@ -55,7 +52,6 @@ function formatGamesBehind(value: number): string {
 export default function HomePanels({
   record,
   standings,
-  scheduled,
   upcoming,
   visits,
   games,
@@ -64,8 +60,6 @@ export default function HomePanels({
   record: SeasonRecord
   /** パ・リーグの順位。取り込みがまだなら空 */
   standings: Standing[]
-  /** これからの試合。中止もそのまま入る */
-  scheduled: ScheduledGame[]
   upcoming: UpcomingMilestoneRow[]
   visits: StadiumVisit[]
   /** スタンプに点数を刻むために使う */
@@ -80,8 +74,6 @@ export default function HomePanels({
   /** 首位のときだけ、2位との差を出す（首位と0.0差では何も言っていない） */
   const runnerUpBehind = standings.find((s) => s.rank === 2)?.games_behind ?? 0
 
-  /** これからの試合。中止も残す */
-  const next = useMemo(() => upcomingOf(scheduled), [scheduled])
 
   const card = useMemo(() => buildStampCard(visits, games), [visits, games])
 
@@ -137,45 +129,6 @@ export default function HomePanels({
                 </div>
               </div>
             ) : null}
-          </div>
-        ) : null}
-
-        {tab === 'next' ? (
-          <div>
-            <div className="text-[10px] tracking-wider text-fg-mute">これからの試合</div>
-
-            {next.length === 0 ? (
-              <p className="mt-3 text-[13px] leading-relaxed text-fg-mute">
-                予定がまだありません。日程は毎朝取り込んでいます。
-              </p>
-            ) : (
-              <div className="divide-hairline mt-1.5">
-                {next.map((game) => (
-                  <div
-                    key={`${game.date}-${game.opponent}-${game.startTime}`}
-                    className={`flex items-center gap-2.5 py-2 ${game.cancelled ? 'opacity-60' : ''}`}
-                  >
-                    <span className="tnum shrink-0 text-[11px] text-fg-mute">
-                      {shortDate(game.date)}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px]">
-                      <span className="text-fg-mute">{game.isHome ? 'vs' : '@'}</span>{' '}
-                      {game.opponent}
-                      {game.place ? (
-                        <span className="text-[11px] text-fg-mute"> / {game.place}</span>
-                      ) : null}
-                    </span>
-                    {game.cancelled ? (
-                      <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
-                        {game.note}
-                      </span>
-                    ) : (
-                      <span className="tnum shrink-0 text-[11px] text-marine">{game.startTime}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         ) : null}
 

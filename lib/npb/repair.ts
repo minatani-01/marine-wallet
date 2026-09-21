@@ -13,7 +13,14 @@ import {
   type GameFacts,
   type NpbGameSource,
 } from '@/lib/npb/import'
-import { gamesOf, losePitcherOf, parseSchedule, winPitcherOf } from '@/lib/npb/schedule'
+import {
+  gamesOf,
+  losePitcherOf,
+  parseSchedule,
+  winPitcherOf,
+  withCancelled,
+} from '@/lib/npb/schedule'
+import { jstDate } from '@/lib/jst'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -160,7 +167,10 @@ export async function collectMissingMonths(
 
     try {
       const html = await fetchPage(scheduleUrl(season, Number(month.slice(5, 7))))
-      const marines = gamesOf(parseSchedule(html, season), MARINES_TEAM_LABEL)
+      const marines = gamesOf(
+        withCancelled(parseSchedule(html, season), jstDate(new Date())),
+        MARINES_TEAM_LABEL
+      )
 
       if (marines.length === 0) {
         warnings.push(`${month} の日程にマリーンズの試合がありませんでした`)

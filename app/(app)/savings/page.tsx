@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { today } from '@/lib/format'
 import SavingsClient from '@/components/savings/SavingsClient'
 import {
   getMonthlySavings,
@@ -12,6 +13,7 @@ import {
   getStadiumVisits,
   getCircleMembers,
   getCancelledGames,
+  getScheduledGames,
 } from '@/lib/queries'
 
 export default async function SavingsPage() {
@@ -29,6 +31,7 @@ export default async function SavingsPage() {
     visits,
     members,
     cancelled,
+    scheduled,
   ] = await Promise.all([
       getSavingEntries(user.id),
       getMonthlySavings(user.id),
@@ -44,6 +47,8 @@ export default async function SavingsPage() {
       getCircleMembers(),
       // 中止になった試合。記録一覧に混ぜて出す
       getCancelledGames(),
+      // これからの試合。中止もここに入る
+      getScheduledGames(today()),
     ])
 
   return (
@@ -59,6 +64,7 @@ export default async function SavingsPage() {
       visits={visits}
       members={members}
       cancelled={cancelled}
+      scheduled={scheduled}
     />
   )
 }
