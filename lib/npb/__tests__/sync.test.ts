@@ -27,16 +27,45 @@ function fetcherFor(overrides: Record<string, string> = {}) {
 
 const SEPTEMBER = new Date('2026-09-14T20:00:00Z')
 
-test('runNpbSync は4ページだけ取得する', async () => {
+test('runNpbSync は5ページだけ取得する', async () => {
   const { fetchPage, calls } = fetcherFor()
   const result = await runNpbSync(SEPTEMBER, fetchPage)
 
-  assert.equal(result.pages, 4)
-  assert.equal(calls.length, 4)
+  assert.equal(result.pages, 5)
+  assert.equal(calls.length, 5)
+  // 当月と翌月。翌月は先の予定と中止を早めに拾うために取る
   assert.equal(calls[0], scheduleUrl(2026, 9))
-  assert.match(calls[1], /^https:\/\/npb\.jp\/scores\//)
-  assert.equal(calls[2], battingStatsUrl(2026))
-  assert.equal(calls[3], pitchingStatsUrl(2026))
+  assert.equal(calls[1], scheduleUrl(2026, 10))
+  assert.match(calls[2], /^https:\/\/npb\.jp\/scores\//)
+  assert.equal(calls[3], battingStatsUrl(2026))
+  assert.equal(calls[4], pitchingStatsUrl(2026))
+})
+
+test('シーズン外は翌月を取りに行かない', async () => {
+  const { fetchPage, calls } = fetcherFor()
+  // 12月に試合は無い。翌年1月のページを取りに行く意味も無い
+  await runNpbSync(new Date('2026-12-14T20:00:00Z'), fetchPage)
+  assert.equal(calls.filter((url) => url.includes('schedule_')).length, 1)
+})
+
+test('翌月のページが取れなくても当月は止めない', async () => {
+  const calls: string[] = []
+  const fetchPage = async (url: string) => {
+    calls.push(url)
+    if (url === scheduleUrl(2026, 10)) throw new Error('404')
+    if (url.includes('schedule_')) return SCHEDULE_HTML
+    if (url.includes('/idb1_')) return BATTING_HTML
+    if (url.includes('/idp1_')) return PITCHING_HTML
+    if (url.includes('/scores/')) return BOX_SCORE_WITH_SAVE_HTML
+    throw new Error(`想定外の URL: ${url}`)
+  }
+
+  const result = await runNpbSync(SEPTEMBER, fetchPage)
+  assert.equal(result.games.length, 3)
+  assert.equal(
+    result.warnings.some((w) => w.includes('2026年10月の日程を取得できませんでした')),
+    true
+  )
 })
 
 test('runNpbSync はマリーンズの試合だけを返す', async () => {

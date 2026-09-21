@@ -202,6 +202,21 @@ export type PlaceGenre = {
 }
 
 /**
+ * これからの試合（npb_games 由来）。
+ * 日程ページに載っている内容をそのまま持つ。中止もここに入る。
+ */
+export type ScheduledGame = {
+  game_date: string
+  home_team: string
+  away_team: string
+  place: string
+  start_time: string
+  /** 'scheduled' | 'finished' | 'cancelled' */
+  status: string
+  note: string
+}
+
+/**
  * リーグ順位（0047）。毎朝の取り込みで計算して入れ替える。
  * 順位は「いま何位か」を出すためだけに使う。
  */
