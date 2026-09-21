@@ -50,6 +50,7 @@ import {
 } from '@/lib/constants'
 import type {
   CircleMember,
+  GamePlan,
   MonthlySaving,
   ScheduledGame,
   MonthlyStatus,
@@ -82,6 +83,7 @@ export default function SavingsClient({
   members,
   cancelled,
   scheduled,
+  plans,
 }: {
   userId: string
   entries: SavingEntryRow[]
@@ -103,6 +105,8 @@ export default function SavingsClient({
   cancelled: ScheduledGame[]
   /** これからの試合。中止もそのまま入る */
   scheduled: ScheduledGame[]
+  /** 観戦予定。自分のぶんと、接続している相手のぶん */
+  plans: GamePlan[]
 }) {
   const router = useRouter()
   const [sheetMode, setSheetMode] = useState<SheetMode | null>(null)
@@ -160,6 +164,45 @@ export default function SavingsClient({
    */
   /** これからの試合。月の選択とは関係なく、常に直近の5件を出す */
   const next = useMemo(() => upcomingOf(scheduled), [scheduled])
+
+  /** 日付ごとの観戦予定。自分のぶんと、相手のぶんを分けて持つ */
+  const planOf = useMemo(() => {
+    const map = new Map<string, { mine: boolean; others: string[] }>()
+    for (const plan of plans) {
+      const row = map.get(plan.game_date) ?? { mine: false, others: [] }
+      if (plan.user_id === userId) row.mine = true
+      else {
+        const name = members.find((m) => m.id === plan.user_id)?.member_name
+        if (name) row.others.push(name)
+      }
+      map.set(plan.game_date, row)
+    }
+    return map
+  }, [plans, members, userId])
+
+  /**
+   * 観戦予定を付け外しする。
+   *
+   * 予定は人ごとに持つ。押した人のぶんだけを書き、相手のぶんには触らない。
+   * 同じ日を二度付けないよう、DB 側でも重複を止めてある（0048）。
+   */
+  const togglePlan = async (date: string, on: boolean) => {
+    tapFeedback()
+    setBusy(true)
+    setAttendError(null)
+
+    const supabase = createClient()
+    const { error: saveError } = on
+      ? await supabase.from('game_plans').delete().eq('user_id', userId).eq('game_date', date)
+      : await supabase.from('game_plans').insert({ user_id: userId, game_date: date })
+
+    setBusy(false)
+    if (saveError) {
+      setAttendError('観戦予定を記録できませんでした')
+      return
+    }
+    router.refresh()
+  }
 
   const records = useMemo(
     () => mergeCancelled(monthEntries, cancelledOf(cancelled, month)),
@@ -518,11 +561,6 @@ export default function SavingsClient({
             ]}
             onChange={(v) => setAddMode(v as SheetMode)}
           />
-          <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">
-            {addMode === 'game'
-              ? '試合結果を登録すると、貯金ルールに沿って積立予定額を自動計算します。'
-              : 'マルチ安打や打点など、試合結果から自動計算できない分をここで積み立てます。フェーズ倍率は適用されません。'}
-          </p>
           <Button variant="primary" full className="mt-3" onClick={openAdd}>
             {addMode === 'game' ? '試合を登録する' : 'カスタム登録を追加する'}
             <IconChevronRight size={16} />
@@ -539,14 +577,6 @@ export default function SavingsClient({
               >
                 {backfilling ? '取り込んでいます' : '未登録の試合をまとめて取り込む'}
               </button>
-              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                毎朝の取り込みは前日ぶんだけです。それ以前の試合が抜けているときに使います。
-                すでにある試合も、ホーム・ビジターや得点を npb.jp
-                に合わせて直します。勝敗・フェーズ・本塁打は触らないので、金額は変わりません。
-                食い違っていれば件数だけ知らせます。
-                古い月は3か月ぶん、ボックススコアは8試合ぶんずつ取りに行くので、
-                残っていれば続けて押してください。
-              </p>
               {backfillNote ? (
                 <p className="mt-2 text-[12px] text-teal">{backfillNote}</p>
               ) : null}
@@ -559,10 +589,6 @@ export default function SavingsClient({
               >
                 {fetchingMilestones ? '取り込んでいます' : '記録達成を取り込む'}
               </button>
-              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                名球会記録・生涯記録・シーズン記録を読み取り、達成していれば貯金に入れます。
-                毎朝の取り込みでも同じことをしています。同じ記録は一度しか入りません。
-              </p>
               {milestoneNote ? (
                 <p className="mt-2 text-[12px] text-teal">{milestoneNote}</p>
               ) : null}
@@ -697,30 +723,60 @@ export default function SavingsClient({
             </p>
           ) : (
             <div className="divide-hairline mt-1.5">
-              {next.map((game) => (
-                <div
-                  key={`${game.date}-${game.opponent}-${game.startTime}`}
-                  className={`flex items-center gap-2.5 py-2 ${game.cancelled ? 'opacity-60' : ''}`}
-                >
-                  <span className="tnum shrink-0 text-[11px] text-fg-mute">
-                    {shortDate(game.date)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">
-                    <span className="text-fg-mute">{game.isHome ? 'vs' : '@'}</span>{' '}
-                    {game.opponent}
-                    {game.place ? (
-                      <span className="text-[11px] text-fg-mute"> / {game.place}</span>
+              {next.map((game) => {
+                const plan = planOf.get(game.date) ?? { mine: false, others: [] }
+
+                return (
+                  <div
+                    key={`${game.date}-${game.opponent}-${game.startTime}`}
+                    className={`py-2 ${game.cancelled ? 'opacity-60' : ''}`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="tnum shrink-0 text-[11px] text-fg-mute">
+                        {shortDate(game.date)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[13px]">
+                        <span className="text-fg-mute">{game.isHome ? 'vs' : '@'}</span>{' '}
+                        {game.opponent}
+                        {game.place ? (
+                          <span className="text-[11px] text-fg-mute"> / {game.place}</span>
+                        ) : null}
+                      </span>
+                      {game.cancelled ? (
+                        <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
+                          {game.note}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="tnum shrink-0 text-[11px] text-marine">
+                            {game.startTime}
+                          </span>
+                          {/* 観戦予定。記録一覧の「現地観戦」と同じボタンにする。
+                              中止の試合には出さない（行く先が無い） */}
+                          <IconButton
+                            label={plan.mine ? '観戦予定（取り消す）' : '観戦予定'}
+                            aria-pressed={plan.mine}
+                            disabled={busy}
+                            onClick={() => togglePlan(game.date, plan.mine)}
+                            className={
+                              plan.mine ? '!border-marine/60 bg-marine/12 !text-marine' : ''
+                            }
+                          >
+                            <IconTicket size={15} />
+                          </IconButton>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 相手も行くなら名前を出す。待ち合わせの相談になる */}
+                    {!game.cancelled && plan.others.length > 0 ? (
+                      <div className="mt-1 truncate text-[11px] text-marine">
+                        {plan.others.join('・')}も予定
+                      </div>
                     ) : null}
-                  </span>
-                  {game.cancelled ? (
-                    <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
-                      {game.note}
-                    </span>
-                  ) : (
-                    <span className="tnum shrink-0 text-[11px] text-marine">{game.startTime}</span>
-                  )}
-                </div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           )}
         </Card>
@@ -901,10 +957,6 @@ export default function SavingsClient({
               <div className="min-w-0">
                 <p className="text-[13px]">
                   この月に {monthUnregistered.length} 試合ぶん、まだ積み立てていません。
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
-                  試合データは全員共通です。共通の貯金ルールで計算して積み立てます。
-                  接続済みのアカウントには自動で立つので、ここに出るのは取りこぼしだけです。
                 </p>
               </div>
               <Amount value={unregisteredTotal} size="sm" tone="marine" />

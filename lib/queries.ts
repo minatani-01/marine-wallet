@@ -4,6 +4,7 @@ import { DEFAULT_SAVING_RULES } from '@/lib/savings'
 import { MEMBER_AVATAR_BUCKET, MEMBER_AVATAR_TTL_SECONDS } from '@/lib/constants'
 import type {
   Game,
+  GamePlan,
   LinkMonthlyCompare,
   LinkPermissionRow,
   LinkResource,
@@ -614,6 +615,24 @@ export async function getScheduledGames(from: string, limit = 6): Promise<Schedu
       .neq('status', 'finished')
       .order('game_date', { ascending: true })
       .limit(limit)
+  )
+  return data ?? []
+}
+
+/**
+ * これからの試合の観戦予定（0048）。
+ *
+ * 自分のぶんだけでなく、接続している相手のぶんも入る（RLS で絞られる）。
+ * 「その日は相手も行く」が見えると、待ち合わせの相談になる。
+ */
+export async function getGamePlans(from: string): Promise<GamePlan[]> {
+  const supabase = await createClient()
+  const data = await read<GamePlan[]>('game_plans', () =>
+    supabase
+      .from('game_plans')
+      .select('id, user_id, game_date')
+      .gte('game_date', from)
+      .order('game_date', { ascending: true })
   )
   return data ?? []
 }

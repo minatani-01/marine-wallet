@@ -14,6 +14,7 @@ import {
   getCircleMembers,
   getCancelledGames,
   getScheduledGames,
+  getGamePlans,
 } from '@/lib/queries'
 
 export default async function SavingsPage() {
@@ -32,6 +33,7 @@ export default async function SavingsPage() {
     members,
     cancelled,
     scheduled,
+    plans,
   ] = await Promise.all([
       getSavingEntries(user.id),
       getMonthlySavings(user.id),
@@ -49,6 +51,8 @@ export default async function SavingsPage() {
       getCancelledGames(),
       // これからの試合。中止もここに入る
       getScheduledGames(today()),
+      // 観戦予定。自分のぶんと、接続している相手のぶん
+      getGamePlans(today()),
     ])
 
   return (
@@ -65,6 +69,7 @@ export default async function SavingsPage() {
       members={members}
       cancelled={cancelled}
       scheduled={scheduled}
+      plans={plans}
     />
   )
 }
