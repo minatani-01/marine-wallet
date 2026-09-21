@@ -5,16 +5,19 @@ import Link from 'next/link'
 import { Card, Segmented } from '@/components/ui'
 import StadiumArt from '@/components/stadiums/StadiumArt'
 import { buildStampCard, companionLabel } from '@/lib/stadium-stamp'
-import { stadiumById } from '@/lib/stadiums'
+import { stadiumById, stadiumOf } from '@/lib/stadiums'
 import { countdownUnit, opponentLabel } from '@/lib/constants'
 import { formatWinRate } from '@/lib/insights'
 import { shortDate } from '@/lib/format'
 import { familyName } from '@/lib/npb/milestones'
 import type { SeasonRecord } from '@/lib/insights'
 import { MARINES_TEAM_LABEL as MARINES_TEAM } from '@/lib/npb/fetch'
+import { upcomingOf } from '@/lib/upcoming'
 import type {
   CircleMember,
   Game,
+  GamePlan,
+  ScheduledGame,
   StadiumVisit,
   Standing,
   UpcomingMilestoneRow,
@@ -52,6 +55,8 @@ function formatGamesBehind(value: number): string {
 export default function HomePanels({
   record,
   standings,
+  scheduled,
+  plans,
   upcoming,
   visits,
   games,
@@ -60,6 +65,10 @@ export default function HomePanels({
   record: SeasonRecord
   /** パ・リーグの順位。取り込みがまだなら空 */
   standings: Standing[]
+  /** これからの試合。観戦予定の球場と相手を引くのに使う */
+  scheduled: ScheduledGame[]
+  /** 自分の観戦予定 */
+  plans: GamePlan[]
   upcoming: UpcomingMilestoneRow[]
   visits: StadiumVisit[]
   /** スタンプに点数を刻むために使う */
@@ -76,6 +85,26 @@ export default function HomePanels({
 
 
   const card = useMemo(() => buildStampCard(visits, games), [visits, games])
+
+  /**
+   * これから行く予定。スタンプの前（左）に並べる。
+   *
+   * まだ行っていないので、スタンプとは分けて灰色で出す。球場が分からない
+   * 試合（表記の揺れで引けないもの）は出さない。絵が描けないため。
+   */
+  const planned = useMemo(() => {
+    const dates = new Set(plans.map((p) => p.game_date))
+    return upcomingOf(
+      scheduled.filter((g) => dates.has(g.game_date) && g.status !== 'cancelled'),
+      Number.MAX_SAFE_INTEGER
+    )
+      .map((game) => ({ game, stadium: stadiumOf(game.place) }))
+      .filter((row): row is { game: (typeof row)['game']; stadium: NonNullable<typeof row.stadium> } =>
+        row.stadium !== null
+      )
+      // 近い予定から順に。右へ送るほど先の予定になる
+      .sort((a, b) => a.game.date.localeCompare(b.game.date))
+  }, [plans, scheduled])
 
   /** 観戦したぶんを新しい順に。右へ送るほど過去へ戻る */
   const log = useMemo(
@@ -152,7 +181,7 @@ export default function HomePanels({
               </Link>
             </div>
 
-            {log.length === 0 ? (
+            {log.length === 0 && planned.length === 0 ? (
               <p className="mt-3 text-[13px] leading-relaxed text-fg-mute">
                 まだスタンプがありません。貯金の記録一覧で、行った試合の「現地観戦」を押してください。
               </p>
@@ -160,6 +189,32 @@ export default function HomePanels({
               /* 端まで並べたいので、カードの余白ぶんだけ外へ出す */
               <div className="scroll-x mt-3 -mx-4 overflow-x-auto px-4">
                 <div className="flex w-max gap-2.5">
+                  {/* これから行く予定。まだ行っていないので灰色にする */}
+                  {planned.map(({ game, stadium }) => (
+                    <div
+                      key={`plan-${game.date}`}
+                      className="w-[104px] shrink-0 rounded-xl border border-line bg-white/[0.02] px-2 pt-1.5 pb-2"
+                    >
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span className="text-[10px] font-semibold text-fg-mute">予定</span>
+                        <span className="truncate text-[7px] tracking-[0.16em] text-fg-mute">
+                          {stadium.prefectureEn}
+                        </span>
+                      </div>
+                      <div className="text-fg-mute">
+                        <StadiumArt id={stadium.id} shape={stadium.shape} className="h-10 w-full" />
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-fg-dim">{stadium.short}</div>
+                      <div className="tnum truncate text-[9px] text-fg-mute">
+                        {stampDate(game.date)}
+                      </div>
+                      <div className="tnum truncate text-[9px] text-fg-mute">
+                        {game.isHome ? 'vs' : '@'} {game.opponent}
+                      </div>
+                      <div className="truncate text-[9px] text-fg-mute">{game.startTime}</div>
+                    </div>
+                  ))}
+
                   {log.map(({ no, visit, id }) => {
                     const stadium = stadiumById(id)
                     if (!stadium) return null
