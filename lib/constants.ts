@@ -192,19 +192,19 @@ export const EXTERNAL_APPS: Record<
   marines: {
     label: 'MARINES APP',
     hint: '球団公式アプリ（チケット・Mコレ）の起動URL',
-    // Chrome の intent は、アプリ側が「ブラウザから開いてよい」と宣言している
-    // 入口しか開けない。パッケージ名だけでは起動できないので、独自スキーム
-    // （marinesapp）を指定して試す。開けなければ Google Play のページへ飛ぶ
-    defaultUrl:
-      'intent://#Intent;scheme=marinesapp;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
-    note: 'Android Chrome 向けの intent URL を既定にしています。開けずに Google Play が出るときは、下の候補を1つずつ試してください。',
+    // アプリが「自分が開く」と宣言して検証済みのリンク（端末の
+    // 「デフォルトで開く」に出ている app.marines-app.com）。この形なら
+    // Android でも iOS でも、入っていればアプリが開く。
+    // パッケージ名や独自スキームでは開けなかった
+    defaultUrl: 'https://app.marines-app.com/',
+    note: '入っていればアプリが開きます。開かないときは下の候補を試して、開いたものを保存してください。',
     candidates: [
-      { label: 'marinesapp://', url: 'marinesapp://' },
-      { label: 'marines://', url: 'marines://' },
-      { label: 'marinesapp（intent）', url: 'intent://#Intent;scheme=marinesapp;package=jp.co.marines.official.app;end' },
-      { label: 'marines（intent）', url: 'intent://#Intent;scheme=marines;package=jp.co.marines.official.app;end' },
-      { label: 'marines.co.jp', url: 'https://www.marines.co.jp/' },
-      { label: 'marines.co.jp/app', url: 'https://www.marines.co.jp/app/' },
+      { label: 'app.marines-app.com', url: 'https://app.marines-app.com/' },
+      {
+        label: 'app.marines-app.com（intent）',
+        url: 'intent://app.marines-app.com/#Intent;scheme=https;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
+      },
+      { label: 'Google Play', url: 'https://play.google.com/store/apps/details?id=jp.co.marines.official.app' },
       { label: 'App Store', url: 'https://apps.apple.com/jp/app/id1099673155' },
     ],
   },
