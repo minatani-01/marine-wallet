@@ -159,7 +159,20 @@ export type ExternalAppKey = 'onebank' | 'paypay' | 'marines'
 
 export const EXTERNAL_APPS: Record<
   ExternalAppKey,
-  { label: string; hint: string; defaultUrl: string; note?: string }
+  {
+    label: string
+    hint: string
+    defaultUrl: string
+    note?: string
+    /**
+     * 起動できるかどうかを1つずつ試すための候補。
+     *
+     * アプリを開ける入口（独自スキーム・検証済みリンク）は公開されて
+     * いないことが多い。当たりは端末で押して確かめるしかないので、
+     * 押すだけで試せる形にしておく。
+     */
+    candidates?: { label: string; url: string }[]
+  }
 > = {
   onebank: {
     label: 'ワンバンク',
@@ -184,7 +197,16 @@ export const EXTERNAL_APPS: Record<
     // （marinesapp）を指定して試す。開けなければ Google Play のページへ飛ぶ
     defaultUrl:
       'intent://#Intent;scheme=marinesapp;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
-    note: 'Android Chrome 向けの intent URL を既定にしています。開けずに Google Play が出るときは、スキームが違います。iOS では marinesapp:// か、App Store のページ（https://apps.apple.com/jp/app/id1099673155）に上書きしてください。',
+    note: 'Android Chrome 向けの intent URL を既定にしています。開けずに Google Play が出るときは、下の候補を1つずつ試してください。',
+    candidates: [
+      { label: 'marinesapp://', url: 'marinesapp://' },
+      { label: 'marines://', url: 'marines://' },
+      { label: 'marinesapp（intent）', url: 'intent://#Intent;scheme=marinesapp;package=jp.co.marines.official.app;end' },
+      { label: 'marines（intent）', url: 'intent://#Intent;scheme=marines;package=jp.co.marines.official.app;end' },
+      { label: 'marines.co.jp', url: 'https://www.marines.co.jp/' },
+      { label: 'marines.co.jp/app', url: 'https://www.marines.co.jp/app/' },
+      { label: 'App Store', url: 'https://apps.apple.com/jp/app/id1099673155' },
+    ],
   },
 }
 

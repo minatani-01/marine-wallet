@@ -68,6 +68,25 @@ export default function AppLinkSettings() {
                 {meta.note ? (
                   <p className="mt-1.5 text-[11px] leading-relaxed text-fg-mute">{meta.note}</p>
                 ) : null}
+
+                {/* 当たりを探すための候補。押すと開くだけで、保存はしない。
+                    開いたものを上の欄に入れて保存する */}
+                {meta.candidates ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {meta.candidates.map((candidate) => (
+                      <a
+                        key={candidate.url}
+                        href={candidate.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => setLinks({ ...links, [key]: candidate.url })}
+                        className="inline-flex min-h-[32px] items-center rounded-full border border-line px-3 text-[11px] text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+                      >
+                        {candidate.label}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
               </Field>
             )
           })}
