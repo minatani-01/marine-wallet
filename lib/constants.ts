@@ -198,11 +198,13 @@ export const EXTERNAL_APPS: Record<
   onebank: {
     label: 'ワンバンク',
     hint: '月末の貯金入金に使うアプリの起動URL',
-    // アプリが「自分が開く」と宣言して検証済みのリンク（端末の
-    // 「デフォルトで開く」に出ている b43.jp）。パッケージ名だけの intent は
-    // ブラウザから起動できず Google Play に落ちるので、こちらを既定にする
-    defaultUrl: 'https://b43.jp/',
-    note: '入っていればアプリが開きます。開かないときは下の候補を試して、開いたものを保存してください。',
+    // 検証済みのリンク（b43.jp）をそのまま開いてもアプリには渡らなかった。
+    // ブラウザの中での移動は、検証済みであってもブラウザが抱え込む。
+    // アプリへ渡すには intent の形にして名指しする必要がある。
+    // 外れたときは Google Play のページへ飛ぶ
+    defaultUrl:
+      'intent://b43.jp/#Intent;scheme=https;package=jp.co.smartbank.b43;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.smartbank.b43;end',
+    note: 'Android 向けの intent を既定にしています。開かないときは下の候補を試して、開いたものを保存してください。iOS では b43.jp を試してください。',
     candidates: [
       { label: 'b43.jp', url: 'https://b43.jp/' },
       { label: 'b43.go.link', url: 'https://b43.go.link/' },
