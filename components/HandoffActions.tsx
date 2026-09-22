@@ -31,10 +31,11 @@ export function resolveAppUrl(app: ExternalAppKey): string {
 
 /** マイページの入力欄に出す値。上書きが無ければ既定値を見せる */
 export function loadAppLinks(): AppLinks {
-  return {
-    onebank: resolveAppUrl('onebank'),
-    paypay: resolveAppUrl('paypay'),
+  const links: AppLinks = {}
+  for (const key of Object.keys(EXTERNAL_APPS) as ExternalAppKey[]) {
+    links[key] = resolveAppUrl(key)
   }
+  return links
 }
 
 /**
