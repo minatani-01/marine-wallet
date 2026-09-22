@@ -274,6 +274,7 @@ export default function SavingsClient({
       const body = (await res.json()) as {
         error?: string
         schedule?: { updated?: { game_date: string; status: string }[]; added?: number }
+        swept?: { games?: number }
         created?: number
         skipped?: number
         remaining?: number
@@ -295,6 +296,9 @@ export default function SavingsClient({
         }
         if ((body.schedule?.added ?? 0) > 0) {
           parts.push(`${body.schedule?.added} 試合の予定を取り込みました`)
+        }
+        if ((body.swept?.games ?? 0) > 0) {
+          parts.push(`${body.swept?.games} 試合を中止に直しました`)
         }
 
         const updated = body.repaired?.updated ?? 0

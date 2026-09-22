@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { Amount, Card, SectionLabel, StatusPill } from '@/components/ui'
 import { IconChevronRight, IconUsers, IconWallet } from '@/components/icons'
 import SavingsTrend from '@/components/home/SavingsTrend'
+import { OpenAppMark } from '@/components/HandoffActions'
 import HomePanels from '@/components/home/HomePanels'
 import type { ChartPoint } from '@/components/charts/CumulativeChart'
 import {
@@ -138,14 +139,20 @@ export default async function HomePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ヒーロー */}
-      <div>
-        <p className="text-[22px] leading-snug font-semibold tracking-wide">
-          好きが、
-          <br />
-          未来をつくる。
-        </p>
-        <p className="mt-2 text-[10px] tracking-[0.28em] text-fg-mute uppercase">More than a game</p>
+      {/* ヒーロー。右肩に球団公式アプリへの入口を置く */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[22px] leading-snug font-semibold tracking-wide">
+            好きが、
+            <br />
+            未来をつくる。
+          </p>
+          <p className="mt-2 text-[10px] tracking-[0.28em] text-fg-mute uppercase">
+            More than a game
+          </p>
+        </div>
+
+        <OpenAppMark app="marines" src="/brand/marines.png" fallback="公式" size={46} />
       </div>
 
       {/* 累計 */}

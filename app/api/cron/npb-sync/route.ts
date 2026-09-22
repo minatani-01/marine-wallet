@@ -12,7 +12,7 @@ import { registerYesterdayGame } from '@/lib/npb/register'
 import { snapshotSourcePages } from '@/lib/npb/pages'
 import { registerMilestones } from '@/lib/npb/milestone-register'
 import { refreshStandings, saveLeagueGames } from '@/lib/npb/league'
-import { fillFutureMonths } from '@/lib/npb/schedule-refresh'
+import { fillFutureMonths, sweepPastScheduled } from '@/lib/npb/schedule-refresh'
 import { jstDate } from '@/lib/jst'
 import { opponentLabel } from '@/lib/constants'
 import { sendPushToAll } from '@/lib/push'
@@ -110,10 +110,14 @@ export async function GET(request: Request) {
       standings = { error: cause instanceof Error ? cause.message : String(cause) }
     }
 
-    // シーズンの残りの月を少しずつ埋める。1回につき1か月だけ取りに行く
+    // シーズンの残りの月を少しずつ埋める。1回につき1か月だけ取りに行く。
+    // あわせて、日付を過ぎても得点の無い行を中止に直す
     let future: unknown = null
     try {
-      future = await fillFutureMonths(supabase, now)
+      future = {
+        ...(await fillFutureMonths(supabase, now)),
+        swept: await sweepPastScheduled(supabase, jstDate(now)),
+      }
     } catch (cause) {
       future = { error: cause instanceof Error ? cause.message : String(cause) }
     }

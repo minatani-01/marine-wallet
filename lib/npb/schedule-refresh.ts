@@ -216,3 +216,32 @@ export async function fillFutureMonths(
     missing: missing.length - picked.length,
   }
 }
+
+/**
+ * すでに貯めてある行のうち、日付を過ぎても得点の無いものを中止に直す。
+ *
+ * 取り直しは月ごとで、すでに取った月は取りに行かない。中止の見分け方を
+ * あとから直しても、古い月に残った行はそのままになる。ここは npb.jp へ
+ * 出ずに、貯めてある行だけを見て直す。
+ *
+ * 備考は触らない。天気の文言が入っていても、画面では「中止」と出る。
+ */
+export async function sweepPastScheduled(
+  supabase: Admin,
+  today: string
+): Promise<{ games: number; league: number }> {
+  const fix = async (table: 'npb_games' | 'npb_league_games') => {
+    const { data, error } = await supabase
+      .from(table)
+      .update({ status: 'cancelled' })
+      .lt('game_date', today)
+      .eq('status', 'scheduled')
+      .is('home_score', null)
+      .is('away_score', null)
+      .select('game_date')
+    if (error) throw new Error(`${table} を直せませんでした: ${error.message}`)
+    return (data ?? []).length
+  }
+
+  return { games: await fix('npb_games'), league: await fix('npb_league_games') }
+}

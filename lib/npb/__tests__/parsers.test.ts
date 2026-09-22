@@ -324,7 +324,14 @@ test('日付を過ぎても得点の無い試合は中止として扱う', async
   const [today] = withCancelled([base], '2026-09-20')
   assert.equal(today.status, 'scheduled')
 
-  // ボックススコアがあるなら行われている。触らない
-  const [played] = withCancelled([{ ...base, boxScorePath: '/scores/2026/0920/m-l-20/' }], '2026-09-21')
+  // 中止の試合にもボックススコアのリンクは残る。目印にしない
+  const [linked] = withCancelled(
+    [{ ...base, boxScorePath: '/scores/2026/0920/m-l-20/' }],
+    '2026-09-21'
+  )
+  assert.equal(linked.status, 'cancelled')
+
+  // 得点が入っていれば行われている。触らない
+  const [played] = withCancelled([{ ...base, homeScore: 3, awayScore: 1 }], '2026-09-21')
   assert.equal(played.status, 'scheduled')
 })
