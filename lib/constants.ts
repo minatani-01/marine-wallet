@@ -179,10 +179,12 @@ export const EXTERNAL_APPS: Record<
   marines: {
     label: 'MARINES APP',
     hint: '球団公式アプリ（チケット・Mコレ）の起動URL',
-    // ワンバンクと同じ intent スキーム。入っていなければ Google Play へ飛ぶ
+    // Chrome の intent は、アプリ側が「ブラウザから開いてよい」と宣言している
+    // 入口しか開けない。パッケージ名だけでは起動できないので、独自スキーム
+    // （marinesapp）を指定して試す。開けなければ Google Play のページへ飛ぶ
     defaultUrl:
-      'intent://#Intent;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
-    note: 'Android Chrome 向けの intent URL を既定にしています。iOS では App Store のページ（https://apps.apple.com/jp/app/id1099673155）に上書きしてください。',
+      'intent://#Intent;scheme=marinesapp;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
+    note: 'Android Chrome 向けの intent URL を既定にしています。開けずに Google Play が出るときは、スキームが違います。iOS では marinesapp:// か、App Store のページ（https://apps.apple.com/jp/app/id1099673155）に上書きしてください。',
   },
 }
 
