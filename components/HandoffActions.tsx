@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { IconCheck, IconCopy, IconExternal } from '@/components/icons'
 import { APP_LINK_STORAGE_KEY, EXTERNAL_APPS, type ExternalAppKey } from '@/lib/constants'
 
@@ -112,6 +112,70 @@ export function OpenAppButton({ app }: { app: ExternalAppKey }) {
     >
       <IconExternal size={17} />
       {meta.label}を開く
+    </a>
+  )
+}
+
+/**
+ * ロゴだけの起動ボタン。
+ *
+ * 画像が無い環境では、文字だけの丸ボタンに落とす。ロゴは球団のもので、
+ * リポジトリに置いていない端末・環境でも画面が崩れないようにする
+ * （components/Brand.tsx と同じ考え方）。
+ */
+export function OpenAppMark({
+  app,
+  src,
+  size = 44,
+  fallback,
+}: {
+  app: ExternalAppKey
+  /** ロゴ画像の場所。読み込めなければ fallback を出す */
+  src: string
+  size?: number
+  /** 画像が無いときに出す短い文字 */
+  fallback: string
+}) {
+  const meta = EXTERNAL_APPS[app]
+  const [url, setUrl] = useState(meta.defaultUrl)
+  const [loaded, setLoaded] = useState(false)
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  useEffect(() => {
+    setUrl(resolveAppUrl(app))
+  }, [app])
+
+  // SSR された img はハイドレーション前に読み込みが終わることがあり、
+  // その場合 onLoad が発火しない。マウント時に完了済みかを確認する
+  useEffect(() => {
+    const img = imgRef.current
+    if (img?.complete && img.naturalWidth > 0) setLoaded(true)
+  }, [])
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${meta.label}を開く`}
+      title={`${meta.label}を開く`}
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[22%] border border-line bg-white transition-opacity hover:opacity-80"
+      style={{ width: size, height: size }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={imgRef}
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        className="h-full w-full object-contain"
+        style={{ display: loaded ? 'block' : 'none' }}
+        onLoad={() => setLoaded(true)}
+      />
+      {loaded ? null : (
+        <span className="text-[11px] font-semibold text-ink">{fallback}</span>
+      )}
     </a>
   )
 }
