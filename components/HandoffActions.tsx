@@ -24,9 +24,18 @@ export function loadAppLinkOverrides(): AppLinks {
  * 端末によって最適なURLが違う場合（例: intent スキームは Android のみ）は
  * マイページで上書きする。
  */
+/** この端末が Android かどうか。起動URLの形が変わる */
+function isAndroid(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /Android/i.test(navigator.userAgent)
+}
+
 export function resolveAppUrl(app: ExternalAppKey): string {
   const override = loadAppLinkOverrides()[app]?.trim()
-  return override || EXTERNAL_APPS[app].defaultUrl
+  if (override) return override
+
+  const meta = EXTERNAL_APPS[app]
+  return (isAndroid() && meta.androidUrl) || meta.defaultUrl
 }
 
 /** マイページの入力欄に出す値。上書きが無ければ既定値を見せる */

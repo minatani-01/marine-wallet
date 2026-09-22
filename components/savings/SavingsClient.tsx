@@ -275,6 +275,7 @@ export default function SavingsClient({
         error?: string
         schedule?: { updated?: { game_date: string; status: string }[]; added?: number }
         swept?: { games?: number }
+        errors?: Record<string, string>
         created?: number
         skipped?: number
         remaining?: number
@@ -319,6 +320,9 @@ export default function SavingsClient({
 
         const restGames = body.remaining ?? 0
         if (restGames > 0) parts.push(`未登録の試合が ${restGames} 件`)
+
+        const failed = Object.keys(body.errors ?? {})
+        if (failed.length > 0) parts.push(`${failed.length} 段でつまずきました`)
 
         const mismatches = body.repaired?.mismatches ?? []
         if (mismatches.length > 0) {

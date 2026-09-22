@@ -53,52 +53,63 @@ export async function POST() {
     return NextResponse.json({ error: message }, { status: 503 })
   }
 
-  try {
-    const now = new Date()
-    const season = Number(jstDate(now).slice(0, 4))
+  const now = new Date()
+  const season = Number(jstDate(now).slice(0, 4))
 
-    // 0. シーズンの残りの日程を取り直す。中止や開始時刻の変更はその日に決まり、
-    //    先の月ぶんもここでまとめて入る
-    const schedule = await refreshSchedule(
-      admin,
-      now,
-      undefined,
-      remainingMonths(now.getFullYear(), now.getMonth() + 1)
-    )
-
-    // 1. 取得データの無い月を取りに行く。ここで npb.jp へ出る
-    const collected = await collectMissingMonths(admin, season)
-
-    // 2. 本塁打とセーブを見るためのボックススコア。これも npb.jp へ出る
-    const boxes = await collectBoxScores(admin, season)
-
-    // 3. すでにある試合を直す。DB の中だけで完結する
-    const repaired = await repairGames(admin, season)
-
-    // 4. まだ登録していない試合を取り込む
-    const result = await backfillGames(admin)
-
-    // 5. 順位のための12球団ぶんの日程。仕組みを入れる前の月を埋める。
-    //    ここも npb.jp へ出るので、1回に取る月を絞ってある
-    // 古い月に残った「予定のままの過去の試合」を中止に直す
-    const swept = await sweepPastScheduled(admin, jstDate(now))
-
-    const league = await collectLeagueMonths(admin, season)
-    const standings = await refreshStandings(admin, season)
-
-    return NextResponse.json({
-      ok: true,
-      ...result,
-      schedule,
-      swept,
-      collected,
-      boxes,
-      repaired,
-      league,
-      standings,
-    })
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause)
-    return NextResponse.json({ error: message }, { status: 500 })
+  /**
+   * 1段ずつ、失敗しても次へ進む。
+   *
+   * npb.jp が一時的に応答しないだけで全部が止まると、DB の中だけで
+   * 終わる処理（中止の直し・順位の計算）まで巻き添えになる。実際、
+   * 途中で止まって古い月の中止が直らなかった。
+   */
+  const errors: Record<string, string> = {}
+  const step = async <T,>(name: string, run: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await run()
+    } catch (cause) {
+      errors[name] = cause instanceof Error ? cause.message : String(cause)
+      return null
+    }
   }
+
+  // 0. シーズンの残りの日程を取り直す。中止や開始時刻の変更はその日に決まり、
+  //    先の月ぶんもここでまとめて入る
+  const schedule = await step('schedule', () =>
+    refreshSchedule(admin, now, undefined, remainingMonths(now.getFullYear(), now.getMonth() + 1))
+  )
+
+  // 1. 古い月に残った「予定のままの過去の試合」を中止に直す。
+  //    npb.jp へは出ないので、取得が失敗した日でも必ず通す
+  const swept = await step('swept', () => sweepPastScheduled(admin, jstDate(now)))
+
+  // 2. 取得データの無い月を取りに行く。ここで npb.jp へ出る
+  const collected = await step('collected', () => collectMissingMonths(admin, season))
+
+  // 3. 本塁打とセーブを見るためのボックススコア。これも npb.jp へ出る
+  const boxes = await step('boxes', () => collectBoxScores(admin, season))
+
+  // 4. すでにある試合を直す。DB の中だけで完結する
+  const repaired = await step('repaired', () => repairGames(admin, season))
+
+  // 5. まだ登録していない試合を取り込む
+  const result = await step('backfill', () => backfillGames(admin))
+
+  // 6. 順位のための12球団ぶんの日程。仕組みを入れる前の月を埋める。
+  //    ここも npb.jp へ出るので、1回に取る月を絞ってある
+  const league = await step('league', () => collectLeagueMonths(admin, season))
+  const standings = await step('standings', () => refreshStandings(admin, season))
+
+  return NextResponse.json({
+    ok: Object.keys(errors).length === 0,
+    ...(result ?? {}),
+    schedule,
+    swept,
+    collected,
+    boxes,
+    repaired,
+    league,
+    standings,
+    ...(Object.keys(errors).length > 0 ? { errors } : {}),
+  })
 }
