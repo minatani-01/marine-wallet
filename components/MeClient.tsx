@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Button, Card, Field, Row, SectionLabel, inputClass } from '@/components/ui'
 import AvatarPicker from '@/components/AvatarPicker'
 import NotificationSettings from '@/components/me/NotificationSettings'
+import AppLinkSettings from '@/components/me/AppLinkSettings'
 import {
   IconCheck,
   IconChevronRight,
@@ -265,6 +266,8 @@ export default function MeClient({
       </div>
 
       <NotificationSettings userId={userId} initialPreferences={notificationPreferences} />
+
+      <AppLinkSettings />
 
       {/* メンバーと Marine Link は、共有を組み立てる側の機能なのでマスターだけに出す */}
       {profile?.is_master ? (
