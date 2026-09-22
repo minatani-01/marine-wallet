@@ -157,6 +157,19 @@ export function categoryLabel(id: ExpenseCategory): string {
  */
 export type ExternalAppKey = 'onebank' | 'paypay' | 'marines'
 
+/**
+ * MARINES APP を名指しで起動する intent URL を組み立てる。
+ *
+ * アプリが受け取ると宣言している道筋に当たれば起動し、外れれば
+ * Google Play のページが開く。押して確かめるために使う。
+ */
+function intentFor(path: string): string {
+  const fallback = encodeURIComponent(
+    'https://play.google.com/store/apps/details?id=jp.co.marines.official.app'
+  )
+  return `intent://app.marines-app.com${path}#Intent;scheme=https;package=jp.co.marines.official.app;S.browser_fallback_url=${fallback};end`
+}
+
 export const EXTERNAL_APPS: Record<
   ExternalAppKey,
   {
@@ -208,12 +221,17 @@ export const EXTERNAL_APPS: Record<
     androidUrl:
       'intent://app.marines-app.com/#Intent;scheme=https;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
     note: '入っていればアプリが開きます。開かないときは下の候補を試して、開いたものを保存してください。',
+    // 検証済みのリンクは app.marines-app.com だが、アプリが受け取る道筋
+    // （パス）までは端末の設定画面に出ない。根っこ（/）では開かなかったので、
+    // ありそうな道筋を押して試せるようにしておく
     candidates: [
-      { label: 'app.marines-app.com', url: 'https://app.marines-app.com/' },
-      {
-        label: 'app.marines-app.com（intent）',
-        url: 'intent://app.marines-app.com/#Intent;scheme=https;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
-      },
+      { label: '/（root）', url: intentFor('/') },
+      { label: '/home', url: intentFor('/home') },
+      { label: '/top', url: intentFor('/top') },
+      { label: '/news', url: intentFor('/news') },
+      { label: '/mypage', url: intentFor('/mypage') },
+      { label: '/ticket', url: intentFor('/ticket') },
+      { label: 'https のまま', url: 'https://app.marines-app.com/' },
       { label: 'Google Play', url: 'https://play.google.com/store/apps/details?id=jp.co.marines.official.app' },
       { label: 'App Store', url: 'https://apps.apple.com/jp/app/id1099673155' },
     ],
