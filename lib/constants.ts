@@ -163,6 +163,14 @@ export const EXTERNAL_APPS: Record<
     label: string
     hint: string
     defaultUrl: string
+    /**
+     * Android のときに使うURL。
+     *
+     * 同じ検証済みリンクでも、アプリ内のブラウザから開くとアプリへ渡らず、
+     * 白い画面が出ることがある。Android では intent を使って、アプリを
+     * 名指しで起動する。
+     */
+    androidUrl?: string
     note?: string
     /**
      * 起動できるかどうかを1つずつ試すための候補。
@@ -197,6 +205,8 @@ export const EXTERNAL_APPS: Record<
     // Android でも iOS でも、入っていればアプリが開く。
     // パッケージ名や独自スキームでは開けなかった
     defaultUrl: 'https://app.marines-app.com/',
+    androidUrl:
+      'intent://app.marines-app.com/#Intent;scheme=https;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
     note: '入っていればアプリが開きます。開かないときは下の候補を試して、開いたものを保存してください。',
     candidates: [
       { label: 'app.marines-app.com', url: 'https://app.marines-app.com/' },
