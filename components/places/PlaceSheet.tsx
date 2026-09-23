@@ -5,9 +5,16 @@ import { useRouter } from 'next/navigation'
 import { Button, Chip, Field, Sheet, inputClassCompact } from '@/components/ui'
 import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
-import { PLACE_KINDS, hasGenre, placeKindLabel } from '@/lib/places'
+import {
+  PLACE_KINDS,
+  PRICE_BANDS,
+  PRICE_BAND_LABEL,
+  hasGenre,
+  placeKindLabel,
+  toggleTag,
+} from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
+import type { Place, PlaceGenre, PlaceKind, PlaceTagKind, PriceBand } from '@/types'
 
 /**
  * 行きたい場所の登録と編集。
@@ -22,11 +29,6 @@ import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
  */
 
 type Hit = { name: string; address: string; lat: number; lng: number }
-
-/** 押した言葉を入れる・外す。同じ言葉は二度入れない */
-function toggle(list: string[], name: string): string[] {
-  return list.includes(name) ? list.filter((item) => item !== name) : [...list, name]
-}
 
 /**
  * 候補の札。
@@ -94,6 +96,7 @@ export default function PlaceSheet({
   const [note, setNote] = useState(place?.note ?? '')
   const [genres, setGenres] = useState<string[]>(place?.genres ?? [])
   const [ingredients, setIngredients] = useState<string[]>(place?.ingredients ?? [])
+  const [price, setPrice] = useState<PriceBand>(place?.price_band ?? '')
   /** 候補に無い言葉を足すための入力。押したときだけ足す */
   const [adding, setAdding] = useState('')
   const [saving, setSaving] = useState(false)
@@ -166,6 +169,7 @@ export default function PlaceSheet({
       note: note.trim(),
       genres: hasGenre(kind) ? genres : [],
       ingredients: hasGenre(kind) ? ingredients : [],
+      price_band: hasGenre(kind) ? price : '',
       // 検索で選んだなら座標は分かっている。引き直す必要は無い
       ...(picked
         ? {
@@ -278,6 +282,7 @@ export default function PlaceSheet({
                   if (!hasGenre(k)) {
                     setGenres([])
                     setIngredients([])
+                    setPrice('')
                   }
                 }}
               >
@@ -307,11 +312,27 @@ export default function PlaceSheet({
 
         {hasGenre(kind) ? (
           <>
+            {/* 価格帯（0050）。金額は持たず3段階にする。押し直せば未設定へ戻る */}
+            <Field label="価格帯" hint="1人あたりの目安">
+              <div className="flex flex-wrap gap-2">
+                {PRICE_BANDS.map((band) => (
+                  <Chip
+                    key={band}
+                    selected={price === band}
+                    onClick={() => setPrice(price === band ? '' : band)}
+                    className="min-w-[72px]"
+                  >
+                    {PRICE_BAND_LABEL[band]}
+                  </Chip>
+                ))}
+              </div>
+            </Field>
+
             <Field label="ジャンル" hint="いくつでも選べます">
               <TagChips
                 options={options.genre}
                 selected={genres}
-                onToggle={(name) => setGenres(toggle(genres, name))}
+                onToggle={(name) => setGenres(toggleTag(genres, name))}
               />
             </Field>
 
@@ -320,7 +341,7 @@ export default function PlaceSheet({
               <TagChips
                 options={options.ingredient}
                 selected={ingredients}
-                onToggle={(name) => setIngredients(toggle(ingredients, name))}
+                onToggle={(name) => setIngredients(toggleTag(ingredients, name))}
               />
             </Field>
 
@@ -339,7 +360,7 @@ export default function PlaceSheet({
                   disabled={adding.trim().length === 0}
                   onClick={() => {
                     tapFeedback()
-                    setGenres(toggle(genres, adding.trim()))
+                    setGenres(toggleTag(genres, adding.trim()))
                     setAdding('')
                   }}
                 >
@@ -351,7 +372,7 @@ export default function PlaceSheet({
                   disabled={adding.trim().length === 0}
                   onClick={() => {
                     tapFeedback()
-                    setIngredients(toggle(ingredients, adding.trim()))
+                    setIngredients(toggleTag(ingredients, adding.trim()))
                     setAdding('')
                   }}
                 >

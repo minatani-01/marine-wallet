@@ -168,6 +168,9 @@ export type PlaceKind = 'sight' | 'food'
 /** また行きたいか。空はまだどちらとも言っていない */
 export type Revisit = '' | 'yes' | 'no'
 
+/** 価格帯（0050）。空はまだ決めていない */
+export type PriceBand = '' | 'low' | 'mid' | 'high'
+
 export type Place = {
   id: string
   kind: PlaceKind
@@ -183,6 +186,8 @@ export type Place = {
   visited_on: string | null
   /** また行きたいか（0046）。'yes' リピあり / 'no' リピなし / '' まだ決めていない */
   revisit: Revisit
+  /** 価格帯（0050）。飲食だけに付ける。'' はまだ決めていない */
+  price_band: PriceBand
   created_by: string | null
   /** 名前と場所から引いた座標（0041）。引けなければ null で、地図には出ない */
   lat: number | null

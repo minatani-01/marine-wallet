@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -10,7 +10,6 @@ import {
   EmptyState,
   IconButton,
   IconFrame,
-  PillTabs,
   Segmented,
   inputClassCompact,
 } from '@/components/ui'
@@ -28,27 +27,28 @@ import { createClient } from '@/lib/supabase/client'
 import { parseTakeoutPlaces } from '@/lib/csv'
 import {
   PLACE_KINDS,
+  PRICE_BANDS,
+  PRICE_BAND_LABEL,
   REVISIT_CHOICES,
   REVISIT_LABEL,
+  filterByGenres,
+  filterByIngredients,
   filterByKind,
-  filterByTag,
+  filterByPrice,
   genresOf,
   ingredientsOf,
   mapsUrl,
   placeKindLabel,
+  priceLabel,
   revisitPatch,
   searchPlaces,
   splitPlaces,
+  toggleTag,
 } from '@/lib/places'
-import {
-  CLOSED_FILTER,
-  filterClosed,
-  isClosed,
-  statusLabel,
-} from '@/lib/places-status'
+import { filterClosed, isClosed, statusLabel } from '@/lib/places-status'
 import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
+import type { Place, PlaceGenre, PlaceKind, PriceBand, Revisit } from '@/types'
 
 /**
  * 行きたい場所と、行った場所。
@@ -74,20 +74,121 @@ const TABS: { id: Tab; label: string }[] = [
 /** 1回に座標を引く件数。上限に一度で当たらないようにする */
 const LOCATE_STEP = 20
 
-const KIND_TABS: { id: KindTab; label: string }[] = [
-  { id: 'all', label: 'すべて' },
-  { id: 'sight', label: '観光地' },
-  { id: 'food', label: '飲食' },
-]
+/**
+ * 絞り込みの条件。軸ごとに別々に持つ。
+ *
+ * ひとつの値で持っていたころは、ジャンルと食材が同じ場所に入っていたため
+ * 「焼肉」と「牛」を同時に選べなかった。軸を分けると、掛け合わせて絞れる。
+ * 同じ軸の中は「どれか」、軸どうしは「かつ」で効く。
+ */
+type Filters = {
+  genres: string[]
+  ingredients: string[]
+  prices: PriceBand[]
+  /** 閉店・休業だけを見る（0045） */
+  closedOnly: boolean
+}
+
+const NO_FILTERS: Filters = { genres: [], ingredients: [], prices: [], closedOnly: false }
+
+function narrowBy(rows: Place[], f: Filters): Place[] {
+  const out = filterByPrice(
+    filterByIngredients(filterByGenres(rows, f.genres), f.ingredients),
+    f.prices
+  )
+  return f.closedOnly ? filterClosed(out) : out
+}
+
+/** いくつ絞り込んでいるか。0 なら「すべて解除」を出さない */
+function activeCount(f: Filters, kind: KindTab): number {
+  return (
+    f.genres.length +
+    f.ingredients.length +
+    f.prices.length +
+    (f.closedOnly ? 1 : 0) +
+    (kind === 'all' ? 0 : 1)
+  )
+}
+
+type FilterItem = { id: string; label: string; on: boolean; onToggle: () => void }
 
 /**
- * ジャンル、または「閉店」で絞る。
+ * 1段に束ねた絞り込み（案B）。
  *
- * 「閉店」はジャンルの並びに置いてあるが、ジャンルの言葉ではない（0045）。
- * 選ばれたときだけ、状態のほうで絞る。
+ * 種別・価格帯・ジャンル・食材を、区切りを挟んだ横1列に並べる。段を分けて
+ * 積み上げると、画面の上半分がすべて絞り込みで埋まり、地図と一覧が下に
+ * 押し出される。1列なら、使うぶんだけ横へ送れる。
  */
-function narrowBy(rows: Place[], tag: string | null): Place[] {
-  return tag === CLOSED_FILTER ? filterClosed(rows) : filterByTag(rows, tag)
+function FilterRow({
+  groups,
+  active,
+  onClear,
+}: {
+  groups: { name: string; items: FilterItem[] }[]
+  active: number
+  onClear: () => void
+}) {
+  return (
+    <div className="-mx-4 flex items-center gap-2 px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+        {groups.map((group, index) => (
+          <Fragment key={group.name}>
+            {index > 0 ? (
+              <span aria-hidden="true" className="h-5 w-px shrink-0 bg-line" />
+            ) : null}
+            <div
+              role="group"
+              aria-label={group.name}
+              className="flex shrink-0 items-center gap-2"
+            >
+              {group.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={item.on}
+                  onClick={() => {
+                    tapFeedback()
+                    item.onToggle()
+                  }}
+                  className={`min-h-[38px] shrink-0 rounded-full border px-4 text-[13px] transition-colors ${
+                    item.on
+                      ? 'border-marine/70 bg-marine/12 text-marine font-medium shadow-[0_0_26px_-14px_rgba(34,211,238,0.9)]'
+                      : 'border-line text-fg-mute hover:text-fg-dim'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </Fragment>
+        ))}
+      </div>
+
+      {/* いくつ絞り込んでいるか。横へ送ると押した札が画面から出てしまうので、
+          ここは流さずに置く。数だけでも見えていれば、絞り込み中だと分かる */}
+      {active > 0 ? (
+        <>
+          <span
+            aria-hidden="true"
+            className="tnum shrink-0 rounded-full bg-marine/15 px-2 py-0.5 text-[11px] text-marine"
+          >
+            {active}
+          </span>
+          <button
+            type="button"
+            aria-label={`絞り込み ${active} 件を解除`}
+            onClick={() => {
+              tapFeedback()
+              onClear()
+            }}
+            className="min-h-[38px] shrink-0 text-[12px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+          >
+            解除
+          </button>
+        </>
+      ) : null}
+    </div>
+  )
 }
 
 function PlaceCard({
@@ -129,6 +230,13 @@ function PlaceCard({
             <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
               {place.name}
             </span>
+            {/* 価格帯（0050）。決めていない場所には何も出さない。
+                場所の手がかり（area）を押し出さないよう、名前の側に置く */}
+            {priceLabel(place.price_band) ? (
+              <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[10px] text-fg-dim">
+                {priceLabel(place.price_band)}
+              </span>
+            ) : null}
             {closedLabel ? (
               <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
                 {closedLabel}
@@ -216,7 +324,7 @@ export default function PlacesClient({
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('all')
   const [kind, setKind] = useState<KindTab>('all')
-  const [genre, setGenre] = useState<string | null>(null)
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [words, setWords] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -251,26 +359,115 @@ export default function PlacesClient({
   )
 
   /** いま出ている場所に実際に入っているジャンル・食材だけを出す */
-  const genres = useMemo(() => genresOf(byKind, tagOrder.genre), [byKind, tagOrder])
-  const ingredients = useMemo(() => ingredientsOf(byKind, tagOrder.ingredient), [byKind, tagOrder])
+  const genreChoices = useMemo(() => genresOf(byKind, tagOrder.genre), [byKind, tagOrder])
+  const ingredientChoices = useMemo(
+    () => ingredientsOf(byKind, tagOrder.ingredient),
+    [byKind, tagOrder]
+  )
 
   /** 閉店・休業の数。0 なら「閉店」の絞り込みも出さない */
   const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
 
   const shown = useMemo(
-    () => searchPlaces(narrowBy(byKind, genre), words),
-    [byKind, genre, words]
+    () => searchPlaces(narrowBy(byKind, filters), words),
+    [byKind, filters, words]
   )
 
-  /** 地図に出すぶん。タブでは絞らず、種別・ジャンル・言葉で絞る */
+  /** 地図に出すぶん。タブでは絞らず、種別・絞り込み・言葉で絞る */
   const onMap = useMemo(
     () =>
       searchPlaces(
-        narrowBy(filterByKind(places, kind === 'all' ? null : kind), genre),
+        narrowBy(filterByKind(places, kind === 'all' ? null : kind), filters),
         words
       ),
-    [places, kind, genre, words]
+    [places, kind, filters, words]
   )
+
+  /**
+   * 種別を選び直す。同じものをもう一度押したら「すべて」に戻す。
+   *
+   * 観光地にはジャンル・食材・価格帯が無い（0044 / 0049 / 0050）。
+   * 選んだまま観光地へ移ると、当たる場所が1つも無くなる。外しておく。
+   */
+  const chooseKind = (next: PlaceKind) => {
+    const value = kind === next ? 'all' : next
+    setKind(value)
+    if (value === 'sight') {
+      setFilters((f) => ({ ...f, genres: [], ingredients: [], prices: [] }))
+    }
+  }
+
+  /** 飲食の軸。観光地だけを見ているときは出さない */
+  const foodAxes = kind !== 'sight'
+
+  const filterGroups = [
+    {
+      name: '種別',
+      items: PLACE_KINDS.map((k) => ({
+        id: k,
+        label: placeKindLabel(k),
+        on: kind === k,
+        onToggle: () => chooseKind(k),
+      })),
+    },
+    ...(foodAxes
+      ? [
+          {
+            name: '価格帯',
+            items: PRICE_BANDS.map((band) => ({
+              id: band,
+              label: PRICE_BAND_LABEL[band],
+              on: filters.prices.includes(band),
+              onToggle: () =>
+                setFilters((f) => ({ ...f, prices: toggleTag(f.prices, band) })),
+            })),
+          },
+        ]
+      : []),
+    ...(foodAxes && genreChoices.length > 0
+      ? [
+          {
+            name: 'ジャンル',
+            items: genreChoices.map((name) => ({
+              id: name,
+              label: name,
+              on: filters.genres.includes(name),
+              onToggle: () =>
+                setFilters((f) => ({ ...f, genres: toggleTag(f.genres, name) })),
+            })),
+          },
+        ]
+      : []),
+    ...(foodAxes && ingredientChoices.length > 0
+      ? [
+          {
+            name: '食材',
+            items: ingredientChoices.map((name) => ({
+              id: name,
+              label: name,
+              on: filters.ingredients.includes(name),
+              onToggle: () =>
+                setFilters((f) => ({ ...f, ingredients: toggleTag(f.ingredients, name) })),
+            })),
+          },
+        ]
+      : []),
+    ...(closedCount > 0
+      ? [
+          {
+            name: '状態',
+            items: [
+              {
+                id: 'closed',
+                label: `閉店 ${closedCount}`,
+                on: filters.closedOnly,
+                onToggle: () => setFilters((f) => ({ ...f, closedOnly: !f.closedOnly })),
+              },
+            ],
+          },
+        ]
+      : []),
+  ]
 
   /** 地図に出ていない場所。座標を引けていないもの */
   const unlocated = useMemo(() => places.filter((p) => p.lat === null || p.lng === null), [places])
@@ -436,35 +633,17 @@ export default function PlacesClient({
       </Card>
 
       <Segmented value={tab} options={TABS} onChange={setTab} />
-      <Segmented value={kind} options={KIND_TABS} onChange={setKind} />
 
-      {/* ジャンル。登録されている言葉だけを出す（観光地にジャンルは無い）。
-          閉店した店があるときだけ、並びの最後に「閉店」を足す */}
-      {kind !== 'sight' && (genres.length > 0 || closedCount > 0) ? (
-        <PillTabs
-          value={genre && genres.includes(genre) ? genre : genre === CLOSED_FILTER ? genre : ''}
-          options={[
-            { id: '', label: 'ジャンル問わず' },
-            ...genres.map((g) => ({ id: g, label: g })),
-            ...(closedCount > 0
-              ? [{ id: CLOSED_FILTER, label: `閉店 ${closedCount}` }]
-              : []),
-          ]}
-          onChange={(id) => setGenre(id === '' ? null : id)}
-        />
-      ) : null}
-
-      {/* 食材。ジャンルとは別の軸で絞る（0049）。どちらか一方だけが効く */}
-      {kind !== 'sight' && ingredients.length > 0 ? (
-        <PillTabs
-          value={genre && ingredients.includes(genre) ? genre : ''}
-          options={[
-            { id: '', label: '食材問わず' },
-            ...ingredients.map((g) => ({ id: g, label: g })),
-          ]}
-          onChange={(id) => setGenre(id === '' ? null : id)}
-        />
-      ) : null}
+      {/* 種別・価格帯・ジャンル・食材を1段に束ねる（案B）。
+          押したものだけが効き、同じものをもう一度押すと外れる */}
+      <FilterRow
+        groups={filterGroups}
+        active={activeCount(filters, kind)}
+        onClear={() => {
+          setKind('all')
+          setFilters(NO_FILTERS)
+        }}
+      />
 
       <input
         className={inputClassCompact}
