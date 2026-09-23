@@ -232,6 +232,20 @@ export type ScheduledGame = {
 }
 
 /**
+ * シーズンぶんの試合（npb_games 由来）。対戦ごとの試合数を数えるのに使う。
+ *
+ * 中止になった試合の振替日は、決まるまで日程ページに出てこない。相手ごとの
+ * 試合数を比べれば、何試合が宙に浮いているのかが分かる。
+ */
+export type SeasonGame = {
+  game_date: string
+  home_team: string
+  away_team: string
+  /** 'scheduled' | 'finished' | 'cancelled' */
+  status: string
+}
+
+/**
  * リーグ順位（0047）。毎朝の取り込みで計算して入れ替える。
  * 順位は「いま何位か」を出すためだけに使う。
  */

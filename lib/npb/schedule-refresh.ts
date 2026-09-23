@@ -167,33 +167,42 @@ export async function refreshSchedule(
   }
 
   return {
-    months: months.map((m) => `${m.year}-${String(m.month).padStart(2, '0')}`),
+    months: months.map(monthKey),
     updated,
     added: fresh.length,
     league,
   }
 }
 
+/** '2026-09' の形にする */
+function monthKey(target: { year: number; month: number }): string {
+  return `${target.year}-${String(target.month).padStart(2, '0')}`
+}
+
 /**
- * まだ1試合も入っていない先の月を埋める。
+ * 先の月を埋める。埋まっていれば1か月だけ取り直す。
  *
  * 毎朝の取り込みが見るのは当月と翌月だけで、その先は空のままになる。
  * ここで1回につき1か月だけ取りに行く。毎日少しずつ埋まり、シーズンの
  * 残りが揃う。相手に負担をかけないよう、1回で取る月は増やさない。
+ *
+ * 全部埋まったあとも何もしないわけにはいかない。雨天中止の振替日が決まると
+ * 先の月に行が増えるので、取ったままにしておくと増えた試合が出てこない。
+ * 日付で順に選んで1か月だけ取り直す。数日でひと通り回る。
  */
 export async function fillFutureMonths(
   supabase: Admin,
   now: Date,
   fetchPage: (url: string) => Promise<string> = fetchNpbPage,
   limit = 1
-): Promise<{ filled: string[]; missing: number }> {
+): Promise<{ filled: string[]; refreshed: string[]; missing: number }> {
   const year = now.getFullYear()
   const month = now.getMonth() + 1
 
   // 当月と翌月は毎朝取っているので、その先だけを見る
   const done = new Set(scheduleMonths(year, month).map((m) => m.month))
   const targets = remainingMonths(year, month).filter((m) => !done.has(m.month))
-  if (targets.length === 0) return { filled: [], missing: 0 }
+  if (targets.length === 0) return { filled: [], refreshed: [], missing: 0 }
 
   const { data, error } = await supabase
     .from('npb_games')
@@ -206,13 +215,18 @@ export async function fillFutureMonths(
     ((data ?? []) as { game_date: string }[]).map((row) => Number(row.game_date.slice(5, 7)))
   )
   const missing = targets.filter((m) => !have.has(m.month))
-  if (missing.length === 0) return { filled: [], missing: 0 }
+  if (missing.length === 0) {
+    const pick = targets[now.getDate() % targets.length]
+    await refreshSchedule(supabase, now, fetchPage, [pick])
+    return { filled: [], refreshed: [monthKey(pick)], missing: 0 }
+  }
 
   const picked = missing.slice(0, limit)
   await refreshSchedule(supabase, now, fetchPage, picked)
 
   return {
-    filled: picked.map((m) => `${m.year}-${String(m.month).padStart(2, '0')}`),
+    filled: picked.map(monthKey),
+    refreshed: [],
     missing: missing.length - picked.length,
   }
 }
