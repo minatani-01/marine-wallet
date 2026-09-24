@@ -165,6 +165,42 @@ export type Classified = {
 }
 
 /**
+ * いま入っているものに、Google から分かったぶんを足す。
+ *
+ * ジャンルは足すだけで、消さない。手で入れたものを黙って消すと、
+ * 直したことが無かったことになる。種別が観光地に変わってもそのまま残す。
+ * 観光地のジャンルは画面に出ないので（0044）、残っていても邪魔にならず、
+ * 種別を戻したときに書き直さずに済む。
+ */
+export function mergeGenres(current: string[], found: string[]): string[] {
+  const merged = [...current]
+  for (const genre of found) if (!merged.includes(genre)) merged.push(genre)
+  return merged
+}
+
+/**
+ * Google の答えから、書き込む内容を作る。
+ *
+ * 検索の画面から足すときも、毎朝の閉店チェックに相乗りするときも、
+ * 同じ規則で書きたいのでここにまとめる。
+ *
+ * 種別は分かったときだけ入れ替える。分からないものを「観光地」に
+ * 寄せてしまうと、閉店の確認から外れる。
+ */
+export function classificationPatch(
+  current: { kind: string; genres: string[] },
+  primaryType: string,
+  types: string[],
+  displayName = ''
+): { kind?: PlaceKind; genres: string[] } {
+  const found = classifyPlace(primaryType, types, displayName)
+  return {
+    ...(found.kind ? { kind: found.kind } : {}),
+    genres: mergeGenres(current.genres, found.genres),
+  }
+}
+
+/**
  * Google の答えから、種別とジャンルをまとめて出す。
  *
  * 観光地にジャンルは付けない。公園や城を「名所」「公園」と分けても、

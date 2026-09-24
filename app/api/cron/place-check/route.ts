@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 
 import { spendApiCall } from '@/lib/api-budget'
-import { checkQuery, dueBefore, statusFromHit } from '@/lib/places-status'
+import { checkQuery, dueBefore, sameShop, statusFromHit } from '@/lib/places-status'
+import { lookupPlaces } from '@/lib/places-google'
+import { classificationPatch } from '@/lib/places-types'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -21,14 +23,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
  *
  * 観光地は見に行かない。公園や城が閉店することはまずなく、
  * 呼ぶだけ無駄になる。
+ *
+ * ついでに種別とジャンルも取り込む（0051）。同じ問い合わせで一緒に返って
+ * くるうえ、種類は名前・営業状態と同じ区分にあるので、費用も回数も増えない。
+ * 店の業態は変わる（居酒屋がラーメン屋になる）ので、月に1回見直されると
+ * 手で直さなくても追いつく。
  */
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
-
-const ENDPOINT = 'https://places.googleapis.com/v1/places:searchText'
-// businessStatus を含めても、いま検索で使っている区分と同じ。増える費用は無い
-const FIELDS = 'places.displayName,places.businessStatus'
 
 /** 1回に確認する件数。places_search の1日の上限（50回）に対して十分低く取る */
 const BATCH = 5
@@ -37,6 +40,8 @@ type PlaceRow = {
   id: string
   name: string
   area: string
+  kind: string
+  genres: string[]
   business_status: string
 }
 
@@ -45,38 +50,6 @@ function isAuthorized(request: Request): boolean {
   const secret = process.env.CRON_SECRET
   if (!secret) return false
   return request.headers.get('authorization') === `Bearer ${secret}`
-}
-
-/** Google に1件だけ聞く。答えられなければ null（状態には触らない） */
-async function askGoogle(
-  key: string,
-  query: string
-): Promise<{ name: string; status: string } | null> {
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'X-Goog-Api-Key': key,
-      'X-Goog-FieldMask': FIELDS,
-    },
-    body: JSON.stringify({
-      textQuery: query,
-      languageCode: 'ja',
-      regionCode: 'JP',
-      maxResultCount: 1,
-    }),
-    cache: 'no-store',
-  }).catch(() => null)
-
-  if (!res || !res.ok) return null
-
-  const body = (await res.json().catch(() => null)) as {
-    places?: { displayName?: { text?: string }; businessStatus?: string }[]
-  } | null
-
-  const first = body?.places?.[0]
-  if (!first) return null
-  return { name: first.displayName?.text ?? '', status: first.businessStatus ?? '' }
 }
 
 export async function GET(request: Request) {
@@ -101,7 +74,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from('places')
-    .select('id, name, area, business_status')
+    .select('id, name, area, kind, genres, business_status')
     .eq('kind', 'food')
     .or(`status_checked_at.is.null,status_checked_at.lt.${cutoff}`)
     // 長く見ていないものから。件数が増えても順に回っていく
@@ -116,6 +89,7 @@ export async function GET(request: Request) {
   const closed: string[] = []
   let checked = 0
   let unknown = 0
+  let classified = 0
   let overBudget = false
 
   for (const place of places) {
@@ -129,13 +103,30 @@ export async function GET(request: Request) {
       break
     }
 
-    const hit = await askGoogle(key, query)
+    const found = await lookupPlaces(key, query, 1)
+    const hit = found?.[0] ?? null
     const status = statusFromHit(place.name, hit)
 
     // 確かめた印は、同じ店だと分からなかったときも付ける。
     // 付けないと毎日同じ店を聞き直すことになり、回数だけ減る
-    const patch: Record<string, string> = { status_checked_at: now.toISOString() }
+    const patch: Record<string, unknown> = { status_checked_at: now.toISOString() }
     if (status) patch.business_status = status
+
+    // 種別・ジャンルの印は、Google が答えたときだけ付ける。聞けなかった
+    // だけで付けると、画面の「まとめて取り込む」の対象から永久に外れる
+    if (found !== null) patch.types_checked_at = now.toISOString()
+
+    // 種別とジャンルも同じ答えから取る。営業状態が読めたかどうかとは
+    // 別に見る。営業状態を持たない場所（公園など）でも種類は返るので、
+    // 「飲食として入っているが実は観光地」を直せる
+    if (hit && sameShop(place.name, hit.name)) {
+      const next = classificationPatch(place, hit.primaryType, hit.types, hit.typeLabel)
+      const kindChanged = Boolean(next.kind && next.kind !== place.kind)
+      const genresGrew = next.genres.length > place.genres.length
+      if (kindChanged) patch.kind = next.kind
+      if (genresGrew) patch.genres = next.genres
+      if (kindChanged || genresGrew) classified += 1
+    }
 
     await supabase.from('places').update(patch).eq('id', place.id)
 
@@ -151,6 +142,7 @@ export async function GET(request: Request) {
     due: places.length,
     checked,
     unknown,
+    classified,
     closed,
     overBudget,
   })

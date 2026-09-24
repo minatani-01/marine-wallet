@@ -1,7 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classifyPlace, genresFromTypes, isFoodType, kindFromTypes } from '../places-types'
+import {
+  classificationPatch,
+  classifyPlace,
+  genresFromTypes,
+  isFoodType,
+  kindFromTypes,
+  mergeGenres,
+} from '../places-types'
 
 test('料理の種類はすべて飲食として扱う', () => {
   assert.equal(isFoodType('sushi_restaurant'), true)
@@ -74,4 +81,35 @@ test('飲食は種別とジャンルの両方が決まる', () => {
 
 test('種類が主なものしか無くても判断する', () => {
   assert.deepEqual(classifyPlace('cafe', [], 'カフェ'), { kind: 'food', genres: ['カフェ'] })
+})
+
+test('ジャンルは足すだけで、消さない', () => {
+  assert.deepEqual(mergeGenres(['焼肉'], ['寿司']), ['焼肉', '寿司'])
+  // 同じ言葉は二度入れない
+  assert.deepEqual(mergeGenres(['寿司'], ['寿司']), ['寿司'])
+  assert.deepEqual(mergeGenres([], []), [])
+})
+
+test('書き込む内容は、いま入っているものに足す形で作る', () => {
+  const current = { kind: 'food', genres: ['居酒屋'] }
+  assert.deepEqual(
+    classificationPatch(current, 'ramen_restaurant', ['ramen_restaurant', 'restaurant']),
+    { kind: 'food', genres: ['居酒屋', 'ラーメン'] }
+  )
+})
+
+test('観光地に変わっても、付いていたジャンルは消さない', () => {
+  // 手で入れたものを黙って消すと、直したことが無かったことになる。
+  // 観光地のジャンルは画面に出ないので、残っていても邪魔にならない
+  const current = { kind: 'food', genres: ['カフェ'] }
+  assert.deepEqual(classificationPatch(current, 'park', ['park', 'tourist_attraction'], '公園'), {
+    kind: 'sight',
+    genres: ['カフェ'],
+  })
+})
+
+test('種類が分からなければ種別に触らない', () => {
+  const patch = classificationPatch({ kind: 'food', genres: [] }, '', [], '')
+  assert.equal('kind' in patch, false)
+  assert.deepEqual(patch.genres, [])
 })

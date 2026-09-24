@@ -168,6 +168,8 @@ export function filterByPrice(places: Place[], picked: PriceBand[]): Place[] {
 export function genresOf(places: Place[], order: string[] = []): string[] {
   const seen = new Set<string>()
   for (const place of places) {
+    // 観光地に付いたままの言葉は出さない。種別を変えても消さずに残すため
+    if (!hasGenre(place.kind)) continue
     for (const genre of place.genres) if (genre) seen.add(genre)
   }
 
@@ -185,6 +187,8 @@ export function genresOf(places: Place[], order: string[] = []): string[] {
 export function ingredientsOf(places: Place[], order: string[] = []): string[] {
   const seen = new Set<string>()
   for (const place of places) {
+    // 観光地に付いたままの言葉は出さない。種別を変えても消さずに残すため
+    if (!hasGenre(place.kind)) continue
     for (const item of place.ingredients) if (item) seen.add(item)
   }
 

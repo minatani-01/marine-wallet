@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getSessionUser } from '@/lib/queries'
 import { spendApiCall } from '@/lib/api-budget'
 import { lookupPlaces } from '@/lib/places-google'
-import { classifyPlace } from '@/lib/places-types'
+import { classificationPatch } from '@/lib/places-types'
 import { checkQuery, sameShop } from '@/lib/places-status'
 
 /**
@@ -60,7 +60,14 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString()
   const found = await lookupPlaces(key, checkQuery(place), 1)
-  const hit = found?.[0] ?? null
+
+  // 聞けなかっただけのときは印を付けない。付けてしまうと、次に押したときの
+  // 対象から外れ、何も分からないまま「取り込み済み」になる
+  if (found === null) {
+    return NextResponse.json({ ok: false, reason: 'search_failed' }, { status: 502 })
+  }
+
+  const hit = found[0] ?? null
 
   if (!hit || !sameShop(place.name, hit.name)) {
     // 見つからなかったことも残す。次に名前を直すまで問い合わせ直さない
@@ -68,19 +75,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, reason: 'not_found' })
   }
 
-  const { kind, genres } = classifyPlace(hit.primaryType, hit.types, hit.typeLabel)
+  const patch = classificationPatch(place, hit.primaryType, hit.types, hit.typeLabel)
 
-  // すでに手で入れてあるジャンルは残す。あとから足すだけにする
-  const merged = [...place.genres]
-  for (const genre of genres) if (!merged.includes(genre)) merged.push(genre)
-
-  const patch: Record<string, unknown> = { types_checked_at: now }
-  if (kind) patch.kind = kind
-  // 観光地にジャンルは付けない。種別が変わったときは付いていたぶんも落とす
-  patch.genres = kind === 'sight' ? [] : merged
-
-  const { error } = await supabase.from('places').update(patch).eq('id', id)
+  const { error } = await supabase
+    .from('places')
+    .update({ ...patch, types_checked_at: now })
+    .eq('id', id)
   if (error) return NextResponse.json({ ok: false, reason: 'save_failed' }, { status: 500 })
 
-  return NextResponse.json({ ok: true, kind: kind ?? place.kind, genres: patch.genres })
+  return NextResponse.json({ ok: true, kind: patch.kind ?? place.kind, genres: patch.genres })
 }

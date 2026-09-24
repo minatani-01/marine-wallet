@@ -255,3 +255,12 @@ test('食材も言葉で探せる', () => {
   ]
   assert.deepEqual(searchPlaces(rows, '鴨').map((p) => p.name), ['そば処'])
 })
+
+test('観光地に付いたままのジャンルは、絞り込みの札に出さない', () => {
+  // 種別が観光地に変わってもジャンルは消さない（0051）。画面には出さない
+  const rows = [
+    place({ kind: 'food', genres: ['寿司'] }),
+    place({ kind: 'sight', genres: ['カフェ'] }),
+  ]
+  assert.deepEqual(genresOf(rows), ['寿司'])
+})
