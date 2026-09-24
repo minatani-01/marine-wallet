@@ -543,18 +543,19 @@ export default function PlacesClient({
         label: nearLabel(km),
         on: filters.near === km,
         onToggle: () => {
-          // 押したときに現在位置を取りに行く。断られたら絞り込まない
           if (filters.near === km) {
             setFilters((f) => ({ ...f, near: null }))
             return
           }
+          // 中心が決まっていれば、そのまわりを見る
           if (here) {
             setFilters((f) => ({ ...f, near: km }))
             return
           }
+          // まだなら現在位置を取りに行く。断られたら地図から選んでもらう
           void askHere().then((point) => {
             if (point) setFilters((f) => ({ ...f, near: km }))
-            else setError('現在位置を取れませんでした（位置情報の許可を確認してください）')
+            else setError('現在位置を取れませんでした。地図を動かして「ここを中心に」を押してください')
           })
         },
       })),
@@ -871,7 +872,13 @@ export default function PlacesClient({
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
-      <PlacesMap places={onMap} here={here} onHere={askHere} />
+      <PlacesMap
+        places={onMap}
+        here={here}
+        radiusKm={filters.near}
+        onHere={askHere}
+        onPickCenter={setHere}
+      />
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}
       {unlocated.length > 0 ? (

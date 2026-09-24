@@ -72,13 +72,19 @@ type Gate = 'loading' | 'ready' | 'off' | 'over' | 'failed'
 export default function PlacesMap({
   places,
   here,
+  radiusKm,
   onHere,
+  onPickCenter,
 }: {
   places: Place[]
-  /** 現在位置。取れていなければ null。絞り込みと共有する */
+  /** 絞り込みの中心。現在位置か、地図から選んだ点。無ければ null */
   here: Point | null
+  /** 絞り込んでいる半径（km）。無ければ null */
+  radiusKm: number | null
   /** 現在位置を取りに行く。取れたら親が持つ */
   onHere: () => Promise<Point | null>
+  /** いま見えている地図のまんなかを、絞り込みの中心にする */
+  onPickCenter: (point: Point) => void
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
@@ -87,8 +93,9 @@ export default function PlacesMap({
   const [gate, setGate] = useState<Gate>('loading')
   const ready = gate === 'ready'
 
-  // 現在位置の印。位置そのものは親が持つ
+  // 中心の印と、その半径の輪。位置そのものは親が持つ
   const hereRef = useRef<any>(null)
+  const circleRef = useRef<any>(null)
   const [locating, setLocating] = useState(false)
   const [hereError, setHereError] = useState<string | null>(null)
 
@@ -206,23 +213,38 @@ export default function PlacesMap({
     if (signature === fittedRef.current) return
     fittedRef.current = signature
 
+    // 半径で絞っているあいだは、その輪に合わせる（下の useEffect が行う）。
+    // ピンに合わせると、近くに1軒しか無いときに町内まで寄りすぎる
+    if (radiusKm) return
+
     if (pinned.length === 1) {
       mapRef.current.setCenter(bounds.getCenter())
       mapRef.current.setZoom(16)
     } else if (pinned.length > 1) {
       mapRef.current.fitBounds(bounds, 48)
     }
-  }, [ready, pinned])
+  }, [ready, pinned, radiusKm])
 
-  /** 現在位置の印を置き、そこへ寄せる */
+  /**
+   * 中心の印と、半径の輪。
+   *
+   * 半径を選んだら、その輪がちょうど収まるところまで寄せる。ピンの数に
+   * よらず同じ広さになるので、「10km ぶんを見る」が毎回同じ見え方になる。
+   */
   useEffect(() => {
-    if (!ready || !mapRef.current || !here) return
+    if (!ready || !mapRef.current) return
 
     hereRef.current?.setMap(null)
+    hereRef.current = null
+    circleRef.current?.setMap(null)
+    circleRef.current = null
+
+    if (!here) return
+
     hereRef.current = new window.google.maps.Marker({
       map: mapRef.current,
       position: here,
-      title: '現在位置',
+      title: '絞り込みの中心',
       zIndex: 999,
       icon: {
         path: window.google.maps.SymbolPath.CIRCLE,
@@ -233,7 +255,25 @@ export default function PlacesMap({
         strokeWeight: 4,
       },
     })
-  }, [ready, here])
+
+    if (!radiusKm) return
+
+    circleRef.current = new window.google.maps.Circle({
+      map: mapRef.current,
+      center: here,
+      radius: radiusKm * 1000,
+      strokeColor: '#22d3ee',
+      strokeOpacity: 0.7,
+      strokeWeight: 1.5,
+      fillColor: '#22d3ee',
+      fillOpacity: 0.06,
+      clickable: false,
+    })
+
+    mapRef.current.fitBounds(circleRef.current.getBounds(), 16)
+    // 輪に合わせ直したので、ピンの組が同じでも次は合わせ直してよい
+    fittedRef.current = ''
+  }, [ready, here, radiusKm])
 
   /**
    * 現在位置へ寄せる。
@@ -258,7 +298,17 @@ export default function PlacesMap({
     }
 
     mapRef.current.setCenter(point)
-    mapRef.current.setZoom(15)
+    // 半径を選んでいるときは、上の輪の処理が広さを決める
+    if (!radiusKm) mapRef.current.setZoom(15)
+  }
+
+  /** いま見えている地図のまんなかを中心にする。現在位置が使えなくても絞れる */
+  const pickCenter = () => {
+    if (!ready || !mapRef.current) return
+    tapFeedback()
+    setHereError(null)
+    const point = mapRef.current.getCenter()
+    onPickCenter({ lat: point.lat(), lng: point.lng() })
   }
 
   if (gate === 'off') {
@@ -309,16 +359,29 @@ export default function PlacesMap({
           ref={boxRef}
           className="h-[280px] w-full overflow-hidden rounded-2xl border border-line"
         />
-        <button
-          type="button"
-          aria-label="現在位置に戻る"
-          title="現在位置に戻る"
-          disabled={!ready || locating}
-          onClick={() => void goToHere()}
-          className="glass absolute bottom-3 left-3 inline-flex h-11 w-11 items-center justify-center rounded-full border border-line text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
-        >
-          <IconTarget size={19} />
-        </button>
+        <div className="absolute bottom-3 left-3 flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="現在位置に戻る"
+            title="現在位置に戻る"
+            disabled={!ready || locating}
+            onClick={() => void goToHere()}
+            className="glass inline-flex h-11 w-11 items-center justify-center rounded-full border border-line text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
+          >
+            <IconTarget size={19} />
+          </button>
+
+          {/* 現在位置が使えないときや、行き先のまわりを見たいときに使う。
+              地図を動かしてから押すと、そこが絞り込みの中心になる */}
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={pickCenter}
+            className="glass inline-flex h-11 items-center rounded-full border border-line px-3.5 text-[12px] text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
+          >
+            ここを中心に
+          </button>
+        </div>
       </div>
       {hereError ? <p className="mt-1.5 text-[11px] text-fg-mute">{hereError}</p> : null}
     </div>
