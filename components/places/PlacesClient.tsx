@@ -3,18 +3,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import {
-  Button,
-  Card,
-  Chip,
-  EmptyState,
-  IconButton,
-  IconFrame,
-} from '@/components/ui'
+import { Button, Card, Chip, EmptyState, IconFrame } from '@/components/ui'
 import {
   IconCamera,
   IconClose,
-  IconEdit,
   IconExternal,
   IconFood,
   IconMap,
@@ -161,10 +153,10 @@ function CountTab({
         tapFeedback()
         onClick()
       }}
-      className={`flex h-10 shrink-0 items-baseline gap-1.5 rounded-xl border px-2.5 transition-colors ${
+      className={`flex h-10 shrink-0 items-baseline gap-1.5 rounded-full border px-3 transition-colors ${
         on
-          ? 'border-marine/60 bg-marine/12'
-          : 'border-transparent hover:border-line'
+          ? 'border-marine/70 bg-marine/12'
+          : 'border-line bg-white/[0.02] hover:border-marine/40'
       }`}
     >
       <span
@@ -325,13 +317,19 @@ function PlaceCard({
 
   return (
     <Card className={`!p-3${closed ? ' opacity-70' : ''}`}>
-      <div className="flex items-start gap-2.5">
+      {/* 名前のところを押したら編集。鉛筆の印を並べずに済む */}
+      <button
+        type="button"
+        onClick={() => onEdit(place)}
+        aria-label={`${place.name} を編集`}
+        className="flex w-full items-start gap-2.5 text-left"
+      >
         <IconFrame tone={visited && !closed ? 'marine' : 'default'}>
           {place.kind === 'food' ? <IconFood size={16} /> : <IconCamera size={16} />}
         </IconFrame>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
             <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
               {place.name}
             </span>
@@ -346,50 +344,54 @@ function PlaceCard({
                 {distanceText(km)}
               </span>
             ) : null}
-          </div>
+          </span>
 
-          <p className="mt-0.5 truncate text-[11px] text-fg-mute">
+          <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
             {meta.join(' ・ ')}
             {place.note ? ` — ${place.note}` : ''}
-          </p>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
 
       <div className="mt-2.5 flex items-center gap-2 border-t border-line-soft pt-2.5">
         {/* リピあり・リピなし。どちらかを押すと行った扱いになる。
-            同じ札をもう一度押すと行きたいへ戻る */}
-        {REVISIT_CHOICES.map((choice) => {
-          const on = place.revisit === choice
-          const tone =
-            choice === 'yes'
-              ? 'border-marine/60 bg-marine/12 text-marine'
-              : 'border-fg-mute/60 bg-fg-mute/15 text-fg-dim'
-          return (
-            <button
-              key={choice}
-              type="button"
-              disabled={busy}
-              aria-pressed={on}
-              title={on ? `${REVISIT_LABEL[choice]}（押すと行きたいに戻ります）` : REVISIT_LABEL[choice]}
-              onClick={() => onChooseRevisit(place, choice)}
-              className={`inline-flex h-8 items-center rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
-                on ? tone : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
-              }`}
-            >
-              {REVISIT_LABEL[choice]}
-            </button>
-          )
-        })}
+            同じ札をもう一度押すと行きたいへ戻る。
+            「リピ」を外に出すぶん、札そのものは短くできる */}
+        <span className="shrink-0 text-[10px] tracking-widest text-fg-mute">リピ</span>
+        <div className="flex items-center rounded-full border border-line p-0.5">
+          {REVISIT_CHOICES.map((choice) => {
+            const on = place.revisit === choice
+            const tone =
+              choice === 'yes' ? 'bg-marine text-ink' : 'bg-fg-mute/25 text-fg'
+            return (
+              <button
+                key={choice}
+                type="button"
+                disabled={busy}
+                aria-pressed={on}
+                title={
+                  on ? `${REVISIT_LABEL[choice]}（押すと行きたいに戻ります）` : REVISIT_LABEL[choice]
+                }
+                onClick={() => onChooseRevisit(place, choice)}
+                className={`h-7 rounded-full px-3 text-[11px] transition-colors disabled:opacity-40 ${
+                  on ? `${tone} font-medium` : 'text-fg-mute hover:text-marine'
+                }`}
+              >
+                {choice === 'yes' ? 'あり' : 'なし'}
+              </button>
+            )
+          })}
+        </div>
 
-        {/* 開く・直す・消すは印だけにする。言葉で並べると2行になる */}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        {/* 開く・消すは印だけにする。直すのは名前のところを押す */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <a
             href={mapsUrl(place)}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="地図で開く"
             title="地図で開く"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
           >
             <IconMap size={15} />
           </a>
@@ -401,22 +403,21 @@ function PlaceCard({
               rel="noopener noreferrer"
               aria-label="リンクを開く"
               title="リンクを開く"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
             >
               <IconExternal size={14} />
             </a>
           ) : null}
 
-          <IconButton label="編集" className="!h-8 !w-8" onClick={() => onEdit(place)}>
-            <IconEdit size={14} />
-          </IconButton>
-          <IconButton
-            label="削除"
-            className="!h-8 !w-8 hover:border-danger/50 hover:text-danger"
+          <button
+            type="button"
+            aria-label="削除"
+            title="削除"
             onClick={() => onDelete(place)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-danger/50 hover:text-danger"
           >
             <IconTrash size={14} />
-          </IconButton>
+          </button>
         </div>
       </div>
     </Card>
@@ -821,8 +822,8 @@ export default function PlacesClient({
     <div className="flex flex-col gap-3.5">
       {/* 数と操作を1本のバーに収める。大きな数字と全幅のボタンで3段を使うと、
           地図と一覧が画面の外へ出ていた */}
-      <div className="glass glow flex items-center gap-3 rounded-2xl px-4 py-2.5">
-        <div role="group" aria-label="表示" className="flex flex-1 items-center gap-1">
+      <div className="glass glow flex items-center gap-2 rounded-2xl px-3 py-2.5">
+        <div role="group" aria-label="表示" className="flex flex-1 items-center gap-1.5">
           <CountTab
             n={lists.wish.length}
             label="行きたい"
@@ -837,14 +838,15 @@ export default function PlacesClient({
           />
         </div>
 
+        {/* 地図の操作と同じ、同じ大きさの丸にそろえる */}
         <Link
           href="/places/genres"
           prefetch={false}
-          aria-label="飲食のジャンルを編集"
-          title="飲食のジャンルを編集"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+          aria-label="飲食のジャンル・食材を編集"
+          title="飲食のジャンル・食材を編集"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
         >
-          <IconRules size={16} />
+          <IconRules size={17} />
         </Link>
 
         <button
@@ -855,11 +857,9 @@ export default function PlacesClient({
             tapFeedback()
             setSheet({ place: null })
           }}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-marine px-2.5 text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 min-[360px]:px-3"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-marine text-ink transition-opacity hover:opacity-90"
         >
-          <IconPlus size={16} />
-          {/* 狭い画面では字を落とす。数の札が「行..」と潰れるのを防ぐ */}
-          <span className="hidden min-[360px]:inline">追加</span>
+          <IconPlus size={19} />
         </button>
       </div>
 
