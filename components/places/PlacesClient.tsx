@@ -50,7 +50,6 @@ import {
   distanceOf,
   distanceText,
   filterByNear,
-  nearLabel,
   sortByDistance,
   type NearStep,
   type Point,
@@ -198,10 +197,15 @@ type FilterItem = { id: string; label: string; on: boolean; onToggle: () => void
 function FilterRow({
   groups,
   active,
+  searchOn,
+  onSearch,
   onClear,
 }: {
   groups: { name: string; items: FilterItem[] }[]
   active: number
+  /** 探す欄を開いているか */
+  searchOn: boolean
+  onSearch: () => void
   onClear: () => void
 }) {
   return (
@@ -239,6 +243,28 @@ function FilterRow({
           </Fragment>
         ))}
       </div>
+
+      {/* 探すのも絞り込みの仲間なので、札と同じ帯に置く。横いっぱいの
+          入力欄を常に出しておくと、それだけで1段使ってしまう。
+          区切りを挟まないと、流れてきた札と重なって見える */}
+      <span aria-hidden="true" className="h-5 w-px shrink-0 bg-line" />
+      <button
+        type="button"
+        aria-label="名前・場所・メモで探す"
+        aria-pressed={searchOn}
+        title="名前・場所・メモで探す"
+        onClick={() => {
+          tapFeedback()
+          onSearch()
+        }}
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${
+          searchOn
+            ? 'border-marine/70 bg-marine/12 text-marine'
+            : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
+        }`}
+      >
+        <IconSearch size={16} />
+      </button>
 
       {/* いくつ絞り込んでいるか。横へ送ると押した札が画面から出てしまうので、
           ここは流さずに置く。数だけでも見えていれば、絞り込み中だと分かる */}
@@ -437,6 +463,15 @@ export default function PlacesClient({
       )
     })
   const [words, setWords] = useState('')
+
+  /**
+   * 探す欄を開いているか。
+   *
+   * 常に横いっぱいの欄を置いておくと、1段まるごと使ってしまう。探すのは
+   * 目当てがあるときだけなので、押したときに開く。言葉が入っているあいだは
+   * 開いたままにして、何で絞っているかが見えるようにする。
+   */
+  const [searchOpen, setSearchOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sheet, setSheet] = useState<{ place: Place | null } | null>(null)
@@ -520,6 +555,26 @@ export default function PlacesClient({
     }
   }
 
+  /**
+   * 半径を選ぶ。中心が決まっていなければ先に現在位置を取りに行く。
+   *
+   * 断られたら絞り込まない。地図を動かして中心を決める道も案内する。
+   */
+  const chooseRadius = (km: number | null) => {
+    if (km === null) {
+      setFilters((f) => ({ ...f, near: null }))
+      return
+    }
+    if (here) {
+      setFilters((f) => ({ ...f, near: km as NearStep }))
+      return
+    }
+    void askHere().then((point) => {
+      if (point) setFilters((f) => ({ ...f, near: km as NearStep }))
+      else setError('現在位置を取れませんでした。地図を動かして中心の印を押してください')
+    })
+  }
+
   /** 飲食の軸。観光地だけを見ているときは出さない */
   const foodAxes = kind !== 'sight'
 
@@ -534,30 +589,6 @@ export default function PlacesClient({
         label: placeKindLabel(k),
         on: kind === k,
         onToggle: () => chooseKind(k),
-      })),
-    },
-    {
-      name: '範囲',
-      items: NEAR_STEPS.map((km) => ({
-        id: `near-${km}`,
-        label: nearLabel(km),
-        on: filters.near === km,
-        onToggle: () => {
-          if (filters.near === km) {
-            setFilters((f) => ({ ...f, near: null }))
-            return
-          }
-          // 中心が決まっていれば、そのまわりを見る
-          if (here) {
-            setFilters((f) => ({ ...f, near: km }))
-            return
-          }
-          // まだなら現在位置を取りに行く。断られたら地図から選んでもらう
-          void askHere().then((point) => {
-            if (point) setFilters((f) => ({ ...f, near: km }))
-            else setError('現在位置を取れませんでした。地図を動かして「ここを中心に」を押してください')
-          })
-        },
       })),
     },
     ...(foodAxes && genreChoices.length > 0
@@ -837,6 +868,12 @@ export default function PlacesClient({
       <FilterRow
         groups={filterGroups}
         active={activeCount(filters, kind, tab)}
+        searchOn={searchOpen || words.length > 0}
+        onSearch={() => {
+          // 閉じるときは言葉も消す。見えない条件で絞られたままにしない
+          if (searchOpen) setWords('')
+          setSearchOpen((on) => !on)
+        }}
         onClear={() => {
           setTab('all')
           setKind('all')
@@ -846,28 +883,35 @@ export default function PlacesClient({
 
       {/* 文字の大きさは 16px のままにする。小さくすると iOS で
           入力のたびに画面が拡大する */}
-      <label className="glass flex h-12 items-center gap-2.5 rounded-full px-4">
-        <span className="shrink-0 text-fg-mute">
-          <IconSearch size={17} />
-        </span>
-        <input
-          className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-mute"
-          value={words}
-          onChange={(e) => setWords(e.target.value)}
-          placeholder="名前・場所・メモで探す"
-          aria-label="名前・場所・メモで探す"
-        />
-        {words ? (
+      {searchOpen || words ? (
+        <label className="glass flex h-11 items-center gap-2.5 rounded-xl px-3.5">
+          <span className="shrink-0 text-fg-mute">
+            <IconSearch size={16} />
+          </span>
+          <input
+            autoFocus
+            className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-mute"
+            value={words}
+            onChange={(e) => setWords(e.target.value)}
+            placeholder="名前・場所・メモで探す"
+            aria-label="名前・場所・メモで探す"
+          />
           <button
             type="button"
-            aria-label="入力を消す"
-            onClick={() => setWords('')}
+            aria-label={words ? '入力を消す' : '探すのをやめる'}
+            onClick={() => {
+              if (words) {
+                setWords('')
+                return
+              }
+              setSearchOpen(false)
+            }}
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
           >
             <IconClose size={13} />
           </button>
-        ) : null}
-      </label>
+        </label>
+      ) : null}
 
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
@@ -876,8 +920,10 @@ export default function PlacesClient({
         places={onMap}
         here={here}
         radiusKm={filters.near}
+        steps={NEAR_STEPS}
         onHere={askHere}
         onPickCenter={setHere}
+        onRadius={chooseRadius}
       />
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}

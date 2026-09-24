@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui'
-import { IconTarget } from '@/components/icons'
+import { IconExpand, IconPin, IconTarget } from '@/components/icons'
 import { tapFeedback } from '@/lib/haptics'
 import { isVisited, placeKindLabel } from '@/lib/places'
 import { isClosed, statusLabel } from '@/lib/places-status'
@@ -73,18 +73,24 @@ export default function PlacesMap({
   places,
   here,
   radiusKm,
+  steps,
   onHere,
   onPickCenter,
+  onRadius,
 }: {
   places: Place[]
   /** 絞り込みの中心。現在位置か、地図から選んだ点。無ければ null */
   here: Point | null
   /** 絞り込んでいる半径（km）。無ければ null */
   radiusKm: number | null
+  /** 選べる半径（km） */
+  steps: readonly number[]
   /** 現在位置を取りに行く。取れたら親が持つ */
   onHere: () => Promise<Point | null>
   /** いま見えている地図のまんなかを、絞り込みの中心にする */
   onPickCenter: (point: Point) => void
+  /** 半径を選ぶ。同じものをもう一度選んだら外す */
+  onRadius: (km: number | null) => void
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
@@ -98,6 +104,9 @@ export default function PlacesMap({
   const circleRef = useRef<any>(null)
   const [locating, setLocating] = useState(false)
   const [hereError, setHereError] = useState<string | null>(null)
+
+  /** 地図を広く見る。一覧を読むときは邪魔なので、押したときだけ広げる */
+  const [tall, setTall] = useState(false)
 
   /**
    * ピンを立てる場所。
@@ -357,32 +366,99 @@ export default function PlacesMap({
       <div className="relative">
         <div
           ref={boxRef}
-          className="h-[280px] w-full overflow-hidden rounded-2xl border border-line"
+          className={`w-full overflow-hidden rounded-2xl border border-line transition-[height] ${
+            tall ? 'h-[460px]' : 'h-[300px]'
+          }`}
         />
-        <div className="absolute bottom-3 left-3 flex items-center gap-2">
+
+        {/* 半径は地図の見え方そのものを決めるので、地図の上に置く。
+            絞り込みの帯に混ぜると、横に長くなって届きにくくなる */}
+        <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+          <div
+            role="group"
+            aria-label="半径"
+            className="glass pointer-events-auto flex items-center gap-1 rounded-full border border-line p-1"
+          >
+            <span className="px-2 text-[10px] tracking-widest text-fg-mute">半径</span>
+            {steps.map((km) => {
+              const on = radiusKm === km
+              return (
+                <button
+                  key={km}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={!ready}
+                  onClick={() => {
+                    tapFeedback()
+                    setHereError(null)
+                    onRadius(on ? null : km)
+                  }}
+                  className={`tnum h-8 rounded-full px-2.5 text-[12px] transition-colors disabled:opacity-40 ${
+                    on ? 'bg-marine text-ink font-semibold' : 'text-fg-dim hover:text-marine'
+                  }`}
+                >
+                  {km}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* いま地図に出ているピンの数。絞り込みがどれだけ効いたかが分かる */}
+          <span className="glass pointer-events-auto tnum shrink-0 rounded-full border border-line px-2.5 py-1.5 text-[11px] text-fg-dim">
+            {pinned.length} 件
+          </span>
+        </div>
+
+        {/* 操作はすべて同じ大きさの丸にそろえ、右下にまとめる */}
+        <div className="absolute right-3 bottom-3 flex flex-col gap-2">
           <button
             type="button"
-            aria-label="現在位置に戻る"
-            title="現在位置に戻る"
-            disabled={!ready || locating}
-            onClick={() => void goToHere()}
-            className="glass inline-flex h-11 w-11 items-center justify-center rounded-full border border-line text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
+            aria-label="地図を広げる"
+            aria-pressed={tall}
+            title={tall ? '地図を元の高さに戻す' : '地図を広げる'}
+            onClick={() => {
+              tapFeedback()
+              setTall((on) => !on)
+            }}
+            className={`glass inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+              tall
+                ? 'border-marine/60 text-marine'
+                : 'border-line text-fg-dim hover:border-marine/60 hover:text-marine'
+            }`}
           >
-            <IconTarget size={19} />
+            <IconExpand size={17} />
           </button>
 
           {/* 現在位置が使えないときや、行き先のまわりを見たいときに使う。
               地図を動かしてから押すと、そこが絞り込みの中心になる */}
           <button
             type="button"
+            aria-label="いま見えている地図のまんなかを中心にする"
+            title="いま見えている地図のまんなかを中心にする"
             disabled={!ready}
             onClick={pickCenter}
-            className="glass inline-flex h-11 items-center rounded-full border border-line px-3.5 text-[12px] text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
+            className="glass inline-flex h-10 w-10 items-center justify-center rounded-full border border-line text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
           >
-            ここを中心に
+            <IconPin size={17} />
+          </button>
+
+          <button
+            type="button"
+            aria-label="現在位置に戻る"
+            title="現在位置に戻る"
+            disabled={!ready || locating}
+            onClick={() => void goToHere()}
+            className={`glass inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors disabled:opacity-40 ${
+              locating
+                ? 'border-marine/60 text-marine'
+                : 'border-line text-fg-dim hover:border-marine/60 hover:text-marine'
+            }`}
+          >
+            <IconTarget size={17} />
           </button>
         </div>
       </div>
+
       {hereError ? <p className="mt-1.5 text-[11px] text-fg-mute">{hereError}</p> : null}
     </div>
   )
