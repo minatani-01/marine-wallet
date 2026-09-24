@@ -104,6 +104,30 @@ test('同じものを指す言葉は、両方付けない', () => {
   )
 })
 
+test('すでにジャンルがあるなら、大きなくくりは足さない', () => {
+  // Google は洋食屋も居酒屋も japanese_restaurant として返す。
+  // そのまま足すと「洋食 / 和食」のように札が増え、絞り込みが濁る
+  const yoshoku = { kind: 'food', genres: ['洋食'] }
+  assert.deepEqual(
+    classificationPatch(yoshoku, 'japanese_restaurant', ['japanese_restaurant', 'restaurant']),
+    { kind: 'food', genres: ['洋食'] }
+  )
+  // 具体的なジャンルなら、大きなくくりでなくても足す
+  assert.deepEqual(
+    classificationPatch(yoshoku, 'ramen_restaurant', ['ramen_restaurant', 'restaurant']),
+    { kind: 'food', genres: ['洋食', 'ラーメン'] }
+  )
+  // まだ何も入っていない場所には足す。何も分からないよりましである
+  assert.deepEqual(
+    classificationPatch(
+      { kind: 'food', genres: [] },
+      'japanese_restaurant',
+      ['japanese_restaurant', 'restaurant']
+    ),
+    { kind: 'food', genres: ['和食'] }
+  )
+})
+
 test('書き込む内容は、いま入っているものに足す形で作る', () => {
   const current = { kind: 'food', genres: ['居酒屋'] }
   assert.deepEqual(
