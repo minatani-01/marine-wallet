@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -10,16 +10,17 @@ import {
   EmptyState,
   IconButton,
   IconFrame,
-  PillTabs,
-  Segmented,
-  inputClassCompact,
 } from '@/components/ui'
 import {
   IconCamera,
+  IconClose,
   IconEdit,
   IconExternal,
   IconFood,
+  IconMap,
   IconPlus,
+  IconRules,
+  IconSearch,
   IconTrash,
 } from '@/components/icons'
 import PlaceSheet from '@/components/places/PlaceSheet'
@@ -30,8 +31,9 @@ import {
   PLACE_KINDS,
   REVISIT_CHOICES,
   REVISIT_LABEL,
+  filterByGenres,
+  filterByIngredients,
   filterByKind,
-  filterByTag,
   genresOf,
   ingredientsOf,
   mapsUrl,
@@ -39,13 +41,9 @@ import {
   revisitPatch,
   searchPlaces,
   splitPlaces,
+  toggleTag,
 } from '@/lib/places'
-import {
-  CLOSED_FILTER,
-  filterClosed,
-  isClosed,
-  statusLabel,
-} from '@/lib/places-status'
+import { filterClosed, isClosed, statusLabel } from '@/lib/places-status'
 import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
@@ -65,29 +63,178 @@ import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
 type Tab = 'all' | 'wish' | 'visited'
 type KindTab = 'all' | PlaceKind
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'all', label: 'すべて' },
-  { id: 'wish', label: '行きたい' },
-  { id: 'visited', label: '行った' },
-]
-
 /** 1回に座標を引く件数。上限に一度で当たらないようにする */
 const LOCATE_STEP = 20
 
-const KIND_TABS: { id: KindTab; label: string }[] = [
-  { id: 'all', label: 'すべて' },
-  { id: 'sight', label: '観光地' },
-  { id: 'food', label: '飲食' },
-]
+/**
+ * 1回に種別・ジャンルを取り込む件数（0051）。
+ *
+ * places_search の上限は1日50回で、閉店の確認が毎朝5回使う。残りから
+ * 余裕を見て10件にしてある。30件あっても3回押せば終わる。
+ */
+const CLASSIFY_STEP = 10
 
 /**
- * ジャンル、または「閉店」で絞る。
+ * 絞り込みの条件。軸ごとに別々に持つ。
  *
- * 「閉店」はジャンルの並びに置いてあるが、ジャンルの言葉ではない（0045）。
- * 選ばれたときだけ、状態のほうで絞る。
+ * ひとつの値で持っていたころは、ジャンルと食材が同じ場所に入っていたため
+ * 「焼肉」と「牛」を同時に選べなかった。軸を分けると、掛け合わせて絞れる。
+ * 同じ軸の中は「どれか」、軸どうしは「かつ」で効く。
  */
-function narrowBy(rows: Place[], tag: string | null): Place[] {
-  return tag === CLOSED_FILTER ? filterClosed(rows) : filterByTag(rows, tag)
+type Filters = {
+  genres: string[]
+  ingredients: string[]
+  /** 閉店・休業だけを見る（0045） */
+  closedOnly: boolean
+}
+
+const NO_FILTERS: Filters = { genres: [], ingredients: [], closedOnly: false }
+
+function narrowBy(rows: Place[], f: Filters): Place[] {
+  const out = filterByIngredients(filterByGenres(rows, f.genres), f.ingredients)
+  return f.closedOnly ? filterClosed(out) : out
+}
+
+/** いくつ絞り込んでいるか。0 なら「解除」を出さない */
+function activeCount(f: Filters, kind: KindTab, tab: Tab): number {
+  return (
+    f.genres.length +
+    f.ingredients.length +
+    (f.closedOnly ? 1 : 0) +
+    (kind === 'all' ? 0 : 1) +
+    (tab === 'all' ? 0 : 1)
+  )
+}
+
+/**
+ * 数と絞り込みを兼ねるボタン。
+ *
+ * 数を見せる場所と「行きたいだけ見る」を押す場所は同じでよい。別々に
+ * 置くと、数の行と札の行で2段になる。押すと絞り込み、もう一度押すと戻る。
+ */
+function CountTab({
+  n,
+  label,
+  on,
+  onClick,
+}: {
+  n: number
+  label: string
+  on: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={() => {
+        tapFeedback()
+        onClick()
+      }}
+      className={`flex h-10 shrink-0 items-baseline gap-1.5 rounded-xl border px-2.5 transition-colors ${
+        on
+          ? 'border-marine/60 bg-marine/12'
+          : 'border-transparent hover:border-line'
+      }`}
+    >
+      <span
+        className={`tnum text-[20px] font-semibold leading-[38px] ${
+          on ? 'text-marine' : 'text-fg'
+        }`}
+      >
+        {n}
+      </span>
+      <span
+        className={`whitespace-nowrap text-[10.5px] leading-[38px] ${
+          on ? 'text-marine' : 'text-fg-mute'
+        }`}
+      >
+        {label}
+      </span>
+    </button>
+  )
+}
+
+type FilterItem = { id: string; label: string; on: boolean; onToggle: () => void }
+
+/**
+ * 1段に束ねた絞り込み（案B）。
+ *
+ * 種別・ジャンル・食材を、区切りを挟んだ横1列に並べる。段を分けて
+ * 積み上げると、画面の上半分がすべて絞り込みで埋まり、地図と一覧が下に
+ * 押し出される。1列なら、使うぶんだけ横へ送れる。
+ */
+function FilterRow({
+  groups,
+  active,
+  onClear,
+}: {
+  groups: { name: string; items: FilterItem[] }[]
+  active: number
+  onClear: () => void
+}) {
+  return (
+    <div className="-mx-4 flex items-center gap-2 px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
+        {groups.map((group, index) => (
+          <Fragment key={group.name}>
+            {index > 0 ? (
+              <span aria-hidden="true" className="h-5 w-px shrink-0 bg-line" />
+            ) : null}
+            <div
+              role="group"
+              aria-label={group.name}
+              className="flex shrink-0 items-center gap-2"
+            >
+              {group.items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={item.on}
+                  onClick={() => {
+                    tapFeedback()
+                    item.onToggle()
+                  }}
+                  className={`min-h-[38px] shrink-0 rounded-full border px-4 text-[13px] transition-colors ${
+                    item.on
+                      ? 'border-marine/70 bg-marine/12 text-marine font-medium shadow-[0_0_26px_-14px_rgba(34,211,238,0.9)]'
+                      : 'border-line text-fg-mute hover:text-fg-dim'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </Fragment>
+        ))}
+      </div>
+
+      {/* いくつ絞り込んでいるか。横へ送ると押した札が画面から出てしまうので、
+          ここは流さずに置く。数だけでも見えていれば、絞り込み中だと分かる */}
+      {active > 0 ? (
+        <>
+          <span aria-hidden="true" className="h-5 w-px shrink-0 bg-line" />
+          <span
+            aria-hidden="true"
+            className="tnum shrink-0 rounded-full bg-marine/15 px-2 py-0.5 text-[11px] text-marine"
+          >
+            {active}
+          </span>
+          <button
+            type="button"
+            aria-label={`絞り込み ${active} 件を解除`}
+            onClick={() => {
+              tapFeedback()
+              onClear()
+            }}
+            className="min-h-[38px] shrink-0 text-[12px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+          >
+            解除
+          </button>
+        </>
+      ) : null}
+    </div>
+  )
 }
 
 function PlaceCard({
@@ -107,59 +254,49 @@ function PlaceCard({
   const closed = isClosed(place)
   const closedLabel = statusLabel(place.business_status)
 
+  /** 種別・ジャンル・食材・場所を1行にまとめる。札を増やすと行が増える */
+  const meta = [
+    placeKindLabel(place.kind),
+    ...place.genres,
+    ...place.ingredients,
+    place.area,
+  ].filter(Boolean)
+
   return (
-    <Card className={`!p-3.5${closed ? ' opacity-70' : ''}`}>
-      <div className="flex items-start gap-3">
+    <Card className={`!p-3${closed ? ' opacity-70' : ''}`}>
+      <div className="flex items-start gap-2.5">
         <IconFrame tone={visited && !closed ? 'marine' : 'default'}>
-          {place.kind === 'food' ? <IconFood size={17} /> : <IconCamera size={17} />}
+          {place.kind === 'food' ? <IconFood size={16} /> : <IconCamera size={16} />}
         </IconFrame>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[11px] text-fg-mute">
-            <span className="shrink-0">
-              {placeKindLabel(place.kind)}
-              {place.genres.length > 0 ? ` / ${place.genres.join('・')}` : ''}
-            </span>
-            {place.ingredients.length > 0 ? (
-              <span className="shrink-0 text-fg-mute">{place.ingredients.join('・')}</span>
-            ) : null}
-            {place.area ? <span className="truncate">{place.area}</span> : null}
-          </div>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
               {place.name}
             </span>
             {closedLabel ? (
-              <span className="shrink-0 rounded-full border border-danger/50 px-2 py-0.5 text-[10px] text-danger">
+              <span className="shrink-0 rounded-md border border-danger/50 px-1.5 text-[10px] leading-[17px] text-danger">
                 {closedLabel}
               </span>
             ) : null}
           </div>
-          {place.note ? (
-            <p className="mt-1 truncate text-[11px] text-fg-mute">{place.note}</p>
-          ) : null}
-        </div>
 
-        <div className="flex shrink-0 gap-1.5">
-          <IconButton label="編集" onClick={() => onEdit(place)}>
-            <IconEdit size={15} />
-          </IconButton>
-          <IconButton
-            label="削除"
-            onClick={() => onDelete(place)}
-            className="hover:border-danger/50 hover:text-danger"
-          >
-            <IconTrash size={15} />
-          </IconButton>
+          <p className="mt-0.5 truncate text-[11px] text-fg-mute">
+            {meta.join(' ・ ')}
+            {place.note ? ` — ${place.note}` : ''}
+          </p>
         </div>
       </div>
 
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-2.5 flex items-center gap-2 border-t border-line-soft pt-2.5">
         {/* リピあり・リピなし。どちらかを押すと行った扱いになる。
             同じ札をもう一度押すと行きたいへ戻る */}
         {REVISIT_CHOICES.map((choice) => {
           const on = place.revisit === choice
-          const tone = choice === 'yes' ? 'border-marine/60 bg-marine/12 text-marine' : 'border-fg-mute/60 bg-fg-mute/15 text-fg-dim'
+          const tone =
+            choice === 'yes'
+              ? 'border-marine/60 bg-marine/12 text-marine'
+              : 'border-fg-mute/60 bg-fg-mute/15 text-fg-dim'
           return (
             <button
               key={choice}
@@ -168,7 +305,7 @@ function PlaceCard({
               aria-pressed={on}
               title={on ? `${REVISIT_LABEL[choice]}（押すと行きたいに戻ります）` : REVISIT_LABEL[choice]}
               onClick={() => onChooseRevisit(place, choice)}
-              className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
+              className={`inline-flex h-8 items-center rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
                 on ? tone : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
               }`}
             >
@@ -177,27 +314,43 @@ function PlaceCard({
           )
         })}
 
-        <a
-          href={mapsUrl(place)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
-        >
-          地図で開く
-          <IconExternal size={12} />
-        </a>
-
-        {place.url ? (
+        {/* 開く・直す・消すは印だけにする。言葉で並べると2行になる */}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <a
-            href={place.url}
+            href={mapsUrl(place)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 truncate text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+            aria-label="地図で開く"
+            title="地図で開く"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
           >
-            リンク
-            <IconExternal size={12} />
+            <IconMap size={15} />
           </a>
-        ) : null}
+
+          {place.url ? (
+            <a
+              href={place.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="リンクを開く"
+              title="リンクを開く"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+            >
+              <IconExternal size={14} />
+            </a>
+          ) : null}
+
+          <IconButton label="編集" className="!h-8 !w-8" onClick={() => onEdit(place)}>
+            <IconEdit size={14} />
+          </IconButton>
+          <IconButton
+            label="削除"
+            className="!h-8 !w-8 hover:border-danger/50 hover:text-danger"
+            onClick={() => onDelete(place)}
+          >
+            <IconTrash size={14} />
+          </IconButton>
+        </div>
       </div>
     </Card>
   )
@@ -216,7 +369,7 @@ export default function PlacesClient({
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('all')
   const [kind, setKind] = useState<KindTab>('all')
-  const [genre, setGenre] = useState<string | null>(null)
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [words, setWords] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -225,6 +378,10 @@ export default function PlacesClient({
   // まとめて座標を引いているあいだの進み具合
   const [locating, setLocating] = useState(false)
   const [locateNote, setLocateNote] = useState<string | null>(null)
+
+  // 種別・ジャンルの取り込み
+  const [classifying, setClassifying] = useState(false)
+  const [classifyNote, setClassifyNote] = useState<string | null>(null)
 
   // 保存リストの取り込み
   const [importKind, setImportKind] = useState<PlaceKind>('food')
@@ -251,26 +408,104 @@ export default function PlacesClient({
   )
 
   /** いま出ている場所に実際に入っているジャンル・食材だけを出す */
-  const genres = useMemo(() => genresOf(byKind, tagOrder.genre), [byKind, tagOrder])
-  const ingredients = useMemo(() => ingredientsOf(byKind, tagOrder.ingredient), [byKind, tagOrder])
+  const genreChoices = useMemo(() => genresOf(byKind, tagOrder.genre), [byKind, tagOrder])
+  const ingredientChoices = useMemo(
+    () => ingredientsOf(byKind, tagOrder.ingredient),
+    [byKind, tagOrder]
+  )
 
   /** 閉店・休業の数。0 なら「閉店」の絞り込みも出さない */
   const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
 
   const shown = useMemo(
-    () => searchPlaces(narrowBy(byKind, genre), words),
-    [byKind, genre, words]
+    () => searchPlaces(narrowBy(byKind, filters), words),
+    [byKind, filters, words]
   )
 
-  /** 地図に出すぶん。タブでは絞らず、種別・ジャンル・言葉で絞る */
+  /** 地図に出すぶん。タブでは絞らず、種別・絞り込み・言葉で絞る */
   const onMap = useMemo(
     () =>
       searchPlaces(
-        narrowBy(filterByKind(places, kind === 'all' ? null : kind), genre),
+        narrowBy(filterByKind(places, kind === 'all' ? null : kind), filters),
         words
       ),
-    [places, kind, genre, words]
+    [places, kind, filters, words]
   )
+
+  /**
+   * 種別を選び直す。同じものをもう一度押したら「すべて」に戻す。
+   *
+   * 観光地にはジャンルも食材も無い（0044 / 0049）。
+   * 選んだまま観光地へ移ると、当たる場所が1つも無くなる。外しておく。
+   */
+  const chooseKind = (next: PlaceKind) => {
+    const value = kind === next ? 'all' : next
+    setKind(value)
+    if (value === 'sight') {
+      setFilters((f) => ({ ...f, genres: [], ingredients: [] }))
+    }
+  }
+
+  /** 飲食の軸。観光地だけを見ているときは出さない */
+  const foodAxes = kind !== 'sight'
+
+  /** 表示を選び直す。同じものをもう一度押したら「すべて」に戻す */
+  const chooseTab = (next: Exclude<Tab, 'all'>) => setTab(tab === next ? 'all' : next)
+
+  const filterGroups = [
+    {
+      name: '種別',
+      items: PLACE_KINDS.map((k) => ({
+        id: k,
+        label: placeKindLabel(k),
+        on: kind === k,
+        onToggle: () => chooseKind(k),
+      })),
+    },
+    ...(foodAxes && genreChoices.length > 0
+      ? [
+          {
+            name: 'ジャンル',
+            items: genreChoices.map((name) => ({
+              id: name,
+              label: name,
+              on: filters.genres.includes(name),
+              onToggle: () =>
+                setFilters((f) => ({ ...f, genres: toggleTag(f.genres, name) })),
+            })),
+          },
+        ]
+      : []),
+    ...(foodAxes && ingredientChoices.length > 0
+      ? [
+          {
+            name: '食材',
+            items: ingredientChoices.map((name) => ({
+              id: name,
+              label: name,
+              on: filters.ingredients.includes(name),
+              onToggle: () =>
+                setFilters((f) => ({ ...f, ingredients: toggleTag(f.ingredients, name) })),
+            })),
+          },
+        ]
+      : []),
+    ...(closedCount > 0
+      ? [
+          {
+            name: '状態',
+            items: [
+              {
+                id: 'closed',
+                label: `閉店 ${closedCount}`,
+                on: filters.closedOnly,
+                onToggle: () => setFilters((f) => ({ ...f, closedOnly: !f.closedOnly })),
+              },
+            ],
+          },
+        ]
+      : []),
+  ]
 
   /** 地図に出ていない場所。座標を引けていないもの */
   const unlocated = useMemo(() => places.filter((p) => p.lat === null || p.lng === null), [places])
@@ -316,6 +551,57 @@ export default function PlacesClient({
           (targets.length < unlocated.length
             ? ` 残り ${unlocated.length - targets.length} 件は、もう一度押してください。`
             : '')
+    )
+    router.refresh()
+  }
+
+  /** まだ Google に種別・ジャンルを聞いていない場所 */
+  const unclassified = useMemo(
+    () => places.filter((p) => p.types_checked_at === null),
+    [places]
+  )
+
+  /**
+   * 種別とジャンルを Google からまとめて取り込む（0051）。
+   *
+   * 保存リストの取り込みでは「全部まとめて飲食」としか入れられず、観光地も
+   * 飲食に混ざる。ジャンルも空のままになる。1件ずつ直すのは続かない。
+   *
+   * 1回に10件まで。上限に当たったらそこで止める。押し直せば続きから進む。
+   */
+  const classifyAll = async () => {
+    if (unclassified.length === 0) return
+
+    tapFeedback()
+    setClassifying(true)
+    setClassifyNote(null)
+
+    const targets = unclassified.slice(0, CLASSIFY_STEP)
+    let done = 0
+    let overBudget = false
+
+    for (const place of targets) {
+      const res = await fetch('/api/places/classify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: place.id }),
+      }).catch(() => null)
+
+      if (res?.status === 429) {
+        overBudget = true
+        break
+      }
+      const body = res?.ok ? ((await res.json()) as { ok?: boolean }) : null
+      if (body?.ok) done += 1
+    }
+
+    setClassifying(false)
+    const rest = unclassified.length - targets.length
+    setClassifyNote(
+      overBudget
+        ? `今日はここまでです（${done} 件わかりました）。明日また押してください。`
+        : `${done} / ${targets.length} 件わかりました。` +
+          (rest > 0 ? ` 残り ${rest} 件は、もう一度押してください。` : '')
     )
     router.refresh()
   }
@@ -411,72 +697,113 @@ export default function PlacesClient({
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <Card className="glow">
-        <div className="eyebrow">行きたい / 行った</div>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="tnum text-[42px] font-semibold leading-none text-marine">
-            {lists.visited.length}
-          </span>
-          <span className="text-lg text-fg-mute">/ {places.length} 件</span>
+    <div className="flex flex-col gap-3.5">
+      {/* 数と操作を1本のバーに収める。大きな数字と全幅のボタンで3段を使うと、
+          地図と一覧が画面の外へ出ていた */}
+      <div className="glass glow flex items-center gap-3 rounded-2xl px-4 py-2.5">
+        <div role="group" aria-label="表示" className="flex flex-1 items-center gap-1">
+          <CountTab
+            n={lists.wish.length}
+            label="行きたい"
+            on={tab === 'wish'}
+            onClick={() => chooseTab('wish')}
+          />
+          <CountTab
+            n={lists.visited.length}
+            label="行った"
+            on={tab === 'visited'}
+            onClick={() => chooseTab('visited')}
+          />
         </div>
-        <Button variant="primary" full className="mt-3" onClick={() => setSheet({ place: null })}>
-          <span className="flex items-center justify-center gap-2">
-            <IconPlus size={17} />
-            行きたい場所を追加
-          </span>
-        </Button>
+
         <Link
           href="/places/genres"
           prefetch={false}
-          className="mt-2 block text-center text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+          aria-label="飲食のジャンルを編集"
+          title="飲食のジャンルを編集"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
         >
-          飲食のジャンルを編集
+          <IconRules size={16} />
         </Link>
-      </Card>
 
-      <Segmented value={tab} options={TABS} onChange={setTab} />
-      <Segmented value={kind} options={KIND_TABS} onChange={setKind} />
+        <button
+          type="button"
+          aria-label="行きたい場所を追加"
+          title="行きたい場所を追加"
+          onClick={() => {
+            tapFeedback()
+            setSheet({ place: null })
+          }}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-marine px-2.5 text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 min-[360px]:px-3"
+        >
+          <IconPlus size={16} />
+          {/* 狭い画面では字を落とす。数の札が「行..」と潰れるのを防ぐ */}
+          <span className="hidden min-[360px]:inline">追加</span>
+        </button>
+      </div>
 
-      {/* ジャンル。登録されている言葉だけを出す（観光地にジャンルは無い）。
-          閉店した店があるときだけ、並びの最後に「閉店」を足す */}
-      {kind !== 'sight' && (genres.length > 0 || closedCount > 0) ? (
-        <PillTabs
-          value={genre && genres.includes(genre) ? genre : genre === CLOSED_FILTER ? genre : ''}
-          options={[
-            { id: '', label: 'ジャンル問わず' },
-            ...genres.map((g) => ({ id: g, label: g })),
-            ...(closedCount > 0
-              ? [{ id: CLOSED_FILTER, label: `閉店 ${closedCount}` }]
-              : []),
-          ]}
-          onChange={(id) => setGenre(id === '' ? null : id)}
-        />
-      ) : null}
-
-      {/* 食材。ジャンルとは別の軸で絞る（0049）。どちらか一方だけが効く */}
-      {kind !== 'sight' && ingredients.length > 0 ? (
-        <PillTabs
-          value={genre && ingredients.includes(genre) ? genre : ''}
-          options={[
-            { id: '', label: '食材問わず' },
-            ...ingredients.map((g) => ({ id: g, label: g })),
-          ]}
-          onChange={(id) => setGenre(id === '' ? null : id)}
-        />
-      ) : null}
-
-      <input
-        className={inputClassCompact}
-        value={words}
-        onChange={(e) => setWords(e.target.value)}
-        placeholder="名前・場所・メモで探す"
+      {/* 種別・ジャンル・食材を1段に束ねる（案B）。
+          押したものだけが効き、同じものをもう一度押すと外れる */}
+      <FilterRow
+        groups={filterGroups}
+        active={activeCount(filters, kind, tab)}
+        onClear={() => {
+          setTab('all')
+          setKind('all')
+          setFilters(NO_FILTERS)
+        }}
       />
+
+      {/* 文字の大きさは 16px のままにする。小さくすると iOS で
+          入力のたびに画面が拡大する */}
+      <label className="glass flex h-12 items-center gap-2.5 rounded-full px-4">
+        <span className="shrink-0 text-fg-mute">
+          <IconSearch size={17} />
+        </span>
+        <input
+          className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-mute"
+          value={words}
+          onChange={(e) => setWords(e.target.value)}
+          placeholder="名前・場所・メモで探す"
+          aria-label="名前・場所・メモで探す"
+        />
+        {words ? (
+          <button
+            type="button"
+            aria-label="入力を消す"
+            onClick={() => setWords('')}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+          >
+            <IconClose size={13} />
+          </button>
+        ) : null}
+      </label>
 
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
       <PlacesMap places={onMap} />
+
+      {/* 種別・ジャンルがまだのもの。保存リストから入れたぶんを拾う */}
+      {unclassified.length > 0 ? (
+        <Card>
+          <p className="text-[13px]">
+            種別・ジャンルがまだの場所が {unclassified.length} 件あります。
+          </p>
+          <Button
+            variant="outline"
+            full
+            className="mt-3"
+            disabled={classifying}
+            onClick={classifyAll}
+          >
+            {classifying ? '取り込んでいます' : '種別・ジャンルをまとめて取り込む'}
+          </Button>
+          {classifyNote ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{classifyNote}</p>
+          ) : null}
+        </Card>
+      ) : null}
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}
       {unlocated.length > 0 ? (

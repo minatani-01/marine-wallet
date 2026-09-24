@@ -89,14 +89,6 @@ export function statusFromHit(
   return hit.status
 }
 
-/**
- * ジャンルの並びの最後に置く「閉店」。
- *
- * 見た目はジャンルの仲間だが、ジャンルではない。閉店しても焼肉は焼肉なので、
- * ジャンルの言葉としては持たず、絞り込みのときだけ別の値として扱う。
- */
-export const CLOSED_FILTER = '__closed__'
-
 /** 閉店・休業だけを残す */
 export function filterClosed<T extends Pick<Place, 'business_status'>>(places: T[]): T[] {
   return places.filter(isClosed)

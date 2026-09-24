@@ -198,11 +198,26 @@ export const EXTERNAL_APPS: Record<
   onebank: {
     label: 'ワンバンク',
     hint: '月末の貯金入金に使うアプリの起動URL',
-    // Android の intent スキーム。アプリ未インストールなら
-    // browser_fallback_url で Google Play のページへ飛ぶ。
+    // 検証済みのリンク（b43.jp）をそのまま開いてもアプリには渡らなかった。
+    // ブラウザの中での移動は、検証済みであってもブラウザが抱え込む。
+    // アプリへ渡すには intent の形にして名指しする必要がある。
+    // 外れたときは Google Play のページへ飛ぶ
     defaultUrl:
-      'intent://#Intent;package=jp.co.smartbank.b43;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.smartbank.b43;end',
-    note: 'Android Chrome 向けの intent URL を既定にしています。iOS や PC では開けないため、その端末では上書きしてください。',
+      'intent://b43.jp/#Intent;scheme=https;package=jp.co.smartbank.b43;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.smartbank.b43;end',
+    note: 'Android 向けの intent を既定にしています。開かないときは下の候補を試して、開いたものを保存してください。iOS では b43.jp を試してください。',
+    candidates: [
+      { label: 'b43.jp', url: 'https://b43.jp/' },
+      { label: 'b43.go.link', url: 'https://b43.go.link/' },
+      {
+        label: 'b43.jp（intent）',
+        url: 'intent://b43.jp/#Intent;scheme=https;package=jp.co.smartbank.b43;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.smartbank.b43;end',
+      },
+      {
+        label: 'パッケージ名（intent）',
+        url: 'intent://#Intent;package=jp.co.smartbank.b43;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.smartbank.b43;end',
+      },
+      { label: 'Google Play', url: 'https://play.google.com/store/apps/details?id=jp.co.smartbank.b43' },
+    ],
   },
   paypay: {
     label: 'PayPay',
@@ -211,16 +226,17 @@ export const EXTERNAL_APPS: Record<
     note: 'iOS / Android 共通の URL スキームです。',
   },
   marines: {
-    label: 'MARINES APP',
-    hint: '球団公式アプリ（チケット・Mコレ）の起動URL',
-    // アプリが「自分が開く」と宣言して検証済みのリンク（端末の
-    // 「デフォルトで開く」に出ている app.marines-app.com）。この形なら
-    // Android でも iOS でも、入っていればアプリが開く。
-    // パッケージ名や独自スキームでは開けなかった
-    defaultUrl: 'https://app.marines-app.com/',
-    androidUrl:
-      'intent://app.marines-app.com/#Intent;scheme=https;package=jp.co.marines.official.app;S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Djp.co.marines.official.app;end',
-    note: '入っていればアプリが開きます。開かないときは下の候補を試して、開いたものを保存してください。',
+    label: 'TEAM26 マイページ',
+    hint: 'ホームの球団ロゴを押したときに開くURL',
+    // 公式アプリ（MARINES APP）はブラウザからは起動できなかった。
+    // パッケージ名・独自スキーム・検証済みリンクのいずれでも、アプリには
+    // 渡らず白いページか Google Play になる。アプリが受け取ると宣言して
+    // いるのは特定の道筋だけで、根っこは対象外とみられる。
+    //
+    // 代わりに TEAM26 のマイページを開く。チケットと会員証への入口で、
+    // ブラウザでそのまま使える。公式アプリの入口が分かれば差し替える
+    defaultUrl: 'https://mypage.team26.jp/',
+    note: '公式アプリはブラウザから起動できないため、TEAM26 のマイページを開きます。アプリの入口が分かれば、下の候補から差し替えられます。',
     // 検証済みのリンクは app.marines-app.com だが、アプリが受け取る道筋
     // （パス）までは端末の設定画面に出ない。根っこ（/）では開かなかったので、
     // ありそうな道筋を押して試せるようにしておく
@@ -231,7 +247,8 @@ export const EXTERNAL_APPS: Record<
       { label: '/news', url: intentFor('/news') },
       { label: '/mypage', url: intentFor('/mypage') },
       { label: '/ticket', url: intentFor('/ticket') },
-      { label: 'https のまま', url: 'https://app.marines-app.com/' },
+      { label: 'TEAM26 マイページ', url: 'https://mypage.team26.jp/' },
+      { label: 'app.marines-app.com', url: 'https://app.marines-app.com/' },
       { label: 'Google Play', url: 'https://play.google.com/store/apps/details?id=jp.co.marines.official.app' },
       { label: 'App Store', url: 'https://apps.apple.com/jp/app/id1099673155' },
     ],

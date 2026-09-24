@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation'
 import { Button, Chip, Field, Sheet, inputClassCompact } from '@/components/ui'
 import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
-import { PLACE_KINDS, hasGenre, placeKindLabel } from '@/lib/places'
+import {
+  PLACE_KINDS,
+  hasGenre,
+  placeKindLabel,
+  toggleTag,
+} from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
 
@@ -21,11 +26,15 @@ import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
  * 座標を引き直す必要も無い。探さずに手で書いても同じように使える。
  */
 
-type Hit = { name: string; address: string; lat: number; lng: number }
-
-/** 押した言葉を入れる・外す。同じ言葉は二度入れない */
-function toggle(list: string[], name: string): string[] {
-  return list.includes(name) ? list.filter((item) => item !== name) : [...list, name]
+type Hit = {
+  name: string
+  address: string
+  lat: number
+  lng: number
+  /** Google の種類から決めた種別。決まらなければ null（0051） */
+  kind: PlaceKind | null
+  /** Google の種類から決めたジャンル。飲食のときだけ入る */
+  genres: string[]
 }
 
 /**
@@ -140,11 +149,30 @@ export default function PlaceSheet({
     }
   }
 
-  /** 候補を選ぶ。名前・場所・座標がそのまま入る */
+  /**
+   * 候補を選ぶ。名前・場所・座標に加えて、種別とジャンルも入る。
+   *
+   * 飲食店かどうかも、寿司かラーメンかも Google が持っている（0051）。
+   * 手で入れ直す理由が無い。押したあとに直せるので、外れていても困らない。
+   */
   const pick = (hit: Hit) => {
     tapFeedback()
     setName(hit.name)
     setArea(hit.address)
+    if (hit.kind) {
+      setKind(hit.kind)
+      if (!hasGenre(hit.kind)) {
+        setGenres([])
+        setIngredients([])
+      }
+    }
+    if (hit.genres.length > 0 && (!hit.kind || hasGenre(hit.kind))) {
+      setGenres((now) => {
+        const merged = [...now]
+        for (const genre of hit.genres) if (!merged.includes(genre)) merged.push(genre)
+        return merged
+      })
+    }
     setPicked({ lat: hit.lat, lng: hit.lng })
     setHits(null)
     setSearchNote(null)
@@ -311,7 +339,7 @@ export default function PlaceSheet({
               <TagChips
                 options={options.genre}
                 selected={genres}
-                onToggle={(name) => setGenres(toggle(genres, name))}
+                onToggle={(name) => setGenres(toggleTag(genres, name))}
               />
             </Field>
 
@@ -320,7 +348,7 @@ export default function PlaceSheet({
               <TagChips
                 options={options.ingredient}
                 selected={ingredients}
-                onToggle={(name) => setIngredients(toggle(ingredients, name))}
+                onToggle={(name) => setIngredients(toggleTag(ingredients, name))}
               />
             </Field>
 
@@ -339,7 +367,7 @@ export default function PlaceSheet({
                   disabled={adding.trim().length === 0}
                   onClick={() => {
                     tapFeedback()
-                    setGenres(toggle(genres, adding.trim()))
+                    setGenres(toggleTag(genres, adding.trim()))
                     setAdding('')
                   }}
                 >
@@ -351,7 +379,7 @@ export default function PlaceSheet({
                   disabled={adding.trim().length === 0}
                   onClick={() => {
                     tapFeedback()
-                    setIngredients(toggle(ingredients, adding.trim()))
+                    setIngredients(toggleTag(ingredients, adding.trim()))
                     setAdding('')
                   }}
                 >

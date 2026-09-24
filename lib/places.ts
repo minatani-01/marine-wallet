@@ -98,14 +98,36 @@ export function filterByKind(places: Place[], kind: PlaceKind | null): Place[] {
 }
 
 /**
- * ジャンル・食材で絞る。tag が null なら全部。
+ * 押した言葉を入れる・外す。同じ言葉は二度入れない。
+ *
+ * 絞り込みの札も、登録画面の札も同じ動きにする。押したら付き、
+ * もう一度押したら外れる。
+ */
+export function toggleTag<T extends string>(list: T[], name: T): T[] {
+  return list.includes(name) ? list.filter((item) => item !== name) : [...list, name]
+}
+
+/** 選んだもののどれかに当たれば残す。何も選んでいなければ全部 */
+function matchAny(values: readonly string[], picked: readonly string[]): boolean {
+  if (picked.length === 0) return true
+  return picked.some((name) => values.includes(name))
+}
+
+/**
+ * ジャンルで絞る。選んでいなければ全部。
  *
  * 1つの店が焼肉と居酒屋を兼ねることはある（0049）。どちらで絞っても
  * 出るようにしたいので、持っている言葉のどれかに当たれば残す。
+ * 複数選んだときも「どれか」で扱う。「焼肉と寿司の両方をやる店」を
+ * 探したいことは、まず無い。
  */
-export function filterByTag(places: Place[], tag: string | null): Place[] {
-  if (!tag) return places
-  return places.filter((p) => p.genres.includes(tag) || p.ingredients.includes(tag))
+export function filterByGenres(places: Place[], picked: string[]): Place[] {
+  return places.filter((p) => matchAny(p.genres, picked))
+}
+
+/** 食材で絞る。ジャンルとは別の軸で、掛け合わせて効く（0049） */
+export function filterByIngredients(places: Place[], picked: string[]): Place[] {
+  return places.filter((p) => matchAny(p.ingredients, picked))
 }
 
 /**
@@ -121,6 +143,8 @@ export function filterByTag(places: Place[], tag: string | null): Place[] {
 export function genresOf(places: Place[], order: string[] = []): string[] {
   const seen = new Set<string>()
   for (const place of places) {
+    // 観光地に付いたままの言葉は出さない。種別を変えても消さずに残すため
+    if (!hasGenre(place.kind)) continue
     for (const genre of place.genres) if (genre) seen.add(genre)
   }
 
@@ -138,6 +162,8 @@ export function genresOf(places: Place[], order: string[] = []): string[] {
 export function ingredientsOf(places: Place[], order: string[] = []): string[] {
   const seen = new Set<string>()
   for (const place of places) {
+    // 観光地に付いたままの言葉は出さない。種別を変えても消さずに残すため
+    if (!hasGenre(place.kind)) continue
     for (const item of place.ingredients) if (item) seen.add(item)
   }
 

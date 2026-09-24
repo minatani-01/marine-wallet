@@ -168,6 +168,7 @@ export type PlaceKind = 'sight' | 'food'
 /** また行きたいか。空はまだどちらとも言っていない */
 export type Revisit = '' | 'yes' | 'no'
 
+
 export type Place = {
   id: string
   kind: PlaceKind
@@ -194,6 +195,8 @@ export type Place = {
   business_status: string
   /** 最後に確かめた日時。null なら一度も確かめていない */
   status_checked_at: string | null
+  /** 種別・ジャンルを Google から取り込んだ日時（0051）。null はまだ */
+  types_checked_at: string | null
 }
 
 /** ジャンルと食材の候補（0044 / 0049）。設定画面から足せる */
@@ -229,6 +232,20 @@ export type ScheduledGame = {
   /** 'scheduled' | 'finished' | 'cancelled' */
   status: string
   note: string
+}
+
+/**
+ * シーズンぶんの試合（npb_games 由来）。対戦ごとの試合数を数えるのに使う。
+ *
+ * 中止になった試合の振替日は、決まるまで日程ページに出てこない。相手ごとの
+ * 試合数を比べれば、何試合が宙に浮いているのかが分かる。
+ */
+export type SeasonGame = {
+  game_date: string
+  home_team: string
+  away_team: string
+  /** 'scheduled' | 'finished' | 'cancelled' */
+  status: string
 }
 
 /**

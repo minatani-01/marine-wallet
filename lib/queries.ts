@@ -26,6 +26,7 @@ import type {
   SplitMemberView,
   SplitRecord,
   ScheduledGame,
+  SeasonGame,
   StadiumVisit,
   Standing,
   CircleMember,
@@ -591,7 +592,7 @@ export async function getPlaces(): Promise<Place[]> {
     supabase
       .from('places')
       .select(
-        'id, kind, name, area, genres, ingredients, url, note, visited_on, revisit, created_by, lat, lng, business_status, status_checked_at'
+        'id, kind, name, area, genres, ingredients, url, note, visited_on, revisit, created_by, lat, lng, business_status, status_checked_at, types_checked_at'
       )
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })
@@ -655,6 +656,25 @@ export async function getCancelledGames(limit = 200): Promise<ScheduledGame[]> {
       .eq('status', 'cancelled')
       .order('game_date', { ascending: false })
       .limit(limit)
+  )
+  return data ?? []
+}
+
+/**
+ * シーズンぶんの試合。相手ごとの試合数を数えるのに使う。
+ *
+ * 振替日が決まっていない試合を出すには、終わった試合もこれからの試合も
+ * 中止も、まとめて数える必要がある。列は4つだけなので、150行ほど読んでも軽い。
+ */
+export async function getSeasonGames(season: number): Promise<SeasonGame[]> {
+  const supabase = await createClient()
+  const data = await read<SeasonGame[]>('npb_games', () =>
+    supabase
+      .from('npb_games')
+      .select('game_date, home_team, away_team, status')
+      .gte('game_date', `${season}-01-01`)
+      .lte('game_date', `${season}-12-31`)
+      .order('game_date', { ascending: true })
   )
   return data ?? []
 }

@@ -40,6 +40,8 @@ import { depositedTotal, notDepositedTotal } from '@/lib/insights'
 import { notifyMonthConfirmed } from '@/lib/notify-client'
 import { currentMonth, monthLabel, monthLabelEn, shortDate, yen } from '@/lib/format'
 import { cancelledOf, mergeCancelled, upcomingOf } from '@/lib/upcoming'
+import { pendingSeries } from '@/lib/npb/pending'
+import { MARINES_TEAM_LABEL } from '@/lib/npb/fetch'
 import {
   MONTHLY_STATUS_LABEL,
   homeAwayLabel,
@@ -53,6 +55,7 @@ import type {
   GamePlan,
   MonthlySaving,
   ScheduledGame,
+  SeasonGame,
   MonthlyStatus,
   Game,
   StadiumVisit,
@@ -86,6 +89,7 @@ export default function SavingsClient({
   members,
   cancelled,
   scheduled,
+  season,
   plans,
 }: {
   userId: string
@@ -108,6 +112,8 @@ export default function SavingsClient({
   cancelled: ScheduledGame[]
   /** これからの試合。中止もそのまま入る */
   scheduled: ScheduledGame[]
+  /** シーズンぶんの試合。振替日未定の試合を数えるのに使う */
+  season: SeasonGame[]
   /** 観戦予定。自分のぶんと、接続している相手のぶん */
   plans: GamePlan[]
 }) {
@@ -167,6 +173,14 @@ export default function SavingsClient({
    */
   /** これからの試合。月の選択とは関係なく、先の予定をすべて持つ */
   const next = useMemo(() => upcomingOf(scheduled, Number.MAX_SAFE_INTEGER), [scheduled])
+
+  /**
+   * 振替日がまだ決まっていない試合。
+   *
+   * 雨天中止の振替は、日が決まるまで npb.jp の日程に出てこない。予定だけを
+   * 並べると消えた試合になるので、何試合が宙に浮いているのかを添える
+   */
+  const pending = useMemo(() => pendingSeries(season, MARINES_TEAM_LABEL), [season])
 
   /** 一覧は長くなるので、はじめは直近5件だけ出す */
   const [allSchedule, setAllSchedule] = useState(false)
@@ -724,7 +738,7 @@ export default function SavingsClient({
         <Card>
           <div className="eyebrow">これからの試合</div>
 
-          {next.length === 0 ? (
+          {next.length === 0 && pending.length === 0 ? (
             <p className="mt-3 text-[13px] leading-relaxed text-fg-mute">
               予定がまだありません。日程は毎朝取り込んでいます。
             </p>
@@ -784,6 +798,23 @@ export default function SavingsClient({
                   </div>
                 )
               })}
+
+              {/* 振替日がまだ決まっていない試合。日付が無いので最後に置く。
+                  npb.jp に日程が載れば、上の予定に並ぶ */}
+              {pending.map((row) => (
+                <div key={`pending-${row.opponent}`} className="py-2 opacity-60">
+                  <div className="flex items-center gap-2.5">
+                    <span className="shrink-0 text-[11px] text-fg-mute">未定</span>
+                    <span className="min-w-0 flex-1 truncate text-[13px]">
+                      {row.opponent}戦
+                      <span className="text-[11px] text-fg-mute"> / {row.games}試合</span>
+                    </span>
+                    <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[10px] text-fg-mute">
+                      振替日未定
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
