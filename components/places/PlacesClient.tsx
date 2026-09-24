@@ -25,6 +25,7 @@ import {
 } from '@/components/icons'
 import PlaceSheet from '@/components/places/PlaceSheet'
 import PlacesMap from '@/components/places/PlacesMap'
+import { useReloadTask } from '@/components/AppShell'
 import { createClient } from '@/lib/supabase/client'
 import { parseTakeoutPlaces } from '@/lib/csv'
 import {
@@ -444,10 +445,6 @@ export default function PlacesClient({
   const [locating, setLocating] = useState(false)
   const [locateNote, setLocateNote] = useState<string | null>(null)
 
-  // 種別・ジャンルの取り込み
-  const [classifying, setClassifying] = useState(false)
-  const [classifyNote, setClassifyNote] = useState<string | null>(null)
-
   // 保存リストの取り込み
   const [importKind, setImportKind] = useState<PlaceKind>('food')
   const [importing, setImporting] = useState(false)
@@ -668,17 +665,10 @@ export default function PlacesClient({
    * 飲食に混ざる。ジャンルも空のままになる。1件ずつ直すのは続かない。
    *
    * 1回に10件まで。上限に当たったらそこで止める。押し直せば続きから進む。
+   * 画面にボタンは置かず、ヘッダーの更新に相乗りさせる（押す場所を増やさない）。
    */
   const classifyAll = async () => {
-    if (unclassified.length === 0) return
-
-    tapFeedback()
-    setClassifying(true)
-    setClassifyNote(null)
-
     const targets = unclassified.slice(0, CLASSIFY_STEP)
-    let done = 0
-    let overBudget = false
 
     for (const place of targets) {
       const res = await fetch('/api/places/classify', {
@@ -687,24 +677,23 @@ export default function PlacesClient({
         body: JSON.stringify({ id: place.id }),
       }).catch(() => null)
 
-      if (res?.status === 429) {
-        overBudget = true
-        break
-      }
-      const body = res?.ok ? ((await res.json()) as { ok?: boolean }) : null
-      if (body?.ok) done += 1
+      // その日の上限に達したら、そこで止める。残りは次に押したときに進む
+      if (res?.status === 429) return
     }
-
-    setClassifying(false)
-    const rest = unclassified.length - targets.length
-    setClassifyNote(
-      overBudget
-        ? `今日はここまでです（${done} 件わかりました）。明日また押してください。`
-        : `${done} / ${targets.length} 件わかりました。` +
-          (rest > 0 ? ` 残り ${rest} 件は、もう一度押してください。` : '')
-    )
-    router.refresh()
   }
+
+  /**
+   * 更新を押したときに、まだ取り込んでいないぶんを片付ける。
+   *
+   * 取り込むものが無いときは登録しない。更新はいつもどおり読み込み直すだけで、
+   * ボタンの説明も変わらない。
+   */
+  useReloadTask(
+    unclassified.length > 0
+      ? `種別・ジャンルを ${Math.min(unclassified.length, CLASSIFY_STEP)} 件取り込みます（残り ${unclassified.length} 件）`
+      : null,
+    classifyAll
+  )
 
   /**
    * Google マップの保存リスト（Takeout の CSV）を取り込む。
@@ -883,27 +872,6 @@ export default function PlacesClient({
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
       <PlacesMap places={onMap} here={here} onHere={askHere} />
-
-      {/* 種別・ジャンルがまだのもの。保存リストから入れたぶんを拾う */}
-      {unclassified.length > 0 ? (
-        <Card>
-          <p className="text-[13px]">
-            種別・ジャンルがまだの場所が {unclassified.length} 件あります。
-          </p>
-          <Button
-            variant="outline"
-            full
-            className="mt-3"
-            disabled={classifying}
-            onClick={classifyAll}
-          >
-            {classifying ? '取り込んでいます' : '種別・ジャンルをまとめて取り込む'}
-          </Button>
-          {classifyNote ? (
-            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{classifyNote}</p>
-          ) : null}
-        </Card>
-      ) : null}
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}
       {unlocated.length > 0 ? (
