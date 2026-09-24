@@ -1,4 +1,4 @@
-import type { Place, PlaceKind, PriceBand, Revisit } from '@/types'
+import type { Place, PlaceKind, Revisit } from '@/types'
 
 /**
  * 行きたい場所・行った場所の整理。
@@ -98,26 +98,6 @@ export function filterByKind(places: Place[], kind: PlaceKind | null): Place[] {
 }
 
 /**
- * 価格帯（0050）。金額そのものは持たず、3段階だけにする。
- *
- * 店の値段は変わるし、同じ店でも昼と夜で違う。金額を入れると入れ直す手間の
- * わりに当たらない数字になる。「低・中・高」なら、入れるときに迷わず、
- * あとから見ても意味が変わらない。
- */
-export const PRICE_BAND_LABEL: Record<Exclude<PriceBand, ''>, string> = {
-  low: '低',
-  mid: '中',
-  high: '高',
-}
-
-export const PRICE_BANDS: Exclude<PriceBand, ''>[] = ['low', 'mid', 'high']
-
-/** 画面に出す言葉。まだ決めていなければ何も出さない */
-export function priceLabel(band: PriceBand): string | null {
-  return band === '' ? null : (PRICE_BAND_LABEL[band] ?? null)
-}
-
-/**
  * 押した言葉を入れる・外す。同じ言葉は二度入れない。
  *
  * 絞り込みの札も、登録画面の札も同じ動きにする。押したら付き、
@@ -148,11 +128,6 @@ export function filterByGenres(places: Place[], picked: string[]): Place[] {
 /** 食材で絞る。ジャンルとは別の軸で、掛け合わせて効く（0049） */
 export function filterByIngredients(places: Place[], picked: string[]): Place[] {
   return places.filter((p) => matchAny(p.ingredients, picked))
-}
-
-/** 価格帯で絞る。選んでいなければ全部。未設定の店は選ぶと出なくなる */
-export function filterByPrice(places: Place[], picked: PriceBand[]): Place[] {
-  return places.filter((p) => matchAny([p.price_band], picked))
 }
 
 /**

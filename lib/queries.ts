@@ -592,7 +592,7 @@ export async function getPlaces(): Promise<Place[]> {
     supabase
       .from('places')
       .select(
-        'id, kind, name, area, genres, ingredients, url, note, visited_on, revisit, price_band, created_by, lat, lng, business_status, status_checked_at, types_checked_at'
+        'id, kind, name, area, genres, ingredients, url, note, visited_on, revisit, created_by, lat, lng, business_status, status_checked_at, types_checked_at'
       )
       .order('visited_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: true })

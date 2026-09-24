@@ -7,14 +7,12 @@ import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
 import {
   PLACE_KINDS,
-  PRICE_BANDS,
-  PRICE_BAND_LABEL,
   hasGenre,
   placeKindLabel,
   toggleTag,
 } from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceGenre, PlaceKind, PlaceTagKind, PriceBand } from '@/types'
+import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
 
 /**
  * 行きたい場所の登録と編集。
@@ -105,7 +103,6 @@ export default function PlaceSheet({
   const [note, setNote] = useState(place?.note ?? '')
   const [genres, setGenres] = useState<string[]>(place?.genres ?? [])
   const [ingredients, setIngredients] = useState<string[]>(place?.ingredients ?? [])
-  const [price, setPrice] = useState<PriceBand>(place?.price_band ?? '')
   /** 候補に無い言葉を足すための入力。押したときだけ足す */
   const [adding, setAdding] = useState('')
   const [saving, setSaving] = useState(false)
@@ -167,7 +164,6 @@ export default function PlaceSheet({
       if (!hasGenre(hit.kind)) {
         setGenres([])
         setIngredients([])
-        setPrice('')
       }
     }
     if (hit.genres.length > 0 && (!hit.kind || hasGenre(hit.kind))) {
@@ -198,7 +194,6 @@ export default function PlaceSheet({
       note: note.trim(),
       genres: hasGenre(kind) ? genres : [],
       ingredients: hasGenre(kind) ? ingredients : [],
-      price_band: hasGenre(kind) ? price : '',
       // 検索で選んだなら座標は分かっている。引き直す必要は無い
       ...(picked
         ? {
@@ -311,7 +306,6 @@ export default function PlaceSheet({
                   if (!hasGenre(k)) {
                     setGenres([])
                     setIngredients([])
-                    setPrice('')
                   }
                 }}
               >
@@ -341,22 +335,6 @@ export default function PlaceSheet({
 
         {hasGenre(kind) ? (
           <>
-            {/* 価格帯（0050）。金額は持たず3段階にする。押し直せば未設定へ戻る */}
-            <Field label="価格帯" hint="1人あたりの目安">
-              <div className="flex flex-wrap gap-2">
-                {PRICE_BANDS.map((band) => (
-                  <Chip
-                    key={band}
-                    selected={price === band}
-                    onClick={() => setPrice(price === band ? '' : band)}
-                    className="min-w-[72px]"
-                  >
-                    {PRICE_BAND_LABEL[band]}
-                  </Chip>
-                ))}
-              </div>
-            </Field>
-
             <Field label="ジャンル" hint="いくつでも選べます">
               <TagChips
                 options={options.genre}

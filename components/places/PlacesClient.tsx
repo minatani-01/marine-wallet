@@ -29,19 +29,15 @@ import { createClient } from '@/lib/supabase/client'
 import { parseTakeoutPlaces } from '@/lib/csv'
 import {
   PLACE_KINDS,
-  PRICE_BANDS,
-  PRICE_BAND_LABEL,
   REVISIT_CHOICES,
   REVISIT_LABEL,
   filterByGenres,
   filterByIngredients,
   filterByKind,
-  filterByPrice,
   genresOf,
   ingredientsOf,
   mapsUrl,
   placeKindLabel,
-  priceLabel,
   revisitPatch,
   searchPlaces,
   splitPlaces,
@@ -50,7 +46,7 @@ import {
 import { filterClosed, isClosed, statusLabel } from '@/lib/places-status'
 import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
-import type { Place, PlaceGenre, PlaceKind, PriceBand, Revisit } from '@/types'
+import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
 
 /**
  * 行きたい場所と、行った場所。
@@ -88,18 +84,14 @@ const CLASSIFY_STEP = 10
 type Filters = {
   genres: string[]
   ingredients: string[]
-  prices: PriceBand[]
   /** 閉店・休業だけを見る（0045） */
   closedOnly: boolean
 }
 
-const NO_FILTERS: Filters = { genres: [], ingredients: [], prices: [], closedOnly: false }
+const NO_FILTERS: Filters = { genres: [], ingredients: [], closedOnly: false }
 
 function narrowBy(rows: Place[], f: Filters): Place[] {
-  const out = filterByPrice(
-    filterByIngredients(filterByGenres(rows, f.genres), f.ingredients),
-    f.prices
-  )
+  const out = filterByIngredients(filterByGenres(rows, f.genres), f.ingredients)
   return f.closedOnly ? filterClosed(out) : out
 }
 
@@ -108,7 +100,6 @@ function activeCount(f: Filters, kind: KindTab, tab: Tab): number {
   return (
     f.genres.length +
     f.ingredients.length +
-    f.prices.length +
     (f.closedOnly ? 1 : 0) +
     (kind === 'all' ? 0 : 1) +
     (tab === 'all' ? 0 : 1)
@@ -169,7 +160,7 @@ type FilterItem = { id: string; label: string; on: boolean; onToggle: () => void
 /**
  * 1段に束ねた絞り込み（案B）。
  *
- * 種別・価格帯・ジャンル・食材を、区切りを挟んだ横1列に並べる。段を分けて
+ * 種別・ジャンル・食材を、区切りを挟んだ横1列に並べる。段を分けて
  * 積み上げると、画面の上半分がすべて絞り込みで埋まり、地図と一覧が下に
  * 押し出される。1列なら、使うぶんだけ横へ送れる。
  */
@@ -283,12 +274,6 @@ function PlaceCard({
             <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
               {place.name}
             </span>
-            {/* 価格帯（0050）。決めていない場所には何も出さない */}
-            {priceLabel(place.price_band) ? (
-              <span className="tnum shrink-0 rounded-md border border-line px-1.5 text-[10px] leading-[17px] text-fg-dim">
-                {priceLabel(place.price_band)}
-              </span>
-            ) : null}
             {closedLabel ? (
               <span className="shrink-0 rounded-md border border-danger/50 px-1.5 text-[10px] leading-[17px] text-danger">
                 {closedLabel}
@@ -450,14 +435,14 @@ export default function PlacesClient({
   /**
    * 種別を選び直す。同じものをもう一度押したら「すべて」に戻す。
    *
-   * 観光地にはジャンル・食材・価格帯が無い（0044 / 0049 / 0050）。
+   * 観光地にはジャンルも食材も無い（0044 / 0049）。
    * 選んだまま観光地へ移ると、当たる場所が1つも無くなる。外しておく。
    */
   const chooseKind = (next: PlaceKind) => {
     const value = kind === next ? 'all' : next
     setKind(value)
     if (value === 'sight') {
-      setFilters((f) => ({ ...f, genres: [], ingredients: [], prices: [] }))
+      setFilters((f) => ({ ...f, genres: [], ingredients: [] }))
     }
   }
 
@@ -477,20 +462,6 @@ export default function PlacesClient({
         onToggle: () => chooseKind(k),
       })),
     },
-    ...(foodAxes
-      ? [
-          {
-            name: '価格帯',
-            items: PRICE_BANDS.map((band) => ({
-              id: band,
-              label: PRICE_BAND_LABEL[band],
-              on: filters.prices.includes(band),
-              onToggle: () =>
-                setFilters((f) => ({ ...f, prices: toggleTag(f.prices, band) })),
-            })),
-          },
-        ]
-      : []),
     ...(foodAxes && genreChoices.length > 0
       ? [
           {
@@ -771,7 +742,7 @@ export default function PlacesClient({
         </button>
       </div>
 
-      {/* 表示・種別・価格帯・ジャンル・食材を1段に束ねる（案B）。
+      {/* 種別・ジャンル・食材を1段に束ねる（案B）。
           押したものだけが効き、同じものをもう一度押すと外れる */}
       <FilterRow
         groups={filterGroups}

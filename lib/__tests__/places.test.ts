@@ -5,8 +5,6 @@ import {
   filterByGenres,
   filterByIngredients,
   filterByKind,
-  filterByPrice,
-  priceLabel,
   toggleTag,
   genresOf,
   hasGenre,
@@ -30,7 +28,6 @@ const place = (over: Partial<Place> = {}): Place => ({
   note: '',
   visited_on: null,
   revisit: '',
-  price_band: '',
   created_by: 'u1',
   lat: null,
   lng: null,
@@ -103,30 +100,6 @@ test('ジャンルと食材は掛け合わせて効く', () => {
     filterByIngredients(filterByGenres(rows, ['焼肉']), ['牛']).map((p) => p.name),
     ['牛の焼肉']
   )
-})
-
-test('価格帯で絞る', () => {
-  const rows = [
-    place({ name: '低', price_band: 'low' }),
-    place({ name: '中', price_band: 'mid' }),
-    place({ name: '高', price_band: 'high' }),
-    place({ name: '未設定', price_band: '' }),
-  ]
-
-  assert.deepEqual(filterByPrice(rows, ['low']).map((p) => p.name), ['低'])
-  assert.deepEqual(
-    filterByPrice(rows, ['low', 'high']).map((p) => p.name),
-    ['低', '高']
-  )
-  // 選ばなければ全部。未設定の場所を隠してしまわない
-  assert.equal(filterByPrice(rows, []).length, 4)
-})
-
-test('価格帯の言葉は、決めていなければ出さない', () => {
-  assert.equal(priceLabel('low'), '低')
-  assert.equal(priceLabel('mid'), '中')
-  assert.equal(priceLabel('high'), '高')
-  assert.equal(priceLabel(''), null)
 })
 
 test('札は押すと付き、もう一度押すと外れる', () => {
