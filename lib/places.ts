@@ -42,6 +42,26 @@ export function mapsUrl(place: Pick<Place, 'name' | 'area'>): string {
 }
 
 /**
+ * 住所を、場所の手がかりとして短くする。
+ *
+ * Google が返すのは「東京都中央区銀座５丁目１４−１７ USB1階」のような
+ * 完全な住所で、これをそのまま持つと一覧が住所で埋まる。46件すべてが
+ * 別々の住所になるので、見比べる手がかりにもならない。
+ *
+ * 市区町村と町名だけ残す。「中央区銀座」まであれば、どのあたりの店かが
+ * 分かり、地図で開くときの手がかりとしても十分に効く。都道府県は落とす。
+ * 同じ県内の店ばかり並ぶので、付いていても見分けがつかない。
+ *
+ * 丁目より先は数字から始まるので、そこで切る。「二番町」のような漢数字は
+ * 町名の一部なので切らない。
+ */
+export function shortArea(address: string): string {
+  const withoutPrefecture = address.replace(/^.{2,3}[都道府県]/, '')
+  const cut = withoutPrefecture.split(/[0-9０-９]/)[0].trim()
+  return cut || address.trim()
+}
+
+/**
  * また行きたいかの札（0046）。
  *
  * 行ったかどうかだけでは、次にどこへ行くかを決められない。行った店が

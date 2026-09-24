@@ -83,7 +83,6 @@ const GENRE_BY_TYPE: Record<string, string> = {
   hamburger_restaurant: 'ハンバーガー',
   fast_food_restaurant: 'ファストフード',
   buffet_restaurant: 'ビュッフェ',
-  japanese_restaurant: '和食',
   chinese_restaurant: '中華',
   italian_restaurant: 'イタリアン',
   french_restaurant: 'フレンチ',
@@ -93,7 +92,6 @@ const GENRE_BY_TYPE: Record<string, string> = {
   vietnamese_restaurant: 'ベトナム料理',
   mexican_restaurant: 'メキシコ料理',
   spanish_restaurant: 'スペイン料理',
-  asian_restaurant: 'アジア料理',
   cafe: 'カフェ',
   coffee_shop: 'カフェ',
   cat_cafe: 'カフェ',
@@ -108,6 +106,38 @@ const GENRE_BY_TYPE: Record<string, string> = {
   dessert_restaurant: 'スイーツ',
   donut_shop: 'スイーツ',
   confectionery: 'スイーツ',
+}
+
+/**
+ * ほかに何も分からないときだけ使う言葉。
+ *
+ * Google は居酒屋も蕎麦屋もラーメン屋も japanese_restaurant として返す。
+ * そのまま読み替えると、ほとんどの店に「和食」が付き、札が倍になるのに
+ * 何も分からない。具体的なジャンルが取れたときは足さない。
+ */
+const FALLBACK_BY_TYPE: Record<string, string> = {
+  japanese_restaurant: '和食',
+  asian_restaurant: 'アジア料理',
+}
+
+/**
+ * 同じものを指す言葉。
+ *
+ * すでに「コーヒー」と入れてある店に「カフェ」を足しても、札が増えるだけで
+ * 絞り込みは変わらない。どちらかを持っていれば足さない。
+ * どの言葉を使うかは、入れた人の決めたほうに合わせる。
+ */
+const SYNONYMS: string[][] = [
+  ['カフェ', 'コーヒー', '喫茶'],
+  ['和食', '日本料理'],
+  ['中華', '中華料理'],
+  ['バー', 'バル'],
+  ['スイーツ', 'デザート'],
+]
+
+/** その言葉と同じものを指す言葉（自分を含む） */
+function sameAs(name: string): string[] {
+  return SYNONYMS.find((group) => group.includes(name)) ?? [name]
 }
 
 /**
@@ -152,11 +182,16 @@ export function genresFromTypes(
     if (genre && !found.includes(genre)) found.push(genre)
     if (found.length >= MAX_GENRES) return found
   }
+  if (found.length > 0) return found
 
-  if (found.length === 0 && displayName && primaryType && !VAGUE_TYPES.has(primaryType)) {
-    return [displayName]
+  // 具体的なジャンルが取れなかったときだけ、大きなくくりで答える
+  for (const type of [primaryType, ...types]) {
+    const genre = FALLBACK_BY_TYPE[type]
+    if (genre) return [genre]
   }
-  return found
+
+  if (displayName && primaryType && !VAGUE_TYPES.has(primaryType)) return [displayName]
+  return []
 }
 
 export type Classified = {
@@ -174,7 +209,10 @@ export type Classified = {
  */
 export function mergeGenres(current: string[], found: string[]): string[] {
   const merged = [...current]
-  for (const genre of found) if (!merged.includes(genre)) merged.push(genre)
+  for (const genre of found) {
+    if (sameAs(genre).some((word) => merged.includes(word))) continue
+    merged.push(genre)
+  }
   return merged
 }
 
