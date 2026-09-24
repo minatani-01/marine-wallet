@@ -71,6 +71,14 @@ type KindTab = 'all' | PlaceKind
 const LOCATE_STEP = 20
 
 /**
+ * 1回に種別・ジャンルを取り込む件数（0051）。
+ *
+ * places_search の上限は1日50回で、閉店の確認が毎朝5回使う。残りから
+ * 余裕を見て10件にしてある。30件あっても3回押せば終わる。
+ */
+const CLASSIFY_STEP = 10
+
+/**
  * 絞り込みの条件。軸ごとに別々に持つ。
  *
  * ひとつの値で持っていたころは、ジャンルと食材が同じ場所に入っていたため
@@ -386,6 +394,10 @@ export default function PlacesClient({
   const [locating, setLocating] = useState(false)
   const [locateNote, setLocateNote] = useState<string | null>(null)
 
+  // 種別・ジャンルの取り込み
+  const [classifying, setClassifying] = useState(false)
+  const [classifyNote, setClassifyNote] = useState<string | null>(null)
+
   // 保存リストの取り込み
   const [importKind, setImportKind] = useState<PlaceKind>('food')
   const [importing, setImporting] = useState(false)
@@ -572,6 +584,57 @@ export default function PlacesClient({
     router.refresh()
   }
 
+  /** まだ Google に種別・ジャンルを聞いていない場所 */
+  const unclassified = useMemo(
+    () => places.filter((p) => p.types_checked_at === null),
+    [places]
+  )
+
+  /**
+   * 種別とジャンルを Google からまとめて取り込む（0051）。
+   *
+   * 保存リストの取り込みでは「全部まとめて飲食」としか入れられず、観光地も
+   * 飲食に混ざる。ジャンルも空のままになる。1件ずつ直すのは続かない。
+   *
+   * 1回に10件まで。上限に当たったらそこで止める。押し直せば続きから進む。
+   */
+  const classifyAll = async () => {
+    if (unclassified.length === 0) return
+
+    tapFeedback()
+    setClassifying(true)
+    setClassifyNote(null)
+
+    const targets = unclassified.slice(0, CLASSIFY_STEP)
+    let done = 0
+    let overBudget = false
+
+    for (const place of targets) {
+      const res = await fetch('/api/places/classify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: place.id }),
+      }).catch(() => null)
+
+      if (res?.status === 429) {
+        overBudget = true
+        break
+      }
+      const body = res?.ok ? ((await res.json()) as { ok?: boolean }) : null
+      if (body?.ok) done += 1
+    }
+
+    setClassifying(false)
+    const rest = unclassified.length - targets.length
+    setClassifyNote(
+      overBudget
+        ? `今日はここまでです（${done} 件わかりました）。明日また押してください。`
+        : `${done} / ${targets.length} 件わかりました。` +
+          (rest > 0 ? ` 残り ${rest} 件は、もう一度押してください。` : '')
+    )
+    router.refresh()
+  }
+
   /**
    * Google マップの保存リスト（Takeout の CSV）を取り込む。
    *
@@ -749,6 +812,27 @@ export default function PlacesClient({
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
       <PlacesMap places={onMap} />
+
+      {/* 種別・ジャンルがまだのもの。保存リストから入れたぶんを拾う */}
+      {unclassified.length > 0 ? (
+        <Card>
+          <p className="text-[13px]">
+            種別・ジャンルがまだの場所が {unclassified.length} 件あります。
+          </p>
+          <Button
+            variant="outline"
+            full
+            className="mt-3"
+            disabled={classifying}
+            onClick={classifyAll}
+          >
+            {classifying ? '取り込んでいます' : '種別・ジャンルをまとめて取り込む'}
+          </Button>
+          {classifyNote ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{classifyNote}</p>
+          ) : null}
+        </Card>
+      ) : null}
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}
       {unlocated.length > 0 ? (

@@ -36,6 +36,7 @@ const place = (over: Partial<Place> = {}): Place => ({
   lng: null,
   business_status: '',
   status_checked_at: null,
+  types_checked_at: null,
   ...over,
 })
 

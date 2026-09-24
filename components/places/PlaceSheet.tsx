@@ -28,7 +28,16 @@ import type { Place, PlaceGenre, PlaceKind, PlaceTagKind, PriceBand } from '@/ty
  * 座標を引き直す必要も無い。探さずに手で書いても同じように使える。
  */
 
-type Hit = { name: string; address: string; lat: number; lng: number }
+type Hit = {
+  name: string
+  address: string
+  lat: number
+  lng: number
+  /** Google の種類から決めた種別。決まらなければ null（0051） */
+  kind: PlaceKind | null
+  /** Google の種類から決めたジャンル。飲食のときだけ入る */
+  genres: string[]
+}
 
 /**
  * 候補の札。
@@ -143,11 +152,31 @@ export default function PlaceSheet({
     }
   }
 
-  /** 候補を選ぶ。名前・場所・座標がそのまま入る */
+  /**
+   * 候補を選ぶ。名前・場所・座標に加えて、種別とジャンルも入る。
+   *
+   * 飲食店かどうかも、寿司かラーメンかも Google が持っている（0051）。
+   * 手で入れ直す理由が無い。押したあとに直せるので、外れていても困らない。
+   */
   const pick = (hit: Hit) => {
     tapFeedback()
     setName(hit.name)
     setArea(hit.address)
+    if (hit.kind) {
+      setKind(hit.kind)
+      if (!hasGenre(hit.kind)) {
+        setGenres([])
+        setIngredients([])
+        setPrice('')
+      }
+    }
+    if (hit.genres.length > 0 && (!hit.kind || hasGenre(hit.kind))) {
+      setGenres((now) => {
+        const merged = [...now]
+        for (const genre of hit.genres) if (!merged.includes(genre)) merged.push(genre)
+        return merged
+      })
+    }
     setPicked({ lat: hit.lat, lng: hit.lng })
     setHits(null)
     setSearchNote(null)

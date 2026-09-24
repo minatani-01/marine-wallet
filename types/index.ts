@@ -199,6 +199,8 @@ export type Place = {
   business_status: string
   /** 最後に確かめた日時。null なら一度も確かめていない */
   status_checked_at: string | null
+  /** 種別・ジャンルを Google から取り込んだ日時（0051）。null はまだ */
+  types_checked_at: string | null
 }
 
 /** ジャンルと食材の候補（0044 / 0049）。設定画面から足せる */
