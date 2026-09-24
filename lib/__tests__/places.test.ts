@@ -13,6 +13,7 @@ import {
   placeKindLabel,
   revisitPatch,
   searchPlaces,
+  shortArea,
   splitPlaces,
 } from '../places'
 import type { Place } from '../../types'
@@ -236,4 +237,20 @@ test('観光地に付いたままのジャンルは、絞り込みの札に出�
     place({ kind: 'sight', genres: ['カフェ'] }),
   ]
   assert.deepEqual(genresOf(rows), ['寿司'])
+})
+
+test('住所は市区町村と町名だけ残す', () => {
+  assert.equal(shortArea('東京都中央区銀座５丁目１４−１７ USB1階'), '中央区銀座')
+  assert.equal(shortArea('沖縄県那覇市安里１丁目４−１６ 安里サンサロビル 1階'), '那覇市安里')
+  assert.equal(shortArea('岐阜県岐阜市二番町６'), '岐阜市二番町')
+  assert.equal(shortArea('東京都台東区上野４丁目４−３'), '台東区上野')
+  // 漢数字は町名の一部なので切らない
+  assert.equal(shortArea('東京都千代田区一番町１'), '千代田区一番町')
+})
+
+test('短くできない住所はそのまま返す', () => {
+  assert.equal(shortArea('幕張'), '幕張')
+  assert.equal(shortArea(''), '')
+  // 都道府県しか無ければ、落としきらずに残す
+  assert.equal(shortArea('東京都'), '東京都')
 })

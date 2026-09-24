@@ -75,6 +75,14 @@ const LOCATE_STEP = 20
 const CLASSIFY_STEP = 10
 
 /**
+ * はじめに出す件数。残りは「詳細を見る」で開く。
+ *
+ * 46件をいつも全部描くと、画面5枚ぶんの札が並ぶ。探すときは絞り込みか
+ * 言葉で先に狭めるので、常に全部が出ている必要は無い（貯金の一覧と同じ）。
+ */
+const LIST_STEP = 10
+
+/**
  * 絞り込みの条件。軸ごとに別々に持つ。
  *
  * ひとつの値で持っていたころは、ジャンルと食材が同じ場所に入っていたため
@@ -421,6 +429,14 @@ export default function PlacesClient({
     () => searchPlaces(narrowBy(byKind, filters), words),
     [byKind, filters, words]
   )
+
+  /** はじめは先頭だけ出す。絞り込みや言葉を変えたら畳み直す */
+  const [allShown, setAllShown] = useState(false)
+  useEffect(() => {
+    setAllShown(false)
+  }, [tab, kind, filters, words])
+
+  const listed = allShown ? shown : shown.slice(0, LIST_STEP)
 
   /** 地図に出すぶん。タブでは絞らず、種別・絞り込み・言葉で絞る */
   const onMap = useMemo(
@@ -841,7 +857,7 @@ export default function PlacesClient({
         />
       ) : (
         <div className="flex flex-col gap-2">
-          {shown.map((place) => (
+          {listed.map((place) => (
             <PlaceCard
               key={place.id}
               place={place}
@@ -851,6 +867,27 @@ export default function PlacesClient({
               onDelete={remove}
             />
           ))}
+
+          {/* 件数と、残りを開くボタン。何件のうち何件を見ているかを出す */}
+          <div className="mt-1 flex items-center justify-between">
+            <span className="eyebrow">
+              {allShown || shown.length <= LIST_STEP
+                ? `${shown.length} 件`
+                : `${listed.length} / ${shown.length} 件`}
+            </span>
+            {shown.length > LIST_STEP ? (
+              <button
+                type="button"
+                onClick={() => {
+                  tapFeedback()
+                  setAllShown((on) => !on)
+                }}
+                className="text-[11px] text-fg-mute underline underline-offset-2 transition-colors hover:text-marine"
+              >
+                {allShown ? '閉じる' : `詳細を見る（残り ${shown.length - LIST_STEP} 件）`}
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
 

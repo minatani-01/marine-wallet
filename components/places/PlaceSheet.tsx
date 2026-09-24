@@ -5,12 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button, Chip, Field, Sheet, inputClassCompact } from '@/components/ui'
 import { IconSearch } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
-import {
-  PLACE_KINDS,
-  hasGenre,
-  placeKindLabel,
-  toggleTag,
-} from '@/lib/places'
+import { PLACE_KINDS, hasGenre, placeKindLabel, shortArea, toggleTag } from '@/lib/places'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceGenre, PlaceKind, PlaceTagKind } from '@/types'
 
@@ -158,7 +153,8 @@ export default function PlaceSheet({
   const pick = (hit: Hit) => {
     tapFeedback()
     setName(hit.name)
-    setArea(hit.address)
+    // 完全な住所をそのまま持つと、一覧が住所で埋まる。町名までにする
+    setArea(shortArea(hit.address))
     if (hit.kind) {
       setKind(hit.kind)
       if (!hasGenre(hit.kind)) {
