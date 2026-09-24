@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card } from '@/components/ui'
 import { IconTarget } from '@/components/icons'
 import { tapFeedback } from '@/lib/haptics'
 import { isVisited, placeKindLabel } from '@/lib/places'
 import { isClosed, statusLabel } from '@/lib/places-status'
 import type { Place } from '@/types'
+import type { Point } from '@/lib/places-near'
 
 /**
  * Google マップに、自分たちのリストのピンを並べる。
@@ -68,7 +69,17 @@ function loadMaps(key: string): Promise<void> {
 
 type Gate = 'loading' | 'ready' | 'off' | 'over' | 'failed'
 
-export default function PlacesMap({ places }: { places: Place[] }) {
+export default function PlacesMap({
+  places,
+  here,
+  onHere,
+}: {
+  places: Place[]
+  /** 現在位置。取れていなければ null。絞り込みと共有する */
+  here: Point | null
+  /** 現在位置を取りに行く。取れたら親が持つ */
+  onHere: () => Promise<Point | null>
+}) {
   const boxRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
@@ -76,12 +87,25 @@ export default function PlacesMap({ places }: { places: Place[] }) {
   const [gate, setGate] = useState<Gate>('loading')
   const ready = gate === 'ready'
 
-  // 現在位置。押したときだけ取りに行く（常時追いかけない）
+  // 現在位置の印。位置そのものは親が持つ
   const hereRef = useRef<any>(null)
   const [locating, setLocating] = useState(false)
   const [hereError, setHereError] = useState<string | null>(null)
 
-  const pinned = places.filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number')
+  /**
+   * ピンを立てる場所。
+   *
+   * ここで毎回新しい配列を作ると、下の useEffect が描き直しのたびに走り、
+   * そのたびに地図が全ピンの入る位置まで引き戻される。現在位置へ寄せても
+   * 日本全体に戻ってしまっていたのはこれが原因。
+   */
+  const pinned = useMemo(
+    () => places.filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number'),
+    [places]
+  )
+
+  /** 最後に地図を合わせたピンの組。同じなら動かさない */
+  const fittedRef = useRef('')
 
   useEffect(() => {
     let alive = true
@@ -176,13 +200,40 @@ export default function PlacesMap({ places }: { places: Place[] }) {
       bounds.extend(marker.getPosition())
     }
 
+    // 地図を動かすのは、出すピンの組が変わったときだけ。同じ組のまま
+    // 動かすと、指で寄せた位置や現在位置への移動を上書きしてしまう
+    const signature = pinned.map((p) => p.id).join(',')
+    if (signature === fittedRef.current) return
+    fittedRef.current = signature
+
     if (pinned.length === 1) {
       mapRef.current.setCenter(bounds.getCenter())
-      mapRef.current.setZoom(15)
+      mapRef.current.setZoom(16)
     } else if (pinned.length > 1) {
       mapRef.current.fitBounds(bounds, 48)
     }
   }, [ready, pinned])
+
+  /** 現在位置の印を置き、そこへ寄せる */
+  useEffect(() => {
+    if (!ready || !mapRef.current || !here) return
+
+    hereRef.current?.setMap(null)
+    hereRef.current = new window.google.maps.Marker({
+      map: mapRef.current,
+      position: here,
+      title: '現在位置',
+      zIndex: 999,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: '#ffffff',
+        fillOpacity: 1,
+        strokeColor: '#22d3ee',
+        strokeWeight: 4,
+      },
+    })
+  }, [ready, here])
 
   /**
    * 現在位置へ寄せる。
@@ -191,47 +242,23 @@ export default function PlacesMap({ places }: { places: Place[] }) {
    * 押したときだけ取りに行き、追いかけ続けない。電池を使ううえ、
    * 見ているあいだ地図が勝手に動くのは邪魔になる。
    */
-  const goToHere = () => {
+  const goToHere = async () => {
     if (!ready || !mapRef.current) return
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setHereError('この端末では現在位置を取れません')
-      return
-    }
 
     tapFeedback()
     setLocating(true)
     setHereError(null)
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false)
-        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+    const point = await onHere()
+    setLocating(false)
 
-        hereRef.current?.setMap(null)
-        hereRef.current = new window.google.maps.Marker({
-          map: mapRef.current,
-          position: here,
-          title: '現在位置',
-          zIndex: 999,
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 6,
-            fillColor: '#ffffff',
-            fillOpacity: 1,
-            strokeColor: '#22d3ee',
-            strokeWeight: 4,
-          },
-        })
+    if (!point) {
+      setHereError('現在位置を取れませんでした（位置情報の許可を確認してください）')
+      return
+    }
 
-        mapRef.current.setCenter(here)
-        mapRef.current.setZoom(15)
-      },
-      () => {
-        setLocating(false)
-        setHereError('現在位置を取れませんでした（位置情報の許可を確認してください）')
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    )
+    mapRef.current.setCenter(point)
+    mapRef.current.setZoom(15)
   }
 
   if (gate === 'off') {
@@ -287,7 +314,7 @@ export default function PlacesMap({ places }: { places: Place[] }) {
           aria-label="現在位置に戻る"
           title="現在位置に戻る"
           disabled={!ready || locating}
-          onClick={goToHere}
+          onClick={() => void goToHere()}
           className="glass absolute bottom-3 left-3 inline-flex h-11 w-11 items-center justify-center rounded-full border border-line text-fg-dim transition-colors hover:border-marine/60 hover:text-marine disabled:opacity-40"
         >
           <IconTarget size={19} />

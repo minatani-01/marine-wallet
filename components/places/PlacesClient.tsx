@@ -44,6 +44,16 @@ import {
   toggleTag,
 } from '@/lib/places'
 import { filterClosed, isClosed, statusLabel } from '@/lib/places-status'
+import {
+  NEAR_STEPS,
+  distanceOf,
+  distanceText,
+  filterByNear,
+  nearLabel,
+  sortByDistance,
+  type NearStep,
+  type Point,
+} from '@/lib/places-near'
 import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
@@ -94,12 +104,23 @@ type Filters = {
   ingredients: string[]
   /** 閉店・休業だけを見る（0045） */
   closedOnly: boolean
+  /** 現在位置から何km以内か。null なら距離で絞らない */
+  near: NearStep | null
 }
 
-const NO_FILTERS: Filters = { genres: [], ingredients: [], closedOnly: false }
+const NO_FILTERS: Filters = {
+  genres: [],
+  ingredients: [],
+  closedOnly: false,
+  near: null,
+}
 
-function narrowBy(rows: Place[], f: Filters): Place[] {
-  const out = filterByIngredients(filterByGenres(rows, f.genres), f.ingredients)
+function narrowBy(rows: Place[], f: Filters, here: Point | null): Place[] {
+  const out = filterByNear(
+    filterByIngredients(filterByGenres(rows, f.genres), f.ingredients),
+    here,
+    f.near
+  )
   return f.closedOnly ? filterClosed(out) : out
 }
 
@@ -109,6 +130,7 @@ function activeCount(f: Filters, kind: KindTab, tab: Tab): number {
     f.genres.length +
     f.ingredients.length +
     (f.closedOnly ? 1 : 0) +
+    (f.near ? 1 : 0) +
     (kind === 'all' ? 0 : 1) +
     (tab === 'all' ? 0 : 1)
   )
@@ -248,12 +270,15 @@ function FilterRow({
 function PlaceCard({
   place,
   busy,
+  here,
   onChooseRevisit,
   onEdit,
   onDelete,
 }: {
   place: Place
   busy: boolean
+  /** 現在位置。取れていれば距離を出す */
+  here: Point | null
   onChooseRevisit: (place: Place, choice: Exclude<Revisit, ''>) => void
   onEdit: (place: Place) => void
   onDelete: (place: Place) => void
@@ -261,6 +286,7 @@ function PlaceCard({
   const visited = Boolean(place.visited_on)
   const closed = isClosed(place)
   const closedLabel = statusLabel(place.business_status)
+  const km = distanceOf(place, here)
 
   /** 種別・ジャンル・食材・場所を1行にまとめる。札を増やすと行が増える */
   const meta = [
@@ -285,6 +311,12 @@ function PlaceCard({
             {closedLabel ? (
               <span className="shrink-0 rounded-md border border-danger/50 px-1.5 text-[10px] leading-[17px] text-danger">
                 {closedLabel}
+              </span>
+            ) : null}
+            {/* 現在位置からの距離。取れていないときは出さない */}
+            {km !== null ? (
+              <span className="tnum ml-auto shrink-0 text-[10.5px] text-marine">
+                {distanceText(km)}
               </span>
             ) : null}
           </div>
@@ -378,6 +410,31 @@ export default function PlacesClient({
   const [tab, setTab] = useState<Tab>('all')
   const [kind, setKind] = useState<KindTab>('all')
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+
+  /**
+   * 現在位置。押したときだけ取りに行き、追いかけ続けない。
+   *
+   * 地図と絞り込みの両方で使うのでここに置く。端末の位置情報だけを使い、
+   * Google の API は呼ばない（回数も課金も増えない）。
+   */
+  const [here, setHere] = useState<Point | null>(null)
+
+  const askHere = (): Promise<Point | null> =>
+    new Promise((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve(null)
+        return
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const point = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          setHere(point)
+          resolve(point)
+        },
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      )
+    })
   const [words, setWords] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -426,8 +483,12 @@ export default function PlacesClient({
   const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
 
   const shown = useMemo(
-    () => searchPlaces(narrowBy(byKind, filters), words),
-    [byKind, filters, words]
+    () => {
+      const rows = searchPlaces(narrowBy(byKind, filters, here), words)
+      // 範囲で絞っているあいだは近い順。どれが歩けるのかを先に出す
+      return filters.near ? sortByDistance(rows, here) : rows
+    },
+    [byKind, filters, words, here]
   )
 
   /** はじめは先頭だけ出す。絞り込みや言葉を変えたら畳み直す */
@@ -442,10 +503,10 @@ export default function PlacesClient({
   const onMap = useMemo(
     () =>
       searchPlaces(
-        narrowBy(filterByKind(places, kind === 'all' ? null : kind), filters),
+        narrowBy(filterByKind(places, kind === 'all' ? null : kind), filters, here),
         words
       ),
-    [places, kind, filters, words]
+    [places, kind, filters, words, here]
   )
 
   /**
@@ -476,6 +537,29 @@ export default function PlacesClient({
         label: placeKindLabel(k),
         on: kind === k,
         onToggle: () => chooseKind(k),
+      })),
+    },
+    {
+      name: '範囲',
+      items: NEAR_STEPS.map((km) => ({
+        id: `near-${km}`,
+        label: nearLabel(km),
+        on: filters.near === km,
+        onToggle: () => {
+          // 押したときに現在位置を取りに行く。断られたら絞り込まない
+          if (filters.near === km) {
+            setFilters((f) => ({ ...f, near: null }))
+            return
+          }
+          if (here) {
+            setFilters((f) => ({ ...f, near: km }))
+            return
+          }
+          void askHere().then((point) => {
+            if (point) setFilters((f) => ({ ...f, near: km }))
+            else setError('現在位置を取れませんでした（位置情報の許可を確認してください）')
+          })
+        },
       })),
     },
     ...(foodAxes && genreChoices.length > 0
@@ -798,7 +882,7 @@ export default function PlacesClient({
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
-      <PlacesMap places={onMap} />
+      <PlacesMap places={onMap} here={here} onHere={askHere} />
 
       {/* 種別・ジャンルがまだのもの。保存リストから入れたぶんを拾う */}
       {unclassified.length > 0 ? (
@@ -862,6 +946,7 @@ export default function PlacesClient({
               key={place.id}
               place={place}
               busy={busy}
+              here={here}
               onChooseRevisit={chooseRevisit}
               onEdit={(p) => setSheet({ place: p })}
               onDelete={remove}
