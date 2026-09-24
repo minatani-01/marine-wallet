@@ -3,18 +3,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import {
-  Button,
-  Card,
-  Chip,
-  EmptyState,
-  IconButton,
-  IconFrame,
-} from '@/components/ui'
+import { Button, Card, Chip, EmptyState, IconFrame } from '@/components/ui'
 import {
   IconCamera,
   IconClose,
-  IconEdit,
   IconExternal,
   IconFood,
   IconMap,
@@ -50,7 +42,6 @@ import {
   distanceOf,
   distanceText,
   filterByNear,
-  nearLabel,
   sortByDistance,
   type NearStep,
   type Point,
@@ -162,10 +153,10 @@ function CountTab({
         tapFeedback()
         onClick()
       }}
-      className={`flex h-10 shrink-0 items-baseline gap-1.5 rounded-xl border px-2.5 transition-colors ${
+      className={`flex h-10 shrink-0 items-baseline gap-1.5 rounded-full border px-3 transition-colors ${
         on
-          ? 'border-marine/60 bg-marine/12'
-          : 'border-transparent hover:border-line'
+          ? 'border-marine/70 bg-marine/12'
+          : 'border-line bg-white/[0.02] hover:border-marine/40'
       }`}
     >
       <span
@@ -198,10 +189,15 @@ type FilterItem = { id: string; label: string; on: boolean; onToggle: () => void
 function FilterRow({
   groups,
   active,
+  searchOn,
+  onSearch,
   onClear,
 }: {
   groups: { name: string; items: FilterItem[] }[]
   active: number
+  /** 探す欄を開いているか */
+  searchOn: boolean
+  onSearch: () => void
   onClear: () => void
 }) {
   return (
@@ -239,6 +235,28 @@ function FilterRow({
           </Fragment>
         ))}
       </div>
+
+      {/* 探すのも絞り込みの仲間なので、札と同じ帯に置く。横いっぱいの
+          入力欄を常に出しておくと、それだけで1段使ってしまう。
+          区切りを挟まないと、流れてきた札と重なって見える */}
+      <span aria-hidden="true" className="h-5 w-px shrink-0 bg-line" />
+      <button
+        type="button"
+        aria-label="名前・場所・メモで探す"
+        aria-pressed={searchOn}
+        title="名前・場所・メモで探す"
+        onClick={() => {
+          tapFeedback()
+          onSearch()
+        }}
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${
+          searchOn
+            ? 'border-marine/70 bg-marine/12 text-marine'
+            : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
+        }`}
+      >
+        <IconSearch size={16} />
+      </button>
 
       {/* いくつ絞り込んでいるか。横へ送ると押した札が画面から出てしまうので、
           ここは流さずに置く。数だけでも見えていれば、絞り込み中だと分かる */}
@@ -299,13 +317,19 @@ function PlaceCard({
 
   return (
     <Card className={`!p-3${closed ? ' opacity-70' : ''}`}>
-      <div className="flex items-start gap-2.5">
+      {/* 名前のところを押したら編集。鉛筆の印を並べずに済む */}
+      <button
+        type="button"
+        onClick={() => onEdit(place)}
+        aria-label={`${place.name} を編集`}
+        className="flex w-full items-start gap-2.5 text-left"
+      >
         <IconFrame tone={visited && !closed ? 'marine' : 'default'}>
           {place.kind === 'food' ? <IconFood size={16} /> : <IconCamera size={16} />}
         </IconFrame>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
             <span className={`truncate text-sm${closed ? ' text-fg-mute line-through' : ''}`}>
               {place.name}
             </span>
@@ -320,50 +344,54 @@ function PlaceCard({
                 {distanceText(km)}
               </span>
             ) : null}
-          </div>
+          </span>
 
-          <p className="mt-0.5 truncate text-[11px] text-fg-mute">
+          <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
             {meta.join(' ・ ')}
             {place.note ? ` — ${place.note}` : ''}
-          </p>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
 
       <div className="mt-2.5 flex items-center gap-2 border-t border-line-soft pt-2.5">
         {/* リピあり・リピなし。どちらかを押すと行った扱いになる。
-            同じ札をもう一度押すと行きたいへ戻る */}
-        {REVISIT_CHOICES.map((choice) => {
-          const on = place.revisit === choice
-          const tone =
-            choice === 'yes'
-              ? 'border-marine/60 bg-marine/12 text-marine'
-              : 'border-fg-mute/60 bg-fg-mute/15 text-fg-dim'
-          return (
-            <button
-              key={choice}
-              type="button"
-              disabled={busy}
-              aria-pressed={on}
-              title={on ? `${REVISIT_LABEL[choice]}（押すと行きたいに戻ります）` : REVISIT_LABEL[choice]}
-              onClick={() => onChooseRevisit(place, choice)}
-              className={`inline-flex h-8 items-center rounded-full border px-3 text-[11px] transition-colors disabled:opacity-40 ${
-                on ? tone : 'border-line text-fg-mute hover:border-marine/50 hover:text-marine'
-              }`}
-            >
-              {REVISIT_LABEL[choice]}
-            </button>
-          )
-        })}
+            同じ札をもう一度押すと行きたいへ戻る。
+            「リピ」を外に出すぶん、札そのものは短くできる */}
+        <span className="shrink-0 text-[10px] tracking-widest text-fg-mute">リピ</span>
+        <div className="flex items-center rounded-full border border-line p-0.5">
+          {REVISIT_CHOICES.map((choice) => {
+            const on = place.revisit === choice
+            const tone =
+              choice === 'yes' ? 'bg-marine text-ink' : 'bg-fg-mute/25 text-fg'
+            return (
+              <button
+                key={choice}
+                type="button"
+                disabled={busy}
+                aria-pressed={on}
+                title={
+                  on ? `${REVISIT_LABEL[choice]}（押すと行きたいに戻ります）` : REVISIT_LABEL[choice]
+                }
+                onClick={() => onChooseRevisit(place, choice)}
+                className={`h-7 rounded-full px-3 text-[11px] transition-colors disabled:opacity-40 ${
+                  on ? `${tone} font-medium` : 'text-fg-mute hover:text-marine'
+                }`}
+              >
+                {choice === 'yes' ? 'あり' : 'なし'}
+              </button>
+            )
+          })}
+        </div>
 
-        {/* 開く・直す・消すは印だけにする。言葉で並べると2行になる */}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        {/* 開く・消すは印だけにする。直すのは名前のところを押す */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <a
             href={mapsUrl(place)}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="地図で開く"
             title="地図で開く"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
           >
             <IconMap size={15} />
           </a>
@@ -375,22 +403,21 @@ function PlaceCard({
               rel="noopener noreferrer"
               aria-label="リンクを開く"
               title="リンクを開く"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
             >
               <IconExternal size={14} />
             </a>
           ) : null}
 
-          <IconButton label="編集" className="!h-8 !w-8" onClick={() => onEdit(place)}>
-            <IconEdit size={14} />
-          </IconButton>
-          <IconButton
-            label="削除"
-            className="!h-8 !w-8 hover:border-danger/50 hover:text-danger"
+          <button
+            type="button"
+            aria-label="削除"
+            title="削除"
             onClick={() => onDelete(place)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-danger/50 hover:text-danger"
           >
             <IconTrash size={14} />
-          </IconButton>
+          </button>
         </div>
       </div>
     </Card>
@@ -437,6 +464,15 @@ export default function PlacesClient({
       )
     })
   const [words, setWords] = useState('')
+
+  /**
+   * 探す欄を開いているか。
+   *
+   * 常に横いっぱいの欄を置いておくと、1段まるごと使ってしまう。探すのは
+   * 目当てがあるときだけなので、押したときに開く。言葉が入っているあいだは
+   * 開いたままにして、何で絞っているかが見えるようにする。
+   */
+  const [searchOpen, setSearchOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sheet, setSheet] = useState<{ place: Place | null } | null>(null)
@@ -520,6 +556,26 @@ export default function PlacesClient({
     }
   }
 
+  /**
+   * 半径を選ぶ。中心が決まっていなければ先に現在位置を取りに行く。
+   *
+   * 断られたら絞り込まない。地図を動かして中心を決める道も案内する。
+   */
+  const chooseRadius = (km: number | null) => {
+    if (km === null) {
+      setFilters((f) => ({ ...f, near: null }))
+      return
+    }
+    if (here) {
+      setFilters((f) => ({ ...f, near: km as NearStep }))
+      return
+    }
+    void askHere().then((point) => {
+      if (point) setFilters((f) => ({ ...f, near: km as NearStep }))
+      else setError('現在位置を取れませんでした。地図を動かして中心の印を押してください')
+    })
+  }
+
   /** 飲食の軸。観光地だけを見ているときは出さない */
   const foodAxes = kind !== 'sight'
 
@@ -534,30 +590,6 @@ export default function PlacesClient({
         label: placeKindLabel(k),
         on: kind === k,
         onToggle: () => chooseKind(k),
-      })),
-    },
-    {
-      name: '範囲',
-      items: NEAR_STEPS.map((km) => ({
-        id: `near-${km}`,
-        label: nearLabel(km),
-        on: filters.near === km,
-        onToggle: () => {
-          if (filters.near === km) {
-            setFilters((f) => ({ ...f, near: null }))
-            return
-          }
-          // 中心が決まっていれば、そのまわりを見る
-          if (here) {
-            setFilters((f) => ({ ...f, near: km }))
-            return
-          }
-          // まだなら現在位置を取りに行く。断られたら地図から選んでもらう
-          void askHere().then((point) => {
-            if (point) setFilters((f) => ({ ...f, near: km }))
-            else setError('現在位置を取れませんでした。地図を動かして「ここを中心に」を押してください')
-          })
-        },
       })),
     },
     ...(foodAxes && genreChoices.length > 0
@@ -790,8 +822,8 @@ export default function PlacesClient({
     <div className="flex flex-col gap-3.5">
       {/* 数と操作を1本のバーに収める。大きな数字と全幅のボタンで3段を使うと、
           地図と一覧が画面の外へ出ていた */}
-      <div className="glass glow flex items-center gap-3 rounded-2xl px-4 py-2.5">
-        <div role="group" aria-label="表示" className="flex flex-1 items-center gap-1">
+      <div className="glass glow flex items-center gap-2 rounded-2xl px-3 py-2.5">
+        <div role="group" aria-label="表示" className="flex flex-1 items-center gap-1.5">
           <CountTab
             n={lists.wish.length}
             label="行きたい"
@@ -806,14 +838,15 @@ export default function PlacesClient({
           />
         </div>
 
+        {/* 地図の操作と同じ、同じ大きさの丸にそろえる */}
         <Link
           href="/places/genres"
           prefetch={false}
-          aria-label="飲食のジャンルを編集"
-          title="飲食のジャンルを編集"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
+          aria-label="飲食のジャンル・食材を編集"
+          title="飲食のジャンル・食材を編集"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
         >
-          <IconRules size={16} />
+          <IconRules size={17} />
         </Link>
 
         <button
@@ -824,11 +857,9 @@ export default function PlacesClient({
             tapFeedback()
             setSheet({ place: null })
           }}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-marine px-2.5 text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 min-[360px]:px-3"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-marine text-ink transition-opacity hover:opacity-90"
         >
-          <IconPlus size={16} />
-          {/* 狭い画面では字を落とす。数の札が「行..」と潰れるのを防ぐ */}
-          <span className="hidden min-[360px]:inline">追加</span>
+          <IconPlus size={19} />
         </button>
       </div>
 
@@ -837,6 +868,12 @@ export default function PlacesClient({
       <FilterRow
         groups={filterGroups}
         active={activeCount(filters, kind, tab)}
+        searchOn={searchOpen || words.length > 0}
+        onSearch={() => {
+          // 閉じるときは言葉も消す。見えない条件で絞られたままにしない
+          if (searchOpen) setWords('')
+          setSearchOpen((on) => !on)
+        }}
         onClear={() => {
           setTab('all')
           setKind('all')
@@ -846,28 +883,35 @@ export default function PlacesClient({
 
       {/* 文字の大きさは 16px のままにする。小さくすると iOS で
           入力のたびに画面が拡大する */}
-      <label className="glass flex h-12 items-center gap-2.5 rounded-full px-4">
-        <span className="shrink-0 text-fg-mute">
-          <IconSearch size={17} />
-        </span>
-        <input
-          className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-mute"
-          value={words}
-          onChange={(e) => setWords(e.target.value)}
-          placeholder="名前・場所・メモで探す"
-          aria-label="名前・場所・メモで探す"
-        />
-        {words ? (
+      {searchOpen || words ? (
+        <label className="glass flex h-11 items-center gap-2.5 rounded-xl px-3.5">
+          <span className="shrink-0 text-fg-mute">
+            <IconSearch size={16} />
+          </span>
+          <input
+            autoFocus
+            className="min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-fg-mute"
+            value={words}
+            onChange={(e) => setWords(e.target.value)}
+            placeholder="名前・場所・メモで探す"
+            aria-label="名前・場所・メモで探す"
+          />
           <button
             type="button"
-            aria-label="入力を消す"
-            onClick={() => setWords('')}
+            aria-label={words ? '入力を消す' : '探すのをやめる'}
+            onClick={() => {
+              if (words) {
+                setWords('')
+                return
+              }
+              setSearchOpen(false)
+            }}
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
           >
             <IconClose size={13} />
           </button>
-        ) : null}
-      </label>
+        </label>
+      ) : null}
 
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
@@ -876,8 +920,10 @@ export default function PlacesClient({
         places={onMap}
         here={here}
         radiusKm={filters.near}
+        steps={NEAR_STEPS}
         onHere={askHere}
         onPickCenter={setHere}
+        onRadius={chooseRadius}
       />
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}

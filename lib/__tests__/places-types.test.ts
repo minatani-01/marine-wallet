@@ -90,6 +90,20 @@ test('ジャンルは足すだけで、消さない', () => {
   assert.deepEqual(mergeGenres([], []), [])
 })
 
+test('同じものを指す言葉は、両方付けない', () => {
+  // コーヒーの店に「カフェ」を足すと札が2つになり、絞り込みが割れる。
+  // どちらの言葉を使うかは、入れた人の決めたほうに合わせる
+  assert.deepEqual(mergeGenres(['コーヒー'], ['カフェ']), ['コーヒー'])
+  assert.deepEqual(mergeGenres(['カフェ'], ['カフェ']), ['カフェ'])
+  assert.deepEqual(mergeGenres(['喫茶'], ['カフェ']), ['喫茶'])
+  assert.deepEqual(mergeGenres(['バル'], ['バー']), ['バル'])
+  // 取り込みでも同じ。コーヒーの店を見に行っても札は増えない
+  assert.deepEqual(
+    classificationPatch({ kind: 'food', genres: ['コーヒー'] }, 'coffee_shop', ['coffee_shop']),
+    { kind: 'food', genres: ['コーヒー'] }
+  )
+})
+
 test('書き込む内容は、いま入っているものに足す形で作る', () => {
   const current = { kind: 'food', genres: ['居酒屋'] }
   assert.deepEqual(

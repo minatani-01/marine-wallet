@@ -334,6 +334,26 @@ export function IconMap(props: IconProps) {
   )
 }
 
+export function IconPin(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 21.2s6.4-5.6 6.4-10.4a6.4 6.4 0 1 0-12.8 0C5.6 15.6 12 21.2 12 21.2Z" />
+      <circle cx="12" cy="10.6" r="2.4" />
+    </Icon>
+  )
+}
+
+export function IconExpand(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 9V4.6h4.4" />
+      <path d="M20 9V4.6h-4.4" />
+      <path d="M4 15v4.4h4.4" />
+      <path d="M20 15v4.4h-4.4" />
+    </Icon>
+  )
+}
+
 export function IconFlame(props: IconProps) {
   return (
     <Icon {...props}>

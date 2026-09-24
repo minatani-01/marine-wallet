@@ -46,11 +46,6 @@ export const NEAR_STEPS = [3, 10, 30] as const
 
 export type NearStep = (typeof NEAR_STEPS)[number]
 
-/** 札に出す言葉 */
-export function nearLabel(km: NearStep): string {
-  return `${km}km`
-}
-
 /** 座標を持っている場所だけ、その点からの距離を付けて返す */
 function withDistance(places: Place[], here: Point): { place: Place; km: number }[] {
   const rows: { place: Place; km: number }[] = []
