@@ -33,7 +33,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-/** 1回に確認する件数。places_search の1日の上限（50回）に対して十分低く取る */
+/** 1回に確認する件数。places_search の1日の上限に対して十分低く取る */
 const BATCH = 5
 
 type PlaceRow = {
