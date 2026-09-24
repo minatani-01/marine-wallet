@@ -121,6 +121,15 @@ const FALLBACK_BY_TYPE: Record<string, string> = {
 }
 
 /**
+ * 大きなくくりの言葉（FALLBACK_BY_TYPE で入れるもの）。
+ *
+ * すでに具体的なジャンルが入っている場所には足さない。Google は居酒屋も
+ * 蕎麦屋も洋食屋も japanese_restaurant として返すので、「洋食 ヨシカミ」に
+ * 「和食」が付いてしまう。何も分かっていない場所にだけ意味がある言葉である。
+ */
+const BROAD_GENRES = new Set(Object.values(FALLBACK_BY_TYPE))
+
+/**
  * 同じものを指す言葉。
  *
  * すでに「コーヒー」と入れてある店に「カフェ」を足しても、札が増えるだけで
@@ -232,9 +241,18 @@ export function classificationPatch(
   displayName = ''
 ): { kind?: PlaceKind; genres: string[] } {
   const found = classifyPlace(primaryType, types, displayName)
+
+  // すでにジャンルが入っているなら、大きなくくりは足さない。
+  // 「洋食 ヨシカミ」に「和食」を足しても、札が増えるだけで何も分からず、
+  // 絞り込みも濁る。新しく登録する場所（まだ何も入っていない）には足す
+  const add =
+    current.genres.length > 0
+      ? found.genres.filter((genre) => !BROAD_GENRES.has(genre))
+      : found.genres
+
   return {
     ...(found.kind ? { kind: found.kind } : {}),
-    genres: mergeGenres(current.genres, found.genres),
+    genres: mergeGenres(current.genres, add),
   }
 }
 
