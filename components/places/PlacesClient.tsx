@@ -25,6 +25,7 @@ import {
 } from '@/components/icons'
 import PlaceSheet from '@/components/places/PlaceSheet'
 import PlacesMap from '@/components/places/PlacesMap'
+import { useReloadTask } from '@/components/AppShell'
 import { createClient } from '@/lib/supabase/client'
 import { parseTakeoutPlaces } from '@/lib/csv'
 import {
@@ -44,6 +45,16 @@ import {
   toggleTag,
 } from '@/lib/places'
 import { filterClosed, isClosed, statusLabel } from '@/lib/places-status'
+import {
+  NEAR_STEPS,
+  distanceOf,
+  distanceText,
+  filterByNear,
+  nearLabel,
+  sortByDistance,
+  type NearStep,
+  type Point,
+} from '@/lib/places-near'
 import { today } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
 import type { Place, PlaceGenre, PlaceKind, Revisit } from '@/types'
@@ -94,12 +105,23 @@ type Filters = {
   ingredients: string[]
   /** 閉店・休業だけを見る（0045） */
   closedOnly: boolean
+  /** 現在位置から何km以内か。null なら距離で絞らない */
+  near: NearStep | null
 }
 
-const NO_FILTERS: Filters = { genres: [], ingredients: [], closedOnly: false }
+const NO_FILTERS: Filters = {
+  genres: [],
+  ingredients: [],
+  closedOnly: false,
+  near: null,
+}
 
-function narrowBy(rows: Place[], f: Filters): Place[] {
-  const out = filterByIngredients(filterByGenres(rows, f.genres), f.ingredients)
+function narrowBy(rows: Place[], f: Filters, here: Point | null): Place[] {
+  const out = filterByNear(
+    filterByIngredients(filterByGenres(rows, f.genres), f.ingredients),
+    here,
+    f.near
+  )
   return f.closedOnly ? filterClosed(out) : out
 }
 
@@ -109,6 +131,7 @@ function activeCount(f: Filters, kind: KindTab, tab: Tab): number {
     f.genres.length +
     f.ingredients.length +
     (f.closedOnly ? 1 : 0) +
+    (f.near ? 1 : 0) +
     (kind === 'all' ? 0 : 1) +
     (tab === 'all' ? 0 : 1)
   )
@@ -248,12 +271,15 @@ function FilterRow({
 function PlaceCard({
   place,
   busy,
+  here,
   onChooseRevisit,
   onEdit,
   onDelete,
 }: {
   place: Place
   busy: boolean
+  /** 現在位置。取れていれば距離を出す */
+  here: Point | null
   onChooseRevisit: (place: Place, choice: Exclude<Revisit, ''>) => void
   onEdit: (place: Place) => void
   onDelete: (place: Place) => void
@@ -261,6 +287,7 @@ function PlaceCard({
   const visited = Boolean(place.visited_on)
   const closed = isClosed(place)
   const closedLabel = statusLabel(place.business_status)
+  const km = distanceOf(place, here)
 
   /** 種別・ジャンル・食材・場所を1行にまとめる。札を増やすと行が増える */
   const meta = [
@@ -285,6 +312,12 @@ function PlaceCard({
             {closedLabel ? (
               <span className="shrink-0 rounded-md border border-danger/50 px-1.5 text-[10px] leading-[17px] text-danger">
                 {closedLabel}
+              </span>
+            ) : null}
+            {/* 現在位置からの距離。取れていないときは出さない */}
+            {km !== null ? (
+              <span className="tnum ml-auto shrink-0 text-[10.5px] text-marine">
+                {distanceText(km)}
               </span>
             ) : null}
           </div>
@@ -378,6 +411,31 @@ export default function PlacesClient({
   const [tab, setTab] = useState<Tab>('all')
   const [kind, setKind] = useState<KindTab>('all')
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+
+  /**
+   * 現在位置。押したときだけ取りに行き、追いかけ続けない。
+   *
+   * 地図と絞り込みの両方で使うのでここに置く。端末の位置情報だけを使い、
+   * Google の API は呼ばない（回数も課金も増えない）。
+   */
+  const [here, setHere] = useState<Point | null>(null)
+
+  const askHere = (): Promise<Point | null> =>
+    new Promise((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve(null)
+        return
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const point = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+          setHere(point)
+          resolve(point)
+        },
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      )
+    })
   const [words, setWords] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -386,10 +444,6 @@ export default function PlacesClient({
   // まとめて座標を引いているあいだの進み具合
   const [locating, setLocating] = useState(false)
   const [locateNote, setLocateNote] = useState<string | null>(null)
-
-  // 種別・ジャンルの取り込み
-  const [classifying, setClassifying] = useState(false)
-  const [classifyNote, setClassifyNote] = useState<string | null>(null)
 
   // 保存リストの取り込み
   const [importKind, setImportKind] = useState<PlaceKind>('food')
@@ -426,8 +480,12 @@ export default function PlacesClient({
   const closedCount = useMemo(() => filterClosed(byKind).length, [byKind])
 
   const shown = useMemo(
-    () => searchPlaces(narrowBy(byKind, filters), words),
-    [byKind, filters, words]
+    () => {
+      const rows = searchPlaces(narrowBy(byKind, filters, here), words)
+      // 範囲で絞っているあいだは近い順。どれが歩けるのかを先に出す
+      return filters.near ? sortByDistance(rows, here) : rows
+    },
+    [byKind, filters, words, here]
   )
 
   /** はじめは先頭だけ出す。絞り込みや言葉を変えたら畳み直す */
@@ -442,10 +500,10 @@ export default function PlacesClient({
   const onMap = useMemo(
     () =>
       searchPlaces(
-        narrowBy(filterByKind(places, kind === 'all' ? null : kind), filters),
+        narrowBy(filterByKind(places, kind === 'all' ? null : kind), filters, here),
         words
       ),
-    [places, kind, filters, words]
+    [places, kind, filters, words, here]
   )
 
   /**
@@ -476,6 +534,29 @@ export default function PlacesClient({
         label: placeKindLabel(k),
         on: kind === k,
         onToggle: () => chooseKind(k),
+      })),
+    },
+    {
+      name: '範囲',
+      items: NEAR_STEPS.map((km) => ({
+        id: `near-${km}`,
+        label: nearLabel(km),
+        on: filters.near === km,
+        onToggle: () => {
+          // 押したときに現在位置を取りに行く。断られたら絞り込まない
+          if (filters.near === km) {
+            setFilters((f) => ({ ...f, near: null }))
+            return
+          }
+          if (here) {
+            setFilters((f) => ({ ...f, near: km }))
+            return
+          }
+          void askHere().then((point) => {
+            if (point) setFilters((f) => ({ ...f, near: km }))
+            else setError('現在位置を取れませんでした（位置情報の許可を確認してください）')
+          })
+        },
       })),
     },
     ...(foodAxes && genreChoices.length > 0
@@ -584,17 +665,10 @@ export default function PlacesClient({
    * 飲食に混ざる。ジャンルも空のままになる。1件ずつ直すのは続かない。
    *
    * 1回に10件まで。上限に当たったらそこで止める。押し直せば続きから進む。
+   * 画面にボタンは置かず、ヘッダーの更新に相乗りさせる（押す場所を増やさない）。
    */
   const classifyAll = async () => {
-    if (unclassified.length === 0) return
-
-    tapFeedback()
-    setClassifying(true)
-    setClassifyNote(null)
-
     const targets = unclassified.slice(0, CLASSIFY_STEP)
-    let done = 0
-    let overBudget = false
 
     for (const place of targets) {
       const res = await fetch('/api/places/classify', {
@@ -603,24 +677,23 @@ export default function PlacesClient({
         body: JSON.stringify({ id: place.id }),
       }).catch(() => null)
 
-      if (res?.status === 429) {
-        overBudget = true
-        break
-      }
-      const body = res?.ok ? ((await res.json()) as { ok?: boolean }) : null
-      if (body?.ok) done += 1
+      // その日の上限に達したら、そこで止める。残りは次に押したときに進む
+      if (res?.status === 429) return
     }
-
-    setClassifying(false)
-    const rest = unclassified.length - targets.length
-    setClassifyNote(
-      overBudget
-        ? `今日はここまでです（${done} 件わかりました）。明日また押してください。`
-        : `${done} / ${targets.length} 件わかりました。` +
-          (rest > 0 ? ` 残り ${rest} 件は、もう一度押してください。` : '')
-    )
-    router.refresh()
   }
+
+  /**
+   * 更新を押したときに、まだ取り込んでいないぶんを片付ける。
+   *
+   * 取り込むものが無いときは登録しない。更新はいつもどおり読み込み直すだけで、
+   * ボタンの説明も変わらない。
+   */
+  useReloadTask(
+    unclassified.length > 0
+      ? `種別・ジャンルを ${Math.min(unclassified.length, CLASSIFY_STEP)} 件取り込みます（残り ${unclassified.length} 件）`
+      : null,
+    classifyAll
+  )
 
   /**
    * Google マップの保存リスト（Takeout の CSV）を取り込む。
@@ -798,28 +871,7 @@ export default function PlacesClient({
       {/* 地図は行きたい・行った の両方を出す。塗り分けで見分けられるので、
           片方だけにすると「近くに行った店がある」が見えなくなる。
           種別の絞り込みは効かせる */}
-      <PlacesMap places={onMap} />
-
-      {/* 種別・ジャンルがまだのもの。保存リストから入れたぶんを拾う */}
-      {unclassified.length > 0 ? (
-        <Card>
-          <p className="text-[13px]">
-            種別・ジャンルがまだの場所が {unclassified.length} 件あります。
-          </p>
-          <Button
-            variant="outline"
-            full
-            className="mt-3"
-            disabled={classifying}
-            onClick={classifyAll}
-          >
-            {classifying ? '取り込んでいます' : '種別・ジャンルをまとめて取り込む'}
-          </Button>
-          {classifyNote ? (
-            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">{classifyNote}</p>
-          ) : null}
-        </Card>
-      ) : null}
+      <PlacesMap places={onMap} here={here} onHere={askHere} />
 
       {/* 地図に出ていない場所。あとから地図を使えるようにしたぶんを拾う */}
       {unlocated.length > 0 ? (
@@ -862,6 +914,7 @@ export default function PlacesClient({
               key={place.id}
               place={place}
               busy={busy}
+              here={here}
               onChooseRevisit={chooseRevisit}
               onEdit={(p) => setSheet({ place: p })}
               onDelete={remove}
