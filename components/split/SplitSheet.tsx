@@ -64,6 +64,7 @@ export default function SplitSheet({
   }
 
   const [date, setDate] = useState(record?.date ?? today())
+  const [targetDate, setTargetDate] = useState(record?.target_date ?? '')
   const [content, setContent] = useState(record?.content ?? '')
   const [amount, setAmount] = useState(record ? String(record.amount) : '')
   const [category, setCategory] = useState<ExpenseCategory>(record?.category ?? 'other')
@@ -169,6 +170,8 @@ export default function SplitSheet({
     const payload = {
       user_id: userId,
       date,
+      // 空のままなら入れない。払った日がそのまま対象の日、という記録のほうが多い
+      target_date: targetDate || null,
       content: content.trim(),
       amount: parsedAmount,
       payer,
@@ -222,13 +225,28 @@ export default function SplitSheet({
       }
     >
       <div className="flex flex-col gap-5">
-        <Field label="日付">
+        <Field label="決済した日">
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             className={inputClass}
           />
+        </Field>
+
+        {/* 行く日と払う日が違うときだけ入れる。コンビニで買ったものまで
+            二度入れさせると手間が増えるだけなので、空でよいことにする */}
+        <Field label="何月何日分か（任意）">
+          <input
+            type="date"
+            value={targetDate}
+            onChange={(e) => setTargetDate(e.target.value)}
+            className={inputClass}
+          />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-fg-mute">
+            観戦日や予約日など、払った日と違うときに入れます。
+            空のままなら決済した日だけを出します。
+          </p>
         </Field>
 
         <Field label="内容">

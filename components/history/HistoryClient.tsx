@@ -52,7 +52,10 @@ export default function HistoryClient({
           date: record.date,
           kind: 'split',
           title: record.content,
-          caption: `${categoryLabel(record.category)} / ${record.payer} が立替`,
+          // 行く日と払った日が違うときは、行く日も添える。並びは払った日のまま
+          caption: record.target_date
+            ? `${shortDate(record.target_date)}分 / ${categoryLabel(record.category)} / ${record.payer} が立替`
+            : `${categoryLabel(record.category)} / ${record.payer} が立替`,
           amount: record.amount,
           category: record.category,
         })),
