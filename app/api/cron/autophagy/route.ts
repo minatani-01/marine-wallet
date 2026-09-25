@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToUsers } from '@/lib/push'
-import { DAY_MINUTES, dueBoundary, jstMinutes, spanText, toMinutes } from '@/lib/autophagy'
+import { dueBoundary, fastEnd, fastingMinutes, jstMinutes, spanText } from '@/lib/autophagy'
 import type { AutophagySettings } from '@/types'
 
 /**
@@ -36,20 +36,17 @@ function isAuthorized(request: Request): boolean {
 type Row = Pick<
   AutophagySettings,
   | 'user_id'
-  | 'eat_start'
-  | 'eat_end'
+  | 'fast_start'
+  | 'fast_hours'
   | 'notify_eat'
   | 'notify_fast'
   | 'last_notified_at'
   | 'last_notified_kind'
 >
 
-/** 食べてよい時間の長さ。通知の本文に添える */
-function eatSpan(row: Row): string {
-  const start = toMinutes(row.eat_start)
-  const end = toMinutes(row.eat_end)
-  if (start === null || end === null) return ''
-  return spanText((end - start + DAY_MINUTES) % DAY_MINUTES)
+/** 判定に使う形。時刻は 'HH:MM:SS' で返るが、先頭一致で読むので渡すだけでよい */
+function planOf(row: Row) {
+  return { fast_start: row.fast_start, fast_hours: row.fast_hours }
 }
 
 export async function GET(request: Request) {
@@ -69,7 +66,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase
     .from('autophagy_settings')
     .select(
-      'user_id, eat_start, eat_end, notify_eat, notify_fast, last_notified_at, last_notified_kind'
+      'user_id, fast_start, fast_hours, notify_eat, notify_fast, last_notified_at, last_notified_kind'
     )
     .eq('enabled', true)
 
@@ -86,7 +83,8 @@ export async function GET(request: Request) {
   let skipped = 0
 
   for (const row of rows) {
-    const kind = dueBoundary(row, minutes, WINDOW_MINUTES)
+    const plan = planOf(row)
+    const kind = dueBoundary(plan, minutes, WINDOW_MINUTES)
     if (!kind) continue
     due += 1
 
@@ -104,18 +102,22 @@ export async function GET(request: Request) {
       }
     }
 
+    const startAt = row.fast_start.slice(0, 5)
+    const endAt = fastEnd(plan) ?? ''
+    const length = fastingMinutes(plan)
+
     const message =
       kind === 'eat'
         ? {
             title: '食べてOKの時間です',
-            body: `${row.eat_end.slice(0, 5)} まで、${eatSpan(row)}あります。`,
+            body: `次に食べられなくなるのは ${startAt} から。`,
             category: 'always' as const,
             url: '/body',
             tag: 'autophagy-eat',
           }
         : {
-            title: '断食の時間です',
-            body: `次に食べられるのは ${row.eat_start.slice(0, 5)} から。`,
+            title: '食べない時間になりました',
+            body: `${endAt} まで${length === null ? '' : spanText(length)}。`,
             category: 'always' as const,
             url: '/body',
             tag: 'autophagy-fast',

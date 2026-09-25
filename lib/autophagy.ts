@@ -5,27 +5,44 @@
  * 同じ判定を使いたい。両方に書くと、画面は「断食中」なのに通知は
  * 「食べてOK」と言う、といったずれが起きる。
  *
+ * 持つのは「食べない時間の始まり」と「その長さ」の2つだけにする。
+ * 終わりは足せば出るので、入れてもらう必要がない。2つ入れさせると、
+ * 8時間のつもりが7時間になっている、といった食い違いが起きる。
+ *
  * 時刻は「その日の0時から何分か」で扱う。18:00 なら 1080。
  * 日付や時差の話をここに持ち込まないためで、日本時間への読み替えは
  * 呼ぶ側（jstMinutes）でまとめてある。
  *
- * 食べてよい時間は日をまたぐ。18:00〜翌2:00 のように、終わりが始まりより
- * 小さいことがふつうにある。またぐかどうかで場合分けするのはこの中だけに
- * して、外からは「いま食べてよいか」だけを見えるようにする。
+ * 食べない時間は日をまたぐ。2:00 から16時間なら翌18:00 までで、
+ * 日付は変わらないが、22:00 から8時間なら翌6:00 になる。またぐかどうかで
+ * 場合分けするのはこの中だけにして、外からは「いま食べてよいか」だけを
+ * 見えるようにする。
  */
 
 /** 1日の分数 */
 export const DAY_MINUTES = 24 * 60
 
-export type Window = {
-  /** 食べてよい時間の始まり 'HH:MM' */
-  eat_start: string
-  /** 食べてよい時間の終わり 'HH:MM' */
-  eat_end: string
+export type Plan = {
+  /** 食べない時間の始まり 'HH:MM' */
+  fast_start: string
+  /** 食べない時間の長さ（時間）。1〜23 */
+  fast_hours: number
 }
 
-/** 既定の時間。18:00〜翌2:00 に食べ、2:00〜18:00 は食べない（16時間） */
-export const DEFAULT_WINDOW: Window = { eat_start: '18:00', eat_end: '02:00' }
+/**
+ * 既定。2:00 から16時間食べない（＝18:00〜翌2:00 に食べる）。
+ *
+ * 16時間はオートファジーでよく言われる長さで、夕食を普通にとれる。
+ */
+export const DEFAULT_PLAN: Plan = { fast_start: '02:00', fast_hours: 16 }
+
+/**
+ * 選べる長さ。細かく刻んでも押し分けられない。
+ *
+ * 16時間を真ん中に、前後を1つずつ。12時間では食べない時間が半分になり、
+ * オートファジーとしては短い。
+ */
+export const FAST_HOURS_CHOICES = [14, 16, 18] as const
 
 /** 'HH:MM' → 0時からの分数。読めなければ null */
 export function toMinutes(hhmm: string): number | null {
@@ -51,27 +68,55 @@ export function jstMinutes(now: Date): number {
   return jst.getUTCHours() * 60 + jst.getUTCMinutes()
 }
 
-/**
- * いま食べてよい時間か。
- *
- * 始まりと終わりが同じときは、24時間ずっと食べてよいとみなす。
- * 「食べない時間が0分」のほうが、「食べてよい時間が0分」より
- * 事故が小さい。設定を触っている途中に断食が始まることがない。
- */
-export function isEating(window: Window, minutes: number): boolean {
-  const start = toMinutes(window.eat_start)
-  const end = toMinutes(window.eat_end)
-  if (start === null || end === null) return true
-  if (start === end) return true
+/** 長さが使える値か。0以下や24以上だと「ずっと」になり、境目が無くなる */
+function validHours(hours: number): boolean {
+  return Number.isFinite(hours) && hours > 0 && hours < 24
+}
 
-  // 日をまたがない（例 8:00〜20:00）
+/** 食べない時間が終わる時刻（＝食べてよくなる時刻）。0時からの分数 */
+export function fastEndMinutes(plan: Plan): number | null {
+  const start = toMinutes(plan.fast_start)
+  if (start === null || !validHours(plan.fast_hours)) return null
+  return (start + Math.round(plan.fast_hours * 60)) % DAY_MINUTES
+}
+
+/** 食べてよくなる時刻 'HH:MM' */
+export function fastEnd(plan: Plan): string | null {
+  const end = fastEndMinutes(plan)
+  return end === null ? null : toHhmm(end)
+}
+
+/** 食べてよい時間の長さ（分） */
+export function eatingMinutes(plan: Plan): number | null {
+  if (!validHours(plan.fast_hours)) return null
+  return DAY_MINUTES - Math.round(plan.fast_hours * 60)
+}
+
+/** 食べない時間の長さ（分） */
+export function fastingMinutes(plan: Plan): number | null {
+  if (!validHours(plan.fast_hours)) return null
+  return Math.round(plan.fast_hours * 60)
+}
+
+/**
+ * いま食べてはいけない時間か。
+ *
+ * 始まりちょうどは、もう食べない時間に入っている。終わりちょうどは
+ * もう食べてよい。どちらかに寄せないと、境目の1分が宙に浮く。
+ */
+export function isFasting(plan: Plan, minutes: number): boolean {
+  const start = toMinutes(plan.fast_start)
+  const end = fastEndMinutes(plan)
+  if (start === null || end === null) return false
+
+  // 日をまたがない（例 2:00 から16時間 → 18:00）
   if (start < end) return minutes >= start && minutes < end
-  // 日をまたぐ（例 18:00〜翌2:00）
+  // 日をまたぐ（例 22:00 から8時間 → 翌6:00）
   return minutes >= start || minutes < end
 }
 
 export type Boundary = {
-  /** その境目で始まるもの */
+  /** その境目で始まるもの。fast=食べない時間 / eat=食べてよい時間 */
   kind: 'eat' | 'fast'
   /** 境目の時刻 'HH:MM' */
   at: string
@@ -79,42 +124,21 @@ export type Boundary = {
   inMinutes: number
 }
 
-/**
- * 次の境目。
- *
- * 始まりと終わりが同じ（ずっと食べてよい）ときは境目が無いので null。
- */
-export function nextBoundary(window: Window, minutes: number): Boundary | null {
-  const start = toMinutes(window.eat_start)
-  const end = toMinutes(window.eat_end)
-  if (start === null || end === null || start === end) return null
+/** 次の境目。長さが使えない値のときは null */
+export function nextBoundary(plan: Plan, minutes: number): Boundary | null {
+  const start = toMinutes(plan.fast_start)
+  const end = fastEndMinutes(plan)
+  if (start === null || end === null) return null
 
-  const eating = isEating(window, minutes)
-  // 食べている途中なら次は断食の始まり、そうでなければ食事の始まり
-  const target = eating ? end : start
-  const diff = (target - minutes + DAY_MINUTES) % DAY_MINUTES
+  const fasting = isFasting(plan, minutes)
+  // 食べない時間の途中なら次は解禁、そうでなければ次は断食の始まり
+  const target = fasting ? end : start
 
   return {
-    kind: eating ? 'fast' : 'eat',
+    kind: fasting ? 'eat' : 'fast',
     at: toHhmm(target),
-    // ちょうど境目にいるときは「24時間後」ではなく「いま」とする
-    inMinutes: diff,
+    inMinutes: (target - minutes + DAY_MINUTES) % DAY_MINUTES,
   }
-}
-
-/** 食べてよい時間の長さ（分） */
-export function eatingMinutes(window: Window): number | null {
-  const start = toMinutes(window.eat_start)
-  const end = toMinutes(window.eat_end)
-  if (start === null || end === null) return null
-  if (start === end) return DAY_MINUTES
-  return (end - start + DAY_MINUTES) % DAY_MINUTES
-}
-
-/** 食べない時間の長さ（分） */
-export function fastingMinutes(window: Window): number | null {
-  const eating = eatingMinutes(window)
-  return eating === null ? null : DAY_MINUTES - eating
 }
 
 /**
@@ -142,19 +166,19 @@ export function spanText(minutes: number): string {
  * @param windowMinutes 境目からこの分数までを「いま」とみなす
  */
 export function dueBoundary(
-  window: Window,
+  plan: Plan,
   minutes: number,
   windowMinutes = 5
 ): Boundary['kind'] | null {
-  const start = toMinutes(window.eat_start)
-  const end = toMinutes(window.eat_end)
-  if (start === null || end === null || start === end) return null
+  const start = toMinutes(plan.fast_start)
+  const end = fastEndMinutes(plan)
+  if (start === null || end === null) return null
 
   // 境目から何分経ったか
-  const sinceEat = (minutes - start + DAY_MINUTES) % DAY_MINUTES
-  const sinceFast = (minutes - end + DAY_MINUTES) % DAY_MINUTES
+  const sinceFast = (minutes - start + DAY_MINUTES) % DAY_MINUTES
+  const sinceEat = (minutes - end + DAY_MINUTES) % DAY_MINUTES
 
-  if (sinceEat < windowMinutes) return 'eat'
   if (sinceFast < windowMinutes) return 'fast'
+  if (sinceEat < windowMinutes) return 'eat'
   return null
 }
