@@ -461,3 +461,33 @@ export function IconCamera(props: IconProps) {
     </Icon>
   )
 }
+
+/** からだ（ダイエット・美容・トレーニング）。脈を打つ心臓 */
+export function IconPulse(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20.2 8.6c0-2.3-1.8-4.1-4-4.1-1.7 0-3.2 1-3.8 2.5h-.8C10.9 5.5 9.5 4.5 7.8 4.5c-2.2 0-4 1.8-4 4.1 0 .6.1 1.2.3 1.7h3.3l1.5-2.5 2.2 5.4 1.8-3.4 1 .5h5.9c.2-.5.4-1.1.4-1.7Z" />
+      <path d="M4.6 12.4c1.3 2.9 4.6 5.6 7.4 7.1 2.8-1.5 6.1-4.2 7.4-7.1" />
+    </Icon>
+  )
+}
+
+/** 食べてよい時間（フォークとナイフではなく、皿にしてマップの飲食と分ける） */
+export function IconPlate(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.4" />
+      <circle cx="12" cy="12" r="4.4" />
+    </Icon>
+  )
+}
+
+/** 食べない時間。線で閉じる */
+export function IconFast(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.4" />
+      <path d="M6.3 6.3 17.7 17.7" />
+    </Icon>
+  )
+}

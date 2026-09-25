@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { DEFAULT_SAVING_RULES } from '@/lib/savings'
 import { MEMBER_AVATAR_BUCKET, MEMBER_AVATAR_TTL_SECONDS } from '@/lib/constants'
 import type {
+  AutophagySettings,
   Game,
   GamePlan,
   LinkMonthlyCompare,
@@ -319,6 +320,19 @@ export async function getSplitOwnerId(fallback: string): Promise<string> {
     supabase.from('profiles').select('id').eq('is_master', true).order('id').limit(1)
   )
   return data?.[0]?.id ?? fallback
+}
+
+/**
+ * オートファジーの設定。
+ *
+ * 行が無いときは null を返す。既定の時間（18:00〜翌2:00）は画面側で当てる。
+ * ここで作ってしまうと、画面を開いただけで通知が始まることになる。
+ */
+export async function getAutophagySettings(userId: string): Promise<AutophagySettings | null> {
+  const supabase = await createClient()
+  return await read<AutophagySettings>('autophagy_settings', () =>
+    supabase.from('autophagy_settings').select('*').eq('user_id', userId).maybeSingle()
+  )
 }
 
 export async function getSplitRecords(ownerId: string): Promise<SplitRecord[]> {

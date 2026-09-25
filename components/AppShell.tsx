@@ -10,12 +10,19 @@ import {
   IconClock,
   IconHome,
   IconMap,
+  IconPulse,
   IconRefresh,
   IconUser,
   IconUsers,
   IconWallet,
 } from '@/components/icons'
 
+/**
+ * 下のタブ。
+ *
+ * master だけ「からだ」がマップの次に入る。ダイエット・美容・トレーニングは
+ * 人によって続けるものが違い、共有する数字でもないので、全員には出さない。
+ */
 const TABS = [
   { href: '/', label: 'ホーム', Icon: IconHome },
   { href: '/savings', label: '貯金', Icon: IconWallet },
@@ -24,6 +31,14 @@ const TABS = [
   { href: '/history', label: '履歴', Icon: IconClock },
   { href: '/me', label: 'マイページ', Icon: IconUser },
 ]
+
+const BODY_TAB = { href: '/body', label: 'からだ', Icon: IconPulse }
+
+function tabsFor(isMaster: boolean) {
+  if (!isMaster) return TABS
+  const at = TABS.findIndex((tab) => tab.href === '/places')
+  return [...TABS.slice(0, at + 1), BODY_TAB, ...TABS.slice(at + 1)]
+}
 
 /**
  * 更新ボタンに、その画面だけの仕事を足す仕組み。
@@ -69,6 +84,7 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/stadiums': { title: '球場スタンプ', back: '/history' },
   '/places': { title: 'マップ' },
   '/places/genres': { title: 'ジャンルの設定', back: '/places' },
+  '/body': { title: 'からだ' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }
@@ -78,7 +94,14 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export default function AppShell({ children }: { children: ReactNode }) {
+export default function AppShell({
+  children,
+  isMaster = false,
+}: {
+  children: ReactNode
+  /** master だけ「からだ」のタブを出す */
+  isMaster?: boolean
+}) {
   const pathname = usePathname()
   const router = useRouter()
   const header = HEADERS[pathname]
@@ -86,6 +109,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   // 画面から登録された、更新のついでにやる仕事
   const [task, setTask] = useState<ReloadTask | null>(null)
+
+  const tabs = tabsFor(isMaster)
 
   /**
    * 更新。
@@ -176,7 +201,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-ink/92 backdrop-blur-xl">
           <div className="mx-auto flex w-full max-w-lg">
-            {TABS.map(({ href, label, Icon }) => {
+            {tabs.map(({ href, label, Icon }) => {
               const active = isActive(pathname, href)
               return (
                 <Link
@@ -192,8 +217,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     active ? 'text-marine' : 'text-fg-mute hover:text-fg-dim'
                   }`}
                 >
-                  <Icon size={21} />
-                  <span className="text-[10px] tracking-wide">{label}</span>
+                  <Icon size={tabs.length > 6 ? 19 : 21} />
+                  {/* 7つ並ぶと1つぶんが45px ほどになる。「マイページ」が
+                      はみ出すので、そのときだけ字を詰める */}
+                  <span
+                    className={
+                      tabs.length > 6
+                        ? 'text-[9px] tracking-tight'
+                        : 'text-[10px] tracking-wide'
+                    }
+                  >
+                    {label}
+                  </span>
                 </Link>
               )
             })}
