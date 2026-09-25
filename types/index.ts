@@ -492,3 +492,25 @@ export type SharedGoalView = SharedGoalRow & {
   /** 未確定の見込み合計。達成率には入れない */
   pending_total: number
 }
+
+// ------------------------------------------------------------ からだ ----
+/**
+ * オートファジーの設定（0053）。
+ *
+ * 時刻は 'HH:MM:SS' で返る（Postgres の time）。判定は lib/autophagy.ts に
+ * まとめてあり、'HH:MM' の先頭一致で読むので秒が付いていても困らない。
+ */
+export type AutophagySettings = {
+  user_id: string
+  enabled: boolean
+  /** 食べてよい時間の始まり（日本時間） */
+  eat_start: string
+  /** 食べてよい時間の終わり（日本時間）。始まりより小さいときは翌日 */
+  eat_end: string
+  notify_eat: boolean
+  notify_fast: boolean
+  last_notified_at: string | null
+  last_notified_kind: 'eat' | 'fast' | null
+  created_at: string
+  updated_at: string
+}
