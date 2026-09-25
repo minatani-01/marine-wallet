@@ -358,7 +358,10 @@ export type Share = {
 export type SplitRecord = {
   id: string
   user_id: string
+  /** 払った日 */
   date: string
+  /** 何月何日分か。観戦日・予約日など、払った日と違うときだけ入る（0052） */
+  target_date: string | null
   content: string
   amount: number
   payer: string

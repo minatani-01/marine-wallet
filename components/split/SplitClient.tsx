@@ -33,6 +33,18 @@ import type {
   SplitRecord,
 } from '@/types'
 
+/**
+ * '2026-10-06' → '10/6'。
+ *
+ * 日付を2つ並べるときに使う。曜日まで付けると1行に収まらず、
+ * その後ろの種別と立替えた人が切れてしまう。
+ */
+function dayOnly(iso: string): string {
+  const [, m, d] = iso.split('-').map(Number)
+  if (!m || !d) return iso
+  return `${m}/${d}`
+}
+
 function sharesOf(record: SplitRecord, fallbackNames: string[]): Share[] {
   if (record.shares && record.shares.length > 0) return record.shares
   const names = fallbackNames.slice(0, Math.max(2, record.member_count))
@@ -376,9 +388,23 @@ export default function SplitClient({
                   </IconFrame>
 
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm">{record.content}</div>
+                    <div className="flex items-center gap-1.5">
+                      {/* 何月何日分か。チケットもサウナも、払った日より行く日を
+                          先に知りたいので、名前の前に出す。いままで内容の頭に
+                          手で書き足していたぶんがここに来る */}
+                      {record.target_date ? (
+                        <span className="tnum shrink-0 rounded-md border border-marine/40 px-1.5 text-[10px] leading-[17px] text-marine">
+                          {dayOnly(record.target_date)}分
+                        </span>
+                      ) : null}
+                      <span className="truncate text-sm">{record.content}</span>
+                    </div>
                     <div className="mt-1 truncate text-[11px] text-fg-mute">
-                      <span className="tnum">{shortDate(record.date)}</span>
+                      {/* 行く日を上に出したときは、こちらが払った日だと分かるように
+                          「決済」と添える。そのぶん曜日は落とす */}
+                      <span className="tnum">
+                        {record.target_date ? `${dayOnly(record.date)}決済` : shortDate(record.date)}
+                      </span>
                       {' / '}
                       {categoryLabel(record.category)}
                       {' / '}
