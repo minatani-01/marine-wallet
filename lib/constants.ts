@@ -285,3 +285,18 @@ export const MEMBER_AVATAR_TTL_SECONDS = 60 * 60
 
 /** アップロード時に変換する一辺の長さ（px）。等倍表示は最大40pxなので余裕がある */
 export const MEMBER_AVATAR_SIZE = 256
+
+// ------------------------------------------------- 領収書・決済画面（0055）----
+export const RECEIPT_BUCKET = 'receipts'
+
+/** 署名付きURLの有効期間（秒）。アイコンと揃える */
+export const RECEIPT_TTL_SECONDS = 60 * 60
+
+/**
+ * アップロード時に縮める長辺の長さ（px）。
+ *
+ * 読み返すための写真なので、アイコンほど小さくはできない。1400px あれば
+ * 拡大して紙のレシートの品目まで読める。1枚あたり 200〜400KB ほどで、
+ * 無料枠の 1GB に対して数千枚ぶんになる。
+ */
+export const RECEIPT_MAX_EDGE = 1400

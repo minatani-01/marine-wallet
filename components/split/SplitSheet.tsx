@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Avatar, Button, Chip, Field, Segmented, Sheet, inputClass } from '@/components/ui'
 import { createClient } from '@/lib/supabase/client'
+import { rejectReason, removeReceiptFile, uploadReceipt } from '@/lib/receipt'
+import { IconCamera, IconClose } from '@/components/icons'
 import { notifyPartner } from '@/lib/notify-client'
 import { withTapFeedback } from '@/lib/haptics'
 import { distributeEqual, distributeRatio } from '@/lib/warikan'
@@ -72,6 +74,17 @@ export default function SplitSheet({
   const [splitType, setSplitType] = useState<SplitType>(record?.split_type ?? 'equal')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /**
+   * 領収書・決済画面の写真（0055）。
+   *
+   * 選んだ時点ではまだ上げない。保存を押さずに閉じたぶんが Storage に
+   * 残り続けることになる。保存のときにまとめて上げる。
+   */
+  const [receiptPath, setReceiptPath] = useState<string | null>(record?.receipt_path ?? null)
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(record?.receipt_url ?? null)
+  const [picked, setPicked] = useState<File | null>(null)
+  const [pickedUrl, setPickedUrl] = useState<string | null>(null)
 
   // 参加メンバー（既存記録があればその shares の顔ぶれを復元する）
   const [selected, setSelected] = useState<string[]>(() => {
@@ -149,6 +162,35 @@ export default function SplitSheet({
     (splitType !== 'amount' || amountDiff === 0) &&
     (splitType !== 'ratio' || ratioTotal > 0)
 
+  // 選んだ写真のプレビュー。URL は使い終わったら必ず捨てる
+  useEffect(() => {
+    if (!picked) {
+      setPickedUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(picked)
+    setPickedUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [picked])
+
+  const pickReceipt = (file: File | null) => {
+    if (!file) return
+    const reason = rejectReason(file)
+    if (reason) {
+      setError(reason)
+      return
+    }
+    setError(null)
+    setPicked(file)
+  }
+
+  /** 添付を外す。実体を消すのは保存のときにする */
+  const clearReceipt = () => {
+    setPicked(null)
+    setReceiptPath(null)
+    setReceiptUrl(null)
+  }
+
   const toggleMember = (name: string) => {
     setSelected((prev) =>
       prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
@@ -167,6 +209,21 @@ export default function SplitSheet({
       return
     }
 
+    const supabase = createClient()
+
+    // 写真は保存のときに上げる。選んだ時点で上げてしまうと、保存せずに
+    // 閉じたぶんが Storage に残り続ける
+    let nextPath = receiptPath
+    if (picked) {
+      try {
+        nextPath = await uploadReceipt(supabase, userId, picked)
+      } catch {
+        setError('写真のアップロードに失敗しました')
+        setSaving(false)
+        return
+      }
+    }
+
     const payload = {
       user_id: userId,
       date,
@@ -180,9 +237,9 @@ export default function SplitSheet({
       member_count: shares.length,
       shares,
       category,
+      receipt_path: nextPath,
     }
 
-    const supabase = createClient()
     const { error } = record
       ? await supabase.from('records').update(payload).eq('id', record.id)
       : await supabase.from('records').insert(payload)
@@ -191,6 +248,13 @@ export default function SplitSheet({
     if (error) {
       setError('保存に失敗しました')
       return
+    }
+
+    // 保存できてから、参照されなくなった古い写真を消す。先に消すと、
+    // 保存に失敗したときに写真だけ失うことになる
+    const oldPath = record?.receipt_path ?? null
+    if (oldPath && oldPath !== nextPath) {
+      await removeReceiptFile(supabase, oldPath)
     }
 
     // 登録したことを、その割り勘に入っている接続相手へ知らせる。
@@ -269,6 +333,48 @@ export default function SplitSheet({
             placeholder="0"
             className={`${inputClass} tnum`}
           />
+        </Field>
+
+        {/* 領収書・決済画面の写真（0055）。金額だけ残っていても、あとから
+            何の支払いだったか分からなくなる。1枚あれば店名も日時も写っている */}
+        <Field label="領収書・決済画面" hint="1枚まで（任意）">
+          {pickedUrl || receiptUrl ? (
+            <div className="relative">
+              {/* 縦に長いレシートで画面が埋まらないよう、高さで抑える */}
+              <img
+                src={pickedUrl ?? receiptUrl ?? ''}
+                alt="添付した写真"
+                className="max-h-56 w-full rounded-xl border border-line bg-ink-2 object-contain"
+              />
+              <button
+                type="button"
+                aria-label="写真を外す"
+                title="写真を外す"
+                onClick={withTapFeedback(clearReceipt)}
+                className="absolute top-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-ink/85 text-fg-mute backdrop-blur transition-colors hover:border-danger/50 hover:text-danger"
+              >
+                <IconClose size={14} />
+              </button>
+              {picked ? (
+                <p className="mt-1.5 text-[11px] text-fg-mute">保存すると添付されます</p>
+              ) : null}
+            </div>
+          ) : (
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line py-4 text-[13px] text-fg-mute transition-colors hover:border-marine/50 hover:text-marine">
+              <IconCamera size={16} />
+              写真を選ぶ
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  pickReceipt(e.target.files?.[0] ?? null)
+                  // 同じ写真をもう一度選べるようにする
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          )}
         </Field>
 
         <Field label="カテゴリ" hint="観戦支出の集計に使います">

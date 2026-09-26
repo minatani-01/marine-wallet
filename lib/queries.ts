@@ -1,7 +1,12 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { DEFAULT_SAVING_RULES } from '@/lib/savings'
-import { MEMBER_AVATAR_BUCKET, MEMBER_AVATAR_TTL_SECONDS } from '@/lib/constants'
+import {
+  MEMBER_AVATAR_BUCKET,
+  MEMBER_AVATAR_TTL_SECONDS,
+  RECEIPT_BUCKET,
+  RECEIPT_TTL_SECONDS,
+} from '@/lib/constants'
 import type {
   AutophagySettings,
   Game,
@@ -345,7 +350,27 @@ export async function getSplitRecords(ownerId: string): Promise<SplitRecord[]> {
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
   )
-  return data ?? []
+  const rows = data ?? []
+
+  // 添付してある写真に、見るための署名付きURLを付ける。
+  // 1件ずつ発行すると添付の数だけ往復するので、まとめて頼む
+  const paths = [...new Set(rows.map((r) => r.receipt_path).filter((p): p is string => !!p))]
+  if (paths.length === 0) return rows
+
+  // 署名に失敗しても投げない。写真が出ないだけで、金額の記録は正しいまま
+  const { data: signed } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .createSignedUrls(paths, RECEIPT_TTL_SECONDS)
+
+  const urls = new Map<string, string>()
+  for (const row of signed ?? []) {
+    if (row.path && row.signedUrl && !row.error) urls.set(row.path, row.signedUrl)
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    receipt_url: row.receipt_path ? (urls.get(row.receipt_path) ?? null) : null,
+  }))
 }
 
 /**
