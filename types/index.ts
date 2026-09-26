@@ -372,6 +372,10 @@ export type SplitRecord = {
   shares: Share[]
   category: ExpenseCategory
   game_id: string | null
+  /** 領収書・決済画面の写真。receipts バケット上のパス（0055） */
+  receipt_path: string | null
+  /** 上のパスに対する署名付きURL。サーバー側で発行する。失敗したら null */
+  receipt_url?: string | null
   created_at: string
   updated_at: string
 }

@@ -16,11 +16,19 @@ import {
   SectionLabel,
   Segmented,
 } from '@/components/ui'
-import { IconChevronRight, IconEdit, IconPlus, IconTrash, IconUsers } from '@/components/icons'
+import {
+  IconCamera,
+  IconChevronRight,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  IconUsers,
+} from '@/components/icons'
 import CategoryIcon from '@/components/CategoryIcon'
 import { CopyAmountButton, OpenAppButton } from '@/components/HandoffActions'
 import SplitSheet from '@/components/split/SplitSheet'
 import { createClient } from '@/lib/supabase/client'
+import { removeReceiptFile } from '@/lib/receipt'
 import { distributeEqual, simplifyDebts } from '@/lib/warikan'
 import { dueYen, shortDate, yen } from '@/lib/format'
 import { categoryLabel } from '@/lib/constants'
@@ -184,6 +192,8 @@ export default function SplitClient({
     setBusy(true)
     const supabase = createClient()
     await supabase.from('records').delete().eq('id', record.id)
+    // 記録が消えたら写真も要らない。残しても誰も辿り着けず、容量だけ使う
+    await removeReceiptFile(supabase, record.receipt_path)
     setBusy(false)
     router.refresh()
   }
@@ -424,6 +434,21 @@ export default function SplitClient({
                       ))}
                     {record.member_count > 4 ? (
                       <span className="text-[11px] text-fg-mute">+{record.member_count - 4}</span>
+                    ) : null}
+
+                    {/* 領収書・決済画面が付いているとき。操作の並びではなく
+                        顔写真の横に置く。あるか無いかを見せるものなので */}
+                    {record.receipt_url ? (
+                      <a
+                        href={record.receipt_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="領収書・決済画面を見る"
+                        title="領収書・決済画面を見る"
+                        className="ml-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-marine/40 text-marine transition-colors hover:bg-marine/10"
+                      >
+                        <IconCamera size={13} />
+                      </a>
                     ) : null}
                   </div>
 
