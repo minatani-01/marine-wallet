@@ -47,7 +47,7 @@ export default function CustomSavingSheet({
   /**
    * 手で選べる定型だけを出す。
    *
-   * 「名球会記録 / 生涯記録 / シーズン記録」は npb.jp から取れるので
+   * 「名球会記録 / 生涯記録 / シーズン記録 / 球団記録」は npb.jp から取れるので
    * 自動登録に移した。選択肢に残すと、自動で入るものを手でも入れてしまう。
    */
   const selectable = presets.filter((p) => !p.auto)
