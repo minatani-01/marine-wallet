@@ -56,14 +56,28 @@ function Combo({
   canAdd?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  /**
+   * 書いて絞り込んでいる最中かどうか。
+   *
+   * ▼を押して開いたときは絞り込まない。入っている言葉で絞ると、既に選んで
+   * ある欄では自分自身しか出ず、選び直せなくなる。編集で開いたときに
+   * 「押しても出ない」ように見えるのも、これが原因だった。
+   */
+  const [filtering, setFiltering] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
 
   const typed = value.trim()
-  const shown = typed
-    ? options.filter((o) => o.name.includes(typed) && o.name !== typed)
-    : options
   // 書いたものが一覧に無いときだけ、登録する行を出す
   const isNew = canAdd && typed.length > 0 && !options.some((o) => o.name === typed)
+  const matched = filtering && typed ? options.filter((o) => o.name.includes(typed)) : options
+  // 当てはまるものが無いときは、登録する行だけでよい
+  const shown = matched.length > 0 ? matched : isNew ? [] : options
+
+  /** ▼ と候補からの選択。どちらも絞り込みを解いて全部を出せる状態に戻す */
+  const openAll = () => {
+    setFiltering(false)
+    setOpen(true)
+  }
 
   return (
     <div
@@ -82,18 +96,21 @@ function Combo({
           placeholder={placeholder}
           onChange={(e) => {
             onChange(e.target.value)
+            setFiltering(true)
             setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={openAll}
           className={inputClassCompact}
         />
         <button
           type="button"
           aria-label={`${label}の候補`}
           aria-expanded={open}
+          onPointerDown={(e) => e.preventDefault()}
           onClick={() => {
             tapFeedback()
-            setOpen((on) => !on)
+            if (open) setOpen(false)
+            else openAll()
           }}
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-[10px] text-fg-mute transition-colors hover:border-marine/50 hover:text-marine"
         >
@@ -110,9 +127,15 @@ function Combo({
               onClick={() => {
                 tapFeedback()
                 onChange(option.name)
+                setFiltering(false)
                 setOpen(false)
               }}
-              className="flex w-full items-center justify-between gap-3 border-b border-line-soft px-3 py-2.5 text-left text-[13px] text-fg-dim transition-colors last:border-b-0 hover:bg-white/[0.04] hover:text-fg"
+              // 候補を押す前に入力欄の blur が走ると、押す先が消えてしまう。
+              // iPhone では relatedTarget が空で返るため、焦点ごと動かさない
+              onPointerDown={(e) => e.preventDefault()}
+              className={`flex w-full items-center justify-between gap-3 border-b border-line-soft px-3 py-2.5 text-left text-[13px] transition-colors last:border-b-0 hover:bg-white/[0.04] hover:text-fg ${
+                option.name === typed ? 'bg-marine/10 text-marine' : 'text-fg-dim'
+              }`}
             >
               {/* 補足は名前の下に置く。横に並べると狭い画面で名前が潰れる */}
               <span className="min-w-0 flex-1">
