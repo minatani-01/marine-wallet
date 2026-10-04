@@ -41,13 +41,16 @@ comment on column public.saving_entries.legacy_note is
 -- ----------------------------------------------------------------------------
 -- 2. 記録名の候補
 -- ----------------------------------------------------------------------------
--- 名場面の候補は saving_custom_presets がそのまま使える（貯金ルールの画面で
--- 足せる）。記録名はここに持つ。登録のときに一覧に無い言葉を書くと増える。
+-- 名場面は5つで固定（lib/saving-label.ts の SCENES）。金額は
+-- saving_custom_presets がラベルごとに持つ。記録名はここに持つ。
+-- 登録のときに一覧に無い言葉を書くと、ここへ増える。
 --
 -- 共有のもの。貯金のリストと同じで、人によって変わらない。
 create table if not exists public.saving_record_names (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  /** 選んだときに入る金額。0 なら金額を入れない */
+  amount integer not null default 0,
   /** 並び順。小さいほど先に出す */
   sort_order integer not null default 100,
   created_by uuid references auth.users (id) on delete set null,
@@ -57,8 +60,14 @@ create table if not exists public.saving_record_names (
 
 alter table public.saving_record_names enable row level security;
 
+-- 先に 0057 を当てたあとで amount を足す場合に備える
+alter table public.saving_record_names
+  add column if not exists amount integer not null default 0;
+
 comment on table public.saving_record_names is
   '記録名の候補。登録のときに一覧に無い言葉を書くと、ここへ足される';
+comment on column public.saving_record_names.amount is
+  '選んだときに入る金額。0 なら入れない';
 
 create unique index if not exists saving_record_names_name_idx
   on public.saving_record_names (name);

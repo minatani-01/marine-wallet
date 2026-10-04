@@ -104,3 +104,30 @@ export function parseLegacyNote(note: string): Parsed {
 
   return { uniform_number: '', player_name: '', record_name: line }
 }
+
+/**
+ * 名場面（第1項目）。これで全部で、増やさない。
+ *
+ * 「サヨナラ打（HR）」のような具体の出来事は、ここではなく記録名（第2項目）に入る。
+ * 名場面は、その記録がどの種類かを言うためだけのもの。
+ *
+ * 後ろの4つは npb.jp から自動で入る。先頭の「名場面」だけが手で入れるぶん。
+ */
+export const SCENES = ['名場面', 'シーズン記録', '生涯記録', '名球会記録', '球団記録'] as const
+
+export type Scene = (typeof SCENES)[number]
+
+/** 画面に出す補足。何を入れるところか、選ぶ前に分かるようにする */
+export const SCENE_HINTS: Record<Scene, string> = {
+  名場面: '珍プレー・好プレー',
+  シーズン記録: 'その年だけの記録',
+  生涯記録: '通算記録',
+  名球会記録: '通算2000安打・200勝・250セーブ',
+  球団記録: 'マリーンズ自身の記録',
+}
+
+/** npb.jp から自動で入る名場面。手で入れることもできる */
+export function isAutoScene(scene: string): boolean {
+  const name = tidy(scene)
+  return SCENES.some((s) => s === name && s !== '名場面')
+}

@@ -26,7 +26,13 @@
 -- 正規表現は lib/saving-label.ts の parseLegacyNote と同じ読み分けにしてある。
 update public.saving_entries e
 set
-  scene = e.title,
+  -- 名場面は5つで固定（lib/saving-label.ts の SCENES）。
+  -- 「サヨナラ打（HR）」のような具体の出来事は名場面ではないので、
+  -- まとめて「名場面」に入れる。何があったかはメモの1行のほうに書いてある
+  scene = case
+    when e.title in ('シーズン記録', '生涯記録', '名球会記録', '球団記録') then e.title
+    else '名場面'
+  end,
   uniform_number = coalesce(substring(btrim(e.other_note) from '^#([0-9]+) ?\S+'), ''),
   player_name = coalesce(substring(btrim(e.other_note) from '^#[0-9]+ ?(\S+)'), ''),
   title = coalesce(
@@ -44,10 +50,19 @@ where e.kind = 'custom'
   and e.scene = ''
   and btrim(coalesce(e.other_note, '')) <> '';
 
--- メモが空だった手入力ぶんは、定型のラベルを名場面に写すだけにする。
--- 残すものが無いので legacy_note は空のままでよい
+-- メモが空だった手入力ぶん。残すものが無いので legacy_note は空のままでよい。
+-- 定型のラベルが記録の種類なら名場面へ、そうでなければ記録名として残す
+-- （「完全試合」は名場面ではなく、何があったかの名前である）
 update public.saving_entries
-set scene = title, title = ''
+set
+  scene = case
+    when title in ('シーズン記録', '生涯記録', '名球会記録', '球団記録') then title
+    else '名場面'
+  end,
+  title = case
+    when title in ('シーズン記録', '生涯記録', '名球会記録', '球団記録') then ''
+    else title
+  end
 where kind = 'custom' and scene = '' and btrim(coalesce(other_note, '')) = '';
 
 -- ----------------------------------------------------------------------------
@@ -65,14 +80,33 @@ where record_title = '';
 -- ----------------------------------------------------------------------------
 -- 3. 記録名の候補を、いま使われているものから作る
 -- ----------------------------------------------------------------------------
-insert into public.saving_record_names (name, sort_order)
-select distinct e.title, 100
+-- これまで「カスタム登録の定型」に並べていたもののうち、記録の種類ではないもの。
+-- これは名場面ではなく記録名なので、金額ごと記録名の候補へ移す
+insert into public.saving_record_names (name, amount, sort_order)
+select p.label, p.amount, p.sort_order
+from public.saving_custom_presets p
+where not p.auto
+  and p.label not in ('名場面', 'シーズン記録', '生涯記録', '名球会記録', '球団記録')
+on conflict (name) do nothing;
+
+delete from public.saving_custom_presets
+where not auto
+  and label not in ('名場面', 'シーズン記録', '生涯記録', '名球会記録', '球団記録');
+
+-- 名場面そのものの金額を置く行。無ければ作る
+insert into public.saving_custom_presets (label, amount, sort_order, auto)
+select '名場面', 100, 10, false
+where not exists (select 1 from public.saving_custom_presets where label = '名場面');
+
+-- いま使われている記録名。金額は入れない（名場面や記録名ごとに違う）
+insert into public.saving_record_names (name, amount, sort_order)
+select distinct e.title, 0, 100
 from public.saving_entries e
 where e.kind = 'custom' and btrim(e.title) <> ''
 on conflict (name) do nothing;
 
-insert into public.saving_record_names (name, sort_order)
-select distinct record_title, 100
+insert into public.saving_record_names (name, amount, sort_order)
+select distinct record_title, 0, 100
 from public.npb_milestones
 where btrim(record_title) <> ''
 on conflict (name) do nothing;

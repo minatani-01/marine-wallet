@@ -80,8 +80,19 @@ export type SavingEntry = {
   /** kind='custom' のときは null */
   game_id: string | null
   kind: SavingKind
-  /** カスタム登録の内容。自動登録では空文字 */
+  /**
+   * 名場面（0057）。好プレー / 名球会記録 など。金額はここに紐づく
+   * （saving_custom_presets.label と揃える）
+   */
+  scene: string
+  /** 記録名。カスタム登録の2つめの項目。自動登録では空文字にならない */
   title: string
+  /** 背番号（0057）。入っていれば選手の記録、空なら球団の記録 */
+  uniform_number: string
+  /** 選手名（0057）。背番号が分からない昔の選手は、これだけ入ることもある */
+  player_name: string
+  /** 0058 より前にメモ欄へ書いてあった1行。移行の控え */
+  legacy_note: string
   entry_date: string
   /** 'YYYY-MM'（DB側の生成列） */
   month: string
@@ -136,6 +147,20 @@ export type SavingCustomPreset = {
   sort_order: number
   /** 自動登録が使う定型。カスタム登録の選択肢には出さず、金額だけ変えられる */
   auto: boolean
+}
+
+/**
+ * 記録名の候補（0057）。
+ *
+ * 名場面の候補は saving_custom_presets がそのまま使えるが、記録名は
+ * 金額を持たないので別に置く。登録のときに一覧に無い言葉を書くと増える。
+ */
+export type SavingRecordName = {
+  id: string
+  name: string
+  /** 選んだときに入る金額。0 なら入れない */
+  amount: number
+  sort_order: number
 }
 
 /**

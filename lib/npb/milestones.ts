@@ -1,4 +1,5 @@
 import { decodeEntities, text, toInt } from '@/lib/npb/html'
+import { entryLabel } from '@/lib/saving-label'
 import type { StatSnapshot } from '@/lib/npb/stats'
 
 /**
@@ -99,16 +100,29 @@ export function uniformNumberOf(roster: RosterEntry[], playerName: string): stri
   return roster.find((r) => r.key === key)?.number ?? ''
 }
 
-/** 積立に残す内容。例: `#52益田 通算250セーブ記念` */
+/**
+ * 記録名。例: `通算250セーブ記念` / `シーズン30本塁打記念` / `5500敗記念`
+ *
+ * 通算記録には「通算」を付ける。シーズン記録は見出しに既に付いている。
+ * 球団の記録には付けない（「マリーンズ 通算5500敗記念」は読みにくい）。
+ */
+export function recordTitle(milestone: Milestone): string {
+  const career = milestone.source === 'career' && milestone.kind !== 'team'
+  return `${career ? '通算' : ''}${milestone.recordLabel}記念`
+}
+
+/**
+ * 積立に残す1行。例: `#52 益田 通算250セーブ記念`
+ *
+ * 手で入れるぶんと同じ組み立て方にする（lib/saving-label.ts）。別々に書くと
+ * 「#52益田」と「#51 山口」のように、並べたときの書き方がずれる。
+ */
 export function milestoneTitle(milestone: Milestone, uniformNumber: string): string {
-  if (milestone.kind === 'team') {
-    return `マリーンズ ${milestone.recordLabel}記念`
-  }
-  const prefix = uniformNumber ? `#${uniformNumber}` : ''
-  const who = `${prefix}${familyName(milestone.holder)}`
-  const what =
-    milestone.source === 'career' ? `通算${milestone.recordLabel}` : milestone.recordLabel
-  return `${who} ${what}記念`
+  const who =
+    milestone.kind === 'team'
+      ? { uniform_number: '', player_name: '' }
+      : { uniform_number: uniformNumber, player_name: familyName(milestone.holder) }
+  return entryLabel(who, recordTitle(milestone))
 }
 
 // ----------------------------------------------------------------------------

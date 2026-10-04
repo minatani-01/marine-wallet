@@ -1,7 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { entryLabel, isPlayerRecord, parseLegacyNote, whoLabel } from '@/lib/saving-label'
+import {
+  SCENES,
+  entryLabel,
+  isAutoScene,
+  isPlayerRecord,
+  parseLegacyNote,
+  whoLabel,
+} from '@/lib/saving-label'
 
 test('背番号と名前は空けて並べる', () => {
   assert.equal(whoLabel({ uniform_number: '51', player_name: '山口' }), '#51 山口')
@@ -101,4 +108,25 @@ test('読み分けたものを組み直すと元に戻る', () => {
     const parsed = parseLegacyNote(before)
     assert.equal(entryLabel(parsed, parsed.record_name), after)
   }
+})
+
+test('名場面は5つで固定', () => {
+  assert.deepEqual([...SCENES], ['名場面', 'シーズン記録', '生涯記録', '名球会記録', '球団記録'])
+  // 「サヨナラ打（HR）」のような具体の出来事は記録名の側。名場面には入れない
+  assert.equal(
+    SCENES.some((s) => s.includes('サヨナラ')),
+    false
+  )
+})
+
+test('自動で入る名場面は4つ', () => {
+  assert.equal(isAutoScene('名球会記録'), true)
+  assert.equal(isAutoScene('球団記録'), true)
+  assert.equal(isAutoScene('シーズン記録'), true)
+  assert.equal(isAutoScene('生涯記録'), true)
+  // 手で入れるぶん
+  assert.equal(isAutoScene('名場面'), false)
+  // 一覧に無い言葉
+  assert.equal(isAutoScene('サヨナラ打（HR）'), false)
+  assert.equal(isAutoScene(''), false)
 })
