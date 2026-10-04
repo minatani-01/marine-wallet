@@ -3,6 +3,7 @@ import RulesClient from '@/components/savings/RulesClient'
 import {
   canEditSavingRules,
   getSavingCustomPresets,
+  getSavingRecordNames,
   getSavingRules,
   getSessionUser,
 } from '@/lib/queries'
@@ -12,9 +13,11 @@ export default async function SavingRulesPage() {
   if (!user) redirect('/login')
 
   // ルールは全アカウント共通。変更できるかは人によって違う
-  const [rules, presets, canEdit] = await Promise.all([
+  const [rules, presets, recordNames, canEdit] = await Promise.all([
     getSavingRules(),
     getSavingCustomPresets(),
+    // 記録名の候補。カスタム登録のプルダウンに出すもの（0057）
+    getSavingRecordNames(),
     canEditSavingRules(),
   ])
 
@@ -23,6 +26,7 @@ export default async function SavingRulesPage() {
       userId={user.id}
       initialRules={rules}
       initialPresets={presets}
+      initialRecordNames={recordNames}
       canEdit={canEdit}
     />
   )

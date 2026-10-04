@@ -32,6 +32,7 @@ import GameSheet from '@/components/savings/GameSheet'
 import CompanionSheet from '@/components/savings/CompanionSheet'
 import CustomSavingSheet from '@/components/savings/CustomSavingSheet'
 import { createClient } from '@/lib/supabase/client'
+import { isPlayerRecord, whoLabel } from '@/lib/saving-label'
 import { BREAKDOWN_GROUP_LABEL, calcSaving, groupBreakdown } from '@/lib/savings'
 import { companionLabel, visitFromGame, visitOfGame } from '@/lib/stadium-stamp'
 import { stadiumOf } from '@/lib/stadiums'
@@ -61,6 +62,7 @@ import type {
   StadiumVisit,
   SavingEntryRow,
   SavingCustomPreset,
+  SavingRecordName,
   SavingRules,
   SharedGoalView,
 } from '@/types'
@@ -76,12 +78,26 @@ const STATUS_TONE: Record<MonthlyStatus, 'neutral' | 'marine' | 'warn' | 'done'>
 
 type SheetMode = 'game' | 'custom'
 
+/**
+ * カスタム登録の「誰が」の部分。
+ *
+ * 記録名はすぐ上の見出しに出ているので、ここでは繰り返さない。
+ * 「#51 山口」か「マリーンズ」だけを出す。
+ */
+function customLine(entry: SavingEntryRow): string | null {
+  const who = { uniform_number: entry.uniform_number, player_name: entry.player_name }
+  // 記録名も「誰が」も無い行では、見出しが名場面になる。そこに足すものは無い
+  if (!entry.title && !isPlayerRecord(who) && !entry.player_name.trim()) return null
+  return whoLabel(who)
+}
+
 export default function SavingsClient({
   userId,
   entries,
   monthlySavings,
   rules,
   presets,
+  recordNames,
   goals,
   isMaster,
   games,
@@ -98,6 +114,8 @@ export default function SavingsClient({
   rules: SavingRules
   /** カスタム登録の定型。貯金ルールの画面で増やせる */
   presets: SavingCustomPreset[]
+  /** 記録名の候補（0057） */
+  recordNames: SavingRecordName[]
   /** 共同貯金（仕様書17章はロッテ貯金内の機能と定めている） */
   goals: SharedGoalView[]
   /** マスター権限。確定が共有先にも反映される */
@@ -889,7 +907,12 @@ export default function SavingsClient({
                     g.has_save ? 'セーブ' : null,
                     entry.other_note || null,
                   ].filter(Boolean)
-                : [entry.other_note || null].filter(Boolean)
+                : [
+                    // 「名球会記録 / #52 益田 / ZOZOマリン」。記録名は見出しに出ている（0057）
+                    entry.scene || null,
+                    customLine(entry),
+                    entry.other_note || null,
+                  ].filter(Boolean)
 
               // 現地観戦を押したかどうか。球場を引ける試合にだけボタンを出す
               const visit = g ? visitOfGame(g.id, visits) : null
@@ -927,7 +950,7 @@ export default function SavingsClient({
                             ) : null}
                           </>
                         ) : (
-                          entry.title
+                          <span className="truncate">{entry.title || entry.scene}</span>
                         )}
                       </div>
                       {details.length > 0 ? (
@@ -1065,7 +1088,13 @@ export default function SavingsClient({
         <GameSheet entry={editing} rules={rules} userId={userId} onClose={closeSheet} />
       ) : null}
       {sheetMode === 'custom' ? (
-        <CustomSavingSheet entry={editing} presets={presets} userId={userId} onClose={closeSheet} />
+        <CustomSavingSheet
+          entry={editing}
+          presets={presets}
+          recordNames={recordNames}
+          userId={userId}
+          onClose={closeSheet}
+        />
       ) : null}
       {companionOf ? (
         <CompanionSheet

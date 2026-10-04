@@ -199,13 +199,14 @@ test('名鑑から背番号を引く。全角と半角のスペースを揃え�
   assert.equal(uniformNumberOf(roster, '大谷 翔平'), '')
 })
 
-test('内容は「#背番号姓 記録名記念」の形になる', () => {
+test('内容は「#背番号 姓 記録名記念」の形になる', () => {
   const roster = parseRoster(ROSTER_HTML)
   const [saves] = parseCareerMilestones(PITCHING_HTML, 'pitching')
 
   assert.equal(
     milestoneTitle(saves, uniformNumberOf(roster, saves.holder)),
-    '#52益田 通算250セーブ記念'
+    // 番号と名前のあいだは空ける。手で入れるぶんと同じ組み立て方（0057）
+    '#52 益田 通算250セーブ記念'
   )
 })
 
@@ -284,7 +285,10 @@ test('シーズン記録の内容にも背番号が入る', () => {
   }
   const [hr] = parseSeasonMilestones(snapshot, 'batting')
 
-  assert.equal(milestoneTitle(hr, uniformNumberOf(roster, hr.holder)), '#51山口 シーズン30本塁打記念')
+  assert.equal(
+    milestoneTitle(hr, uniformNumberOf(roster, hr.holder)),
+    '#51 山口 シーズン30本塁打記念'
+  )
 })
 
 /**

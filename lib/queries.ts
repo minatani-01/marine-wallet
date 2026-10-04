@@ -22,6 +22,7 @@ import type {
   Profile,
   SavingEntryRow,
   SavingCustomPreset,
+  SavingRecordName,
   UpcomingMilestoneRow,
   SavingRules,
   SavingCircleTotal,
@@ -241,6 +242,24 @@ export async function getUpcomingMilestones(limit = 3): Promise<UpcomingMileston
       .select('id, kind, record_label, holder, uniform_number, target, unit, current, remaining')
       .order('remaining', { ascending: true })
       .limit(limit)
+  )
+  return data ?? []
+}
+
+/**
+ * 記録名の候補（0057）。
+ *
+ * 登録の画面でプルダウンに出す。一覧に無い言葉を書いて保存すると、
+ * そのとき足される。名場面の候補は saving_custom_presets のほうを使う。
+ */
+export async function getSavingRecordNames(): Promise<SavingRecordName[]> {
+  const supabase = await createClient()
+  const data = await read<SavingRecordName[]>('saving_record_names', () =>
+    supabase
+      .from('saving_record_names')
+      .select('id, name, amount, sort_order')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
   )
   return data ?? []
 }

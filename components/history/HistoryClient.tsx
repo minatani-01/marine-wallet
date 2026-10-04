@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { IconBaseball, IconChevronRight, IconSpark } from '@/components/icons'
 import CategoryIcon from '@/components/CategoryIcon'
 import { shortDate, yen } from '@/lib/format'
+import { entryLabel } from '@/lib/saving-label'
 import { categoryLabel, opponentLabel, resultLabel } from '@/lib/constants'
 import type { ExpenseCategory, SavingEntryRow, SplitRecord } from '@/types'
 
@@ -42,8 +43,13 @@ export default function HistoryClient({
           kind: 'saving',
           title: entry.game
             ? `${resultLabel(entry.game.result, entry.game.is_sayonara)} vs ${opponentLabel(entry.game.opponent)}`
-            : entry.title,
-          caption: entry.game ? '自動登録' : 'カスタム登録',
+            : // 「#51 山口 逆転サヨナラHR」。記録名だけのものはそのまま（0057）
+              entryLabel(
+                { uniform_number: entry.uniform_number, player_name: entry.player_name },
+                entry.title
+              ),
+          // 名場面を出す。好プレーか記録かが分かる
+          caption: entry.game ? '自動登録' : entry.scene || 'カスタム登録',
           amount: entry.amount,
           isCustom: entry.kind === 'custom',
         })),

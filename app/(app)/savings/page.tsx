@@ -7,6 +7,7 @@ import {
   getRecentGames,
   getSavingEntries,
   getSavingCustomPresets,
+  getSavingRecordNames,
   getSavingRules,
   getSessionUser,
   getSharedGoals,
@@ -27,6 +28,7 @@ export default async function SavingsPage() {
     monthlySavings,
     rules,
     presets,
+    recordNames,
     goals,
     profile,
     games,
@@ -41,6 +43,8 @@ export default async function SavingsPage() {
       getMonthlySavings(user.id),
       getSavingRules(),
       getSavingCustomPresets(),
+      // 記録名の候補。カスタム登録のプルダウンに出す（0057）
+      getSavingRecordNames(),
       getSharedGoals(),
       getProfile(user.id),
       // 共通の試合。自分がまだ積み立てていないものを拾うために使う
@@ -66,6 +70,7 @@ export default async function SavingsPage() {
       monthlySavings={monthlySavings}
       rules={rules}
       presets={presets}
+      recordNames={recordNames}
       goals={goals}
       isMaster={profile?.is_master ?? false}
       games={games}

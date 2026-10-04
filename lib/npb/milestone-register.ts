@@ -1,5 +1,6 @@
 import {
   milestoneTitle,
+  recordTitle,
   parseCareerMilestones,
   parseRoster,
   parseSeasonMilestones,
@@ -273,6 +274,8 @@ export async function registerMilestones(
       uniform_number: number,
       tier: m.tier,
       achieved_on: m.achievedOn,
+      // 記録名だけを別に持つ。見出しは背番号・選手名と組み立てる（0057）
+      record_title: recordTitle(m),
       title: milestoneTitle(m, number),
     }
   })
