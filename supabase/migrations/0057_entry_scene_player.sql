@@ -29,7 +29,8 @@
 alter table public.saving_entries
   add column if not exists scene text not null default '',
   add column if not exists uniform_number text not null default '',
-  add column if not exists player_name text not null default '';
+  add column if not exists player_name text not null default '',
+  add column if not exists legacy_note text not null default '';
 
 comment on column public.saving_entries.scene is
   '名場面。好プレー / 名球会記録 など。saving_custom_presets.label と揃える';
@@ -37,6 +38,8 @@ comment on column public.saving_entries.uniform_number is
   '背番号。入っていれば選手の記録、空なら球団の記録';
 comment on column public.saving_entries.player_name is
   '選手名。背番号が分からない昔の選手は、これだけ入ることもある';
+comment on column public.saving_entries.legacy_note is
+  '0057 より前にメモ欄へ書いてあった1行。読み分けを間違えたときに戻せるよう残す';
 
 -- ----------------------------------------------------------------------------
 -- 2. いま入っているぶんを分ける
@@ -56,12 +59,17 @@ set
     -- どちらでもなければ、1行まるごとを記録名にする
     btrim(e.other_note)
   ),
+  -- 読み分けを間違えたときに戻せるよう、元の1行をそのまま残す。
+  -- 分け方は実データで確かめてあるが、確かめた範囲の外のものが
+  -- あとから入らないとは限らない
+  legacy_note = btrim(e.other_note),
   other_note = ''
 where e.kind = 'custom'
   and e.scene = ''
   and btrim(coalesce(e.other_note, '')) <> '';
 
 -- メモが空だった手入力ぶんは、定型のラベルを名場面に写すだけにする。
+-- 残すものが無いので legacy_note は空のままでよい。
 -- 記録名が空になるが、見出しは名場面が出るので画面は読める
 update public.saving_entries
 set scene = title, title = ''
