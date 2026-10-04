@@ -176,6 +176,17 @@ test('チーム記録はチームの列で判定する', () => {
   assert.equal(found[0].achievedOn, '2026-05-20')
 })
 
+test('球団の記録は球団記録として扱う', () => {
+  // 人の記録と重みが違う。金額を別に決められるよう、棚を分ける
+  const [team] = parseCareerMilestones(TEAM_HTML, 'team')
+  assert.equal(team.tier, '球団記録')
+  assert.equal(team.kind, 'team')
+
+  // 人の記録はこれまで通り
+  const [player] = parseCareerMilestones(PITCHING_HTML, 'pitching')
+  assert.notEqual(player.tier, '球団記録')
+})
+
 test('名鑑から背番号を引く。全角と半角のスペースを揃える', () => {
   const roster = parseRoster(ROSTER_HTML)
 

@@ -30,7 +30,7 @@ const MARINES_TEAM_NAME = '千葉ロッテマリーンズ'
 /** 名球会の入会条件。同じ通算記録でも重みが違うので分けて扱う */
 export const MEIKYUKAI_RECORDS = ['2000安打', '200勝利', '250セーブ'] as const
 
-export type MilestoneTier = '名球会記録' | '生涯記録' | 'シーズン記録'
+export type MilestoneTier = '名球会記録' | '生涯記録' | 'シーズン記録' | '球団記録'
 
 export type Milestone = {
   /** career = 通算記録のページ / season = 個人成績から見つけたシーズン記録 */
@@ -228,7 +228,9 @@ export function parseCareerMilestones(
           recordLabel,
           holder: row[0]?.trim() ?? '',
           achievedOn,
-          tier: kind === 'team' ? '生涯記録' : tierOf(recordLabel),
+          // 球団の記録は人の記録と重みが違う。通算5500敗も球団新記録も、
+          // 球団の歴史としては同じ棚に並ぶので、金額を別に決められるようにする
+          tier: kind === 'team' ? '球団記録' : tierOf(recordLabel),
         })
       }
     }

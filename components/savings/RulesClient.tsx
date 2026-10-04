@@ -440,7 +440,7 @@ export default function RulesClient({
           <SectionLabel>記録達成の金額</SectionLabel>
           <Card>
             <p className="mb-3 text-[11px] leading-relaxed text-fg-mute">
-              名球会記録・生涯記録・シーズン記録は npb.jp
+              下の記録は npb.jp
               から取れるので、自動登録が毎朝入れます。ここでは金額だけを決めます。
               手で選ぶ定型ではないため、カスタム登録のプルダウンには出ません。
             </p>
@@ -471,7 +471,8 @@ export default function RulesClient({
 
             <p className="mt-3 border-t border-line pt-3 text-[11px] leading-relaxed text-fg-mute">
               名球会記録は通算2000安打・200勝・250セーブ、生涯記録はそれ以外の通算記録、
-              シーズン記録はその年だけの記録です。金額を変えても、すでに積み立てた分は変わりません。
+              シーズン記録はその年だけの記録、球団記録はマリーンズ自身の通算記録です。
+              金額を変えても、すでに積み立てた分は変わりません。
             </p>
           </Card>
         </div>
