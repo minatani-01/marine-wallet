@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { readAll } from '@/lib/supabase/read-all'
 import { DEFAULT_SAVING_RULES } from '@/lib/savings'
 import {
   MEMBER_AVATAR_BUCKET,
@@ -289,13 +290,27 @@ export async function canEditSavingRules(): Promise<boolean> {
 
 export async function getSavingEntries(userId: string): Promise<SavingEntryRow[]> {
   const supabase = await createClient()
-  const data = await read<SavingEntryRow[]>('saving_entries', () =>
-    supabase
-      .from('saving_entries')
-      .select('*, game:games(*)')
-      .eq('user_id', userId)
-      .order('entry_date', { ascending: false })
-  )
+  // 年を重ねると1人ぶんでも1000行を超える。1回で読むと上限で黙って切られ、
+  // 古い積立が画面から消えたように見える
+  const data = await read<SavingEntryRow[]>('saving_entries', async () => {
+    try {
+      const rows = await readAll<SavingEntryRow>((from, to) =>
+        supabase
+          .from('saving_entries')
+          .select('*, game:games(*)')
+          .eq('user_id', userId)
+          .order('entry_date', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to)
+      )
+      return { data: rows, error: null }
+    } catch (cause) {
+      return {
+        data: null,
+        error: { message: cause instanceof Error ? cause.message : String(cause) },
+      }
+    }
+  })
 
   // kind='custom' は game が null。自動登録なのに game が取れない行だけを除外する
   return (data ?? []).filter((entry) => entry.kind === 'custom' || Boolean(entry.game))
