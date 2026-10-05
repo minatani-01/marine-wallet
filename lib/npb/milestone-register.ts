@@ -10,6 +10,7 @@ import {
   type RosterEntry,
 } from '@/lib/npb/milestones'
 import type { StatSnapshot } from '@/lib/npb/stats'
+import { readAll } from '@/lib/supabase/read-all'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -242,18 +243,26 @@ export async function registerMilestones(
     }
   }
 
-  const { data: snapshots, error: snapshotError } = await supabase
-    .from('npb_player_stat_snapshots')
-    .select('as_of, kind, player_name, stats')
-    .gte('as_of', `${season}-01-01`)
-    .lte('as_of', `${season}-12-31`)
-
-  const snapshotRows = (snapshots ?? []) as SnapshotRow[]
-
-  if (snapshotError) {
-    warnings.push(`個人成績を読めませんでした: ${snapshotError.message}`)
-  } else {
+  // 1シーズンで2000行を超えるので、必ず分けて読む。1回で読もうとすると
+  // 上限（既定1000行）で黙って切られ、新しいほうの節目が見えなくなる
+  let snapshotRows: SnapshotRow[] = []
+  try {
+    snapshotRows = await readAll<SnapshotRow>((from, to) =>
+      supabase
+        .from('npb_player_stat_snapshots')
+        .select('as_of, kind, player_name, stats')
+        .gte('as_of', `${season}-01-01`)
+        .lte('as_of', `${season}-12-31`)
+        .order('as_of', { ascending: true })
+        .order('kind', { ascending: true })
+        .order('player_name', { ascending: true })
+        .range(from, to)
+    )
     found.push(...seasonMilestonesFromHistory(snapshotRows))
+  } catch (cause) {
+    warnings.push(
+      `個人成績を読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}`
+    )
   }
 
   // ホームのカウントダウン。達成の登録とは別に、毎回作り直す

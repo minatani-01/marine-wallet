@@ -2,6 +2,7 @@ import { FETCH_INTERVAL_MS, fetchNpbPage, scheduleUrl, sleep } from './fetch'
 import { parseSchedule, withCancelled, type ScheduleGame } from './schedule'
 import { standingsOf, type LeagueGame } from './standings'
 import { jstDate } from '@/lib/jst'
+import { readAll } from '@/lib/supabase/read-all'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -139,20 +140,44 @@ export async function refreshStandings(
   supabase: Admin,
   season: number
 ): Promise<{ teams: number; asOf: string | null; missing?: string[] }> {
-  const { data, error } = await supabase
-    .from('npb_league_games')
-    .select('game_date, home_team, away_team, home_score, away_score, status, note')
-    .gte('game_date', `${season}-01-01`)
-    .lte('game_date', `${season}-12-31`)
-  if (error) throw new Error(`リーグの試合を読めませんでした: ${error.message}`)
+  // 12球団ぶんで1シーズン900試合を超える。分けて読まないと上限で切られ、
+  // 一部の試合だけで数えた順位が出る（エラーにはならない）
+  let data: unknown[]
+  try {
+    data = await readAll((from, to) =>
+      supabase
+        .from('npb_league_games')
+        .select('game_date, home_team, away_team, home_score, away_score, status, note')
+        .gte('game_date', `${season}-01-01`)
+        .lte('game_date', `${season}-12-31`)
+        .order('game_date', { ascending: true })
+        .order('home_team', { ascending: true })
+        .order('away_team', { ascending: true })
+        .range(from, to)
+    )
+  } catch (cause) {
+    throw new Error(
+      `リーグの試合を読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}`
+    )
+  }
 
   // 途中の月が欠けたまま数えない。それらしく見えて間違った順位が出る
-  const { data: npb, error: npbError } = await supabase
-    .from('npb_games')
-    .select('game_date')
-    .gte('game_date', `${season}-01-01`)
-    .lte('game_date', `${season}-12-31`)
-  if (npbError) throw new Error(`取得データを読めませんでした: ${npbError.message}`)
+  let npb: unknown[]
+  try {
+    npb = await readAll((from, to) =>
+      supabase
+        .from('npb_games')
+        .select('game_date')
+        .gte('game_date', `${season}-01-01`)
+        .lte('game_date', `${season}-12-31`)
+        .order('game_date', { ascending: true })
+        .range(from, to)
+    )
+  } catch (cause) {
+    throw new Error(
+      `取得データを読めませんでした: ${cause instanceof Error ? cause.message : String(cause)}`
+    )
+  }
 
   const missing = missingMonths(
     monthsOf((npb ?? []) as { game_date: string }[]),
