@@ -64,7 +64,7 @@ type FormState = {
   multi_hits: number
   rbi: number
   pitching_highlight: PitchingHighlight
-  has_hold: boolean
+  holds: number
   has_save: boolean
   other_amount: string
   other_note: string
@@ -88,7 +88,7 @@ function toForm(entry: SavingEntryRow | null): FormState {
       multi_hits: 0,
       rbi: 0,
       pitching_highlight: 'none',
-      has_hold: false,
+      holds: 0,
       has_save: false,
       other_amount: '0',
       other_note: '',
@@ -110,7 +110,7 @@ function toForm(entry: SavingEntryRow | null): FormState {
     multi_hits: g.multi_hits ?? 0,
     rbi: g.rbi ?? 0,
     pitching_highlight: g.pitching_highlight,
-    has_hold: g.has_hold ?? false,
+    holds: g.holds ?? 0,
     has_save: g.has_save,
     // その他ボーナスは試合の持ち物。積立側ではなく試合から読む
     other_amount: String(g.other_amount ?? 0),
@@ -154,7 +154,7 @@ export default function GameSheet({
           multi_hits: form.multi_hits,
           rbi: form.rbi,
           pitching_highlight: form.pitching_highlight,
-          has_hold: form.has_hold,
+          holds: form.holds,
           has_save: form.has_save,
         },
         rules,
@@ -188,7 +188,7 @@ export default function GameSheet({
       multi_hits: form.multi_hits,
       rbi: form.rbi,
       pitching_highlight: form.pitching_highlight,
-      has_hold: form.has_hold,
+      holds: form.holds,
       has_save: form.has_save,
       // その他ボーナスも試合に持たせる。こうしないと、同じ試合なのに
       // 登録した本人にだけ上乗せが付いて、人によって金額が変わる
@@ -361,12 +361,8 @@ export default function GameSheet({
                 </option>
               ))}
             </select>
-            <InlineRow label="ホールド" hint={`+¥${rules.hold_amount}`}>
-              <Switch
-                label="ホールド"
-                checked={form.has_hold}
-                onChange={(v) => upd('has_hold', v)}
-              />
+            <InlineRow label="ホールド" hint={`+¥${rules.hold_amount}/人`}>
+              <Stepper label="ホールド" value={form.holds} onChange={(v) => upd('holds', v)} />
             </InlineRow>
             <InlineRow label="セーブ" hint={`+¥${rules.save_amount}`}>
               <Switch label="セーブ" checked={form.has_save} onChange={(v) => upd('has_save', v)} />

@@ -39,7 +39,7 @@ export type ScorableGame = Pick<
   | 'multi_hits'
   | 'rbi'
   | 'pitching_highlight'
-  | 'has_hold'
+  | 'holds'
   | 'has_save'
 >
 
@@ -142,9 +142,14 @@ export function calcSaving(
   if (highlight && highlight.amount > 0) lines.push(highlight)
 
   // 勝利投手ではなくホールドを数える（0061）。先発が勝つ日は限られるが、
-  // 中継ぎがリードを守った日は多い。そちらを拾ったほうが積立が動く
-  if (game.has_hold && rules.hold_amount > 0) {
-    lines.push({ key: 'hold', label: 'ホールド', amount: rules.hold_amount })
+  // 中継ぎがリードを守った日は多い。そちらを拾ったほうが積立が動く。
+  // 1試合に2人以上付くことがあるので、人数ぶん足す（0062）
+  if (game.holds > 0 && rules.hold_amount > 0) {
+    lines.push({
+      key: 'hold',
+      label: `ホールド ${game.holds}人`,
+      amount: game.holds * rules.hold_amount,
+    })
   }
   if (game.has_save && rules.save_amount > 0) {
     lines.push({ key: 'save', label: 'セーブ', amount: rules.save_amount })

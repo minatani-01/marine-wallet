@@ -56,8 +56,8 @@ export type Game = {
   pitching_highlight: PitchingHighlight
   /** 0061 より前の記録だけが持つ。いまは数えない（ホールドに置き換えた） */
   is_winning_pitcher: boolean
-  /** ホールドが付いた投手がいたか（0061） */
-  has_hold: boolean
+  /** ホールドが付いた投手の人数。1試合に2人以上付くことがある（0062） */
+  holds: number
   has_save: boolean
   /**
    * その他ボーナス。試合の事実なので全員で同じ値を使う。
@@ -137,6 +137,7 @@ export type SavingRules = {
   quality_start_amount: number
   /** 0061 より前の記録だけが使う。いまは数えない */
   winning_pitcher_amount: number
+  /** ホールド1人あたりの金額 */
   hold_amount: number
   save_amount: number
   multiplier_regular: number

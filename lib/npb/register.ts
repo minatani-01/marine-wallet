@@ -188,7 +188,7 @@ export async function registerYesterdayGame(
     // 誰が付けたかを出すついでに、金額に使う印もここで立てる（0061）
     .insert({
       ...game,
-      has_hold: contributors.holds.length > 0,
+      holds: contributors.holds.length,
       contributors,
       created_by: null,
     })

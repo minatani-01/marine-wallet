@@ -50,7 +50,7 @@ const AMOUNT_SECTIONS: { title: string; note?: string; items: { key: AmountKey; 
     items: [
       { key: 'shutout_amount', label: '完封' },
       { key: 'complete_game_amount', label: '完投' },
-      { key: 'hold_amount', label: 'ホールド' },
+      { key: 'hold_amount', label: 'ホールド（1人あたり）' },
       { key: 'save_amount', label: 'セーブ' },
     ],
   },
