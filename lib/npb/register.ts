@@ -184,7 +184,14 @@ export async function registerYesterdayGame(
 
   const { data: created, error: insertError } = await supabase
     .from('games')
-    .insert({ ...game, contributors, created_by: null })
+    // ホールドはボックススコアに無く、個人投手成績の差分でしか分からない。
+    // 誰が付けたかを出すついでに、金額に使う印もここで立てる（0061）
+    .insert({
+      ...game,
+      has_hold: contributors.holds.length > 0,
+      contributors,
+      created_by: null,
+    })
     .select('id')
     .single()
 

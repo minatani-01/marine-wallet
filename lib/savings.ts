@@ -19,7 +19,8 @@ export const DEFAULT_SAVING_RULES: SavingRules = {
   shutout_amount: 500,
   complete_game_amount: 100,
   quality_start_amount: 200,
-  winning_pitcher_amount: 200,
+  winning_pitcher_amount: 0,
+  hold_amount: 100,
   save_amount: 100,
   multiplier_regular: 1.0,
   multiplier_interleague: 1.0,
@@ -38,7 +39,7 @@ export type ScorableGame = Pick<
   | 'multi_hits'
   | 'rbi'
   | 'pitching_highlight'
-  | 'is_winning_pitcher'
+  | 'has_hold'
   | 'has_save'
 >
 
@@ -140,8 +141,10 @@ export function calcSaving(
   const highlight = highlightAmount(rules, game)
   if (highlight && highlight.amount > 0) lines.push(highlight)
 
-  if (game.is_winning_pitcher && rules.winning_pitcher_amount > 0) {
-    lines.push({ key: 'winning_pitcher', label: '勝利投手', amount: rules.winning_pitcher_amount })
+  // 勝利投手ではなくホールドを数える（0061）。先発が勝つ日は限られるが、
+  // 中継ぎがリードを守った日は多い。そちらを拾ったほうが積立が動く
+  if (game.has_hold && rules.hold_amount > 0) {
+    lines.push({ key: 'hold', label: 'ホールド', amount: rules.hold_amount })
   }
   if (game.has_save && rules.save_amount > 0) {
     lines.push({ key: 'save', label: 'セーブ', amount: rules.save_amount })

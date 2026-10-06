@@ -60,6 +60,7 @@ export type ImportedGame = {
   rbi: number
   pitching_highlight: 'none'
   is_winning_pitcher: boolean
+  has_hold: boolean
   has_save: boolean
   other_amount: number
   other_note: string
@@ -189,7 +190,11 @@ export function gameFromNpb(row: NpbGameSource): ImportResult {
       multi_hits: 0,
       rbi: 0,
       pitching_highlight: 'none',
+      // 勝利投手は数えない（0061 でホールドに置き換えた）。
+      // ホールドはボックススコアに無いので、ここでは決められない。
+      // 個人投手成績の差分から出して、登録のときに入れる（register.ts）
       is_winning_pitcher: false,
+      has_hold: false,
       // セーブが付くのは勝った試合だけ。負け試合に相手のセーブを拾わない
       has_save: facts.facts.result === 'win' && row.save_pitcher.trim().length > 0,
       other_amount: 0,
