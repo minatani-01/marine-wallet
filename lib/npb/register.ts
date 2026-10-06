@@ -1,5 +1,12 @@
 import { gameFromNpb } from '@/lib/npb/import'
 import type { NpbGameSource } from '@/lib/npb/import'
+import {
+  EMPTY_CONTRIBUTORS,
+  buildContributors,
+  type BoxHomeRun,
+  type Contributors,
+  type PitcherRow,
+} from '@/lib/npb/contributors'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -39,6 +46,76 @@ export type RegisterResult = {
   entries?: number
 }
 
+type NpbRow = {
+  game_date: string
+  win_pitcher?: string | null
+  save_pitcher?: string | null
+  raw?: { box?: { homeRuns?: BoxHomeRun[] } | null } | null
+}
+
+/**
+ * その試合の「誰が何をしたか」を組み立てる。
+ *
+ * 本塁打・勝利投手・セーブはボックススコアから取る。ホールドだけは
+ * ボックススコアに無いので、個人投手成績をその日と前日で比べて出す。
+ * 比べる相手は「その日より前で、いちばん新しい日」にする。移動日や
+ * 中止を挟んでも前の試合と比べられる。
+ *
+ * 金額には関わらないので、読めなければ空で返す。ここで例外にすると、
+ * 名前が出ないだけのために、その日の積立が丸ごと入らなくなる。
+ */
+async function contributorsOf(
+  supabase: Admin,
+  row: NpbRow,
+  isWin: boolean
+): Promise<Contributors> {
+  try {
+    const { data: roster } = await supabase
+      .from('npb_source_pages')
+      .select('html')
+      .eq('kind', 'roster')
+      .maybeSingle()
+
+    const { data: after } = await supabase
+      .from('npb_player_stat_snapshots')
+      .select('player_name, stats')
+      .eq('kind', 'pitching')
+      .eq('as_of', row.game_date)
+
+    // その日より前で、いちばん新しい基準日を探す
+    const { data: previous } = await supabase
+      .from('npb_player_stat_snapshots')
+      .select('as_of')
+      .eq('kind', 'pitching')
+      .lt('as_of', row.game_date)
+      .order('as_of', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let before: PitcherRow[] = []
+    if (previous) {
+      const { data } = await supabase
+        .from('npb_player_stat_snapshots')
+        .select('player_name, stats')
+        .eq('kind', 'pitching')
+        .eq('as_of', (previous as { as_of: string }).as_of)
+      before = (data ?? []) as PitcherRow[]
+    }
+
+    return buildContributors({
+      rosterHtml: (roster as { html: string } | null)?.html ?? null,
+      homeRuns: row.raw?.box?.homeRuns ?? [],
+      winPitcher: row.win_pitcher ?? '',
+      savePitcher: row.save_pitcher ?? '',
+      isWin,
+      pitchingBefore: before,
+      pitchingAfter: (after ?? []) as PitcherRow[],
+    })
+  } catch {
+    return EMPTY_CONTRIBUTORS
+  }
+}
+
 export async function registerYesterdayGame(
   supabase: Admin,
   yesterday: string
@@ -46,7 +123,8 @@ export async function registerYesterdayGame(
   const { data: rows, error: readError } = await supabase
     .from('npb_games')
     .select(
-      'game_date, home_team, away_team, home_score, away_score, place, phase, status, save_pitcher, raw'
+      'game_date, home_team, away_team, home_score, away_score, place, phase, status, ' +
+        'win_pitcher, save_pitcher, raw'
     )
     .eq('game_date', yesterday)
 
@@ -101,9 +179,12 @@ export async function registerYesterdayGame(
     }
   }
 
+  // 誰が何をしたか。金額には関わらないので、作れなくても試合の登録は止めない
+  const contributors = await contributorsOf(supabase, rows[0] as unknown as NpbRow, game.result === 'win')
+
   const { data: created, error: insertError } = await supabase
     .from('games')
-    .insert({ ...game, created_by: null })
+    .insert({ ...game, contributors, created_by: null })
     .select('id')
     .single()
 

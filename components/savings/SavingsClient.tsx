@@ -33,6 +33,7 @@ import CompanionSheet from '@/components/savings/CompanionSheet'
 import CustomSavingSheet from '@/components/savings/CustomSavingSheet'
 import { createClient } from '@/lib/supabase/client'
 import { isPlayerRecord, whoLabel } from '@/lib/saving-label'
+import { contributorsLine } from '@/lib/npb/contributors'
 import { BREAKDOWN_GROUP_LABEL, calcSaving, groupBreakdown } from '@/lib/savings'
 import { companionLabel, visitFromGame, visitOfGame } from '@/lib/stadium-stamp'
 import { stadiumOf } from '@/lib/stadiums'
@@ -914,6 +915,9 @@ export default function SavingsClient({
                     entry.other_note || null,
                   ].filter(Boolean)
 
+              // 「#51 山口 36号 ・ W #14 小島 ・ S #15 横山 ・ H #56 中森」
+              const players = g ? contributorsLine(g.contributors) : ''
+
               // 現地観戦を押したかどうか。球場を引ける試合にだけボタンを出す
               const visit = g ? visitOfGame(g.id, visits) : null
               const attended = visit !== null
@@ -956,7 +960,6 @@ export default function SavingsClient({
                       {details.length > 0 ? (
                         <p className="mt-1 truncate text-[11px] text-fg-mute">{details.join(' / ')}</p>
                       ) : null}
-
                     </div>
 
                     <div className="flex shrink-0 flex-col items-end gap-2">
@@ -995,6 +998,15 @@ export default function SavingsClient({
                       </div>
                     </div>
                   </div>
+
+                  {/* 誰が打ったか・誰が投げたか（0060）。金額には関わらない。
+                      金額とボタンの下に置く。横に並べると幅が足りず、
+                      名前の途中で切れてしまう */}
+                  {players ? (
+                    <p className="mt-2 border-t border-line pt-2 text-[11px] leading-relaxed text-marine/80">
+                      {players}
+                    </p>
+                  ) : null}
 
                   {/* 現地観戦の一行。押すと一緒に行った人を選べる。
                       アイコンを4つ並べると対戦相手の名前が切れるので、
