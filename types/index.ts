@@ -33,6 +33,8 @@ export type PitchingHighlight =
   | 'no_hitter'
   | 'perfect_game'
 
+import type { Contributors } from '@/lib/npb/contributors'
+
 export type Game = {
   id: string
   game_date: string
@@ -61,6 +63,11 @@ export type Game = {
   other_amount: number
   other_note: string
   source: 'manual' | 'npb'
+  /**
+   * 誰が何をしたか（0060）。手で登録した試合では空。
+   * 金額には関わらない。画面に名前を出すためだけに持つ
+   */
+  contributors: Contributors | null
   created_by: string | null
   created_at: string
   updated_at: string
