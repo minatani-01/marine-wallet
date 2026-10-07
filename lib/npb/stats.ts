@@ -20,8 +20,16 @@ export type PlayerStatRow = {
 }
 
 export type StatSnapshot = {
-  /** ページ記載の基準日 YYYY-MM-DD。取得した日ではない */
+  /** 基準日 YYYY-MM-DD。取得した日ではない */
   asOf: string | null
+  /**
+   * 基準日をページから読めたか。
+   *
+   * シーズン中は「◯年◯月◯日現在」が載っているが、最終戦が終わると
+   * この表記ごと消え、確定版になる。そのときは呼び出し側が渡した
+   * 最終戦の日付を使うので、どちらだったかを残しておく。
+   */
+  asOfFromPage: boolean
   /** 見出し行の列名（選手を除く） */
   columns: string[]
   rows: PlayerStatRow[]
@@ -66,11 +74,21 @@ const REQUIRED_COLUMNS: Record<'batting' | 'pitching', string[]> = {
   pitching: ['登板', '勝利', '完封勝', '投球回', '自責点'],
 }
 
-export function parseTeamStats(html: string, kind: 'batting' | 'pitching'): StatSnapshot {
+/**
+ * @param fallbackAsOf ページに基準日が無いときに使う日付。最終戦の日を渡す。
+ *   シーズンが終わると「◯年◯月◯日現在」が消え、確定版の数字だけになる。
+ *   そのまま読み飛ばすと最終戦ぶんの成績を取り込めない。
+ */
+export function parseTeamStats(
+  html: string,
+  kind: 'batting' | 'pitching',
+  fallbackAsOf: string | null = null
+): StatSnapshot {
   const asOfMatch = html.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s*現在/)
+  const asOfFromPage = asOfMatch !== null
   const asOf = asOfMatch
     ? `${asOfMatch[1]}-${asOfMatch[2].padStart(2, '0')}-${asOfMatch[3].padStart(2, '0')}`
-    : null
+    : fallbackAsOf
 
   const table = match1(html, /<table class="tablefix2">([\s\S]*?)<\/table>/) ?? ''
   const thead = match1(table, /<thead[^>]*>([\s\S]*?)<\/thead>/) ?? ''
@@ -139,5 +157,5 @@ export function parseTeamStats(html: string, kind: 'batting' | 'pitching'): Stat
     )
   }
 
-  return { asOf, columns, rows, skipped }
+  return { asOf, asOfFromPage, columns, rows, skipped }
 }

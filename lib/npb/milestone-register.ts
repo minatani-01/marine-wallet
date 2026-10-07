@@ -76,6 +76,7 @@ function seasonMilestonesFromHistory(rows: SnapshotRow[]): Milestone[] {
     const perKind = byDate.get(row.as_of) ?? new Map<'batting' | 'pitching', StatSnapshot>()
     const snapshot: StatSnapshot = perKind.get(row.kind) ?? {
       asOf: row.as_of,
+      asOfFromPage: true,
       columns: [],
       rows: [],
       skipped: 0,
