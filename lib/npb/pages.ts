@@ -30,7 +30,66 @@ export const SOURCE_PAGE_KINDS = [
   'roster',
 ] as const
 
+/**
+ * 毎朝の取り込みが取ってきたページのうち、ここでは取りに行かないもの。
+ *
+ * 個人成績は読み取りのために別で取っている。同じページを2回取りに行かず、
+ * 取ったものをそのまま渡してもらって保存する（lib/npb/sync.ts）。
+ *
+ * 保存しておく理由は、読めなくなったときに中身を見るため。2026年の最終戦の
+ * 翌日に「基準日を読めませんでした」が出たが、ページを残していなかったので
+ * 何がどう変わったのか確かめられなかった。
+ */
+export const PASSED_PAGE_KINDS = ['stats_batting', 'stats_pitching'] as const
+
+export type PassedPageKind = (typeof PASSED_PAGE_KINDS)[number]
+
+export type PassedPage = { kind: PassedPageKind; url: string; html: string }
+
+/**
+ * 取り込みが取ってきたページをそのまま残す。
+ *
+ * 読み取りには関わらないので、失敗しても呼び出し側は止めない。
+ * 保存できなかったことだけ返す。
+ */
+export async function saveFetchedPages(
+  supabase: Admin,
+  season: number,
+  pages: PassedPage[]
+): Promise<SourcePageItem[]> {
+  const items: SourcePageItem[] = []
+
+  for (const page of pages) {
+    if (page.html.trim().length === 0) {
+      items.push({ kind: page.kind, status: 'failed', reason: '中身が空でした' })
+      continue
+    }
+
+    const { error } = await supabase.from('npb_source_pages').upsert(
+      {
+        kind: page.kind,
+        url: page.url,
+        html: page.html,
+        season,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: 'kind' }
+    )
+
+    items.push(
+      error
+        ? { kind: page.kind, status: 'failed', reason: `保存できませんでした: ${error.message}` }
+        : { kind: page.kind, status: 'saved', length: page.html.length }
+    )
+  }
+
+  return items
+}
+
 export type SourcePageKind = (typeof SOURCE_PAGE_KINDS)[number]
+
+/** npb_source_pages に入りうる種類。取りに行くものと、渡されるもの */
+export type StoredPageKind = SourcePageKind | PassedPageKind
 
 export function sourcePageUrl(kind: SourcePageKind, season: number): string {
   switch (kind) {
@@ -47,7 +106,7 @@ export function sourcePageUrl(kind: SourcePageKind, season: number): string {
 }
 
 export type SourcePageItem = {
-  kind: SourcePageKind
+  kind: StoredPageKind
   status: 'saved' | 'failed'
   /** 取れた文字数。極端に少なければ中身が変わった疑い */
   length?: number
