@@ -27,6 +27,7 @@ import {
   type ScheduleGame,
 } from './schedule'
 import { parseTeamStats, type StatSnapshot } from './stats'
+import type { PassedPage } from './pages'
 import { jstDate } from '@/lib/jst'
 import { leagueRows, type LeagueGameRow } from './league'
 
@@ -72,6 +73,11 @@ export type SyncResult = {
   /** スナップショットの基準日。打撃と投手で違えば警告になる */
   battingAsOf: string | null
   pitchingAsOf: string | null
+  /**
+   * 取ってきた成績ページそのもの。読めなくなったときに中身を見るために残す。
+   * 保存は呼び出し側（app/api/cron/npb-sync）が行う
+   */
+  statPages: PassedPage[]
   /** 見つけた問題。処理は続けるが、あとで見直せるように残す */
   warnings: string[]
 }
@@ -246,6 +252,10 @@ export async function runNpbSync(
     snapshots: [...toSnapshotRows(batting, 'batting'), ...toSnapshotRows(pitching, 'pitching')],
     battingAsOf: batting.asOf,
     pitchingAsOf: pitching.asOf,
+    statPages: [
+      { kind: 'stats_batting', url: battingStatsUrl(year), html: battingHtml },
+      { kind: 'stats_pitching', url: pitchingStatsUrl(year), html: pitchingHtml },
+    ],
     warnings,
   }
 }

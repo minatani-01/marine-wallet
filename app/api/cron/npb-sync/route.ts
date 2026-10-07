@@ -9,7 +9,7 @@ import {
   messageForMonthEnd,
 } from '@/lib/notifications'
 import { registerYesterdayGame } from '@/lib/npb/register'
-import { snapshotSourcePages } from '@/lib/npb/pages'
+import { saveFetchedPages, snapshotSourcePages } from '@/lib/npb/pages'
 import { registerMilestones } from '@/lib/npb/milestone-register'
 import { refreshStandings, saveLeagueGames } from '@/lib/npb/league'
 import { fillFutureMonths, sweepPastScheduled } from '@/lib/npb/schedule-refresh'
@@ -99,6 +99,19 @@ export async function GET(request: Request) {
       if (error) throw new Error(`スナップショットの保存に失敗しました: ${error.message}`)
     }
 
+    // 取ってきた成績ページをそのまま残す。読めなくなったときに中身を見るため。
+    // 読み取りには関わらないので、保存に失敗しても取り込みは止めない
+    let statPages: unknown = null
+    try {
+      statPages = await saveFetchedPages(
+        supabase,
+        Number(jstDate(now).slice(0, 4)),
+        result.statPages
+      )
+    } catch (cause) {
+      statPages = { error: cause instanceof Error ? cause.message : String(cause) }
+    }
+
     // 12球団ぶんの試合と、そこから出す順位。日程ページは1枚で全球団ぶんが
     // 載っているので、ここで保存しても取りに行くページは増えない。
     // 失敗しても取り込み全体は止めない（試合の登録のほうが大事）
@@ -168,6 +181,7 @@ export async function GET(request: Request) {
       snapshots: result.snapshots.length,
       battingAsOf: result.battingAsOf,
       pitchingAsOf: result.pitchingAsOf,
+      statPages,
       warnings: result.warnings,
       registered,
       future,
