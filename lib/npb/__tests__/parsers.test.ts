@@ -185,6 +185,32 @@ test('parseBoxScore は交流戦を interleague にする', () => {
 test('parseTeamStats は基準日を取る（取得日ではない）', () => {
   assert.equal(parseTeamStats(BATTING_HTML, 'batting').asOf, '2026-09-13')
   assert.equal(parseTeamStats(PITCHING_HTML, 'pitching').asOf, '2026-09-13')
+  // ページから読めたことを残す
+  assert.equal(parseTeamStats(BATTING_HTML, 'batting').asOfFromPage, true)
+  // ページに載っていれば、控えがあってもそちらを使わない
+  assert.equal(parseTeamStats(BATTING_HTML, 'batting', '2026-10-06').asOf, '2026-09-13')
+})
+
+test('シーズンが終わって基準日が消えたら、最終戦の日を使う', () => {
+  // 最終戦が終わると「◯年◯月◯日現在」ごと消え、確定版の数字だけになる
+  const final = BATTING_HTML.replace(/[0-9]{4}年[0-9]{1,2}月[0-9]{1,2}日\s*現在/, '')
+  assert.ok(!final.includes('現在'))
+
+  const snap = parseTeamStats(final, 'batting', '2026-10-06')
+  assert.equal(snap.asOf, '2026-10-06')
+  assert.equal(snap.asOfFromPage, false)
+  // 中身はいつも通り読める
+  assert.ok(snap.rows.length > 0)
+  assert.equal(snap.skipped, 0)
+})
+
+test('基準日も控えも無ければ、これまで通り空で返す', () => {
+  const final = BATTING_HTML.replace(/[0-9]{4}年[0-9]{1,2}月[0-9]{1,2}日\s*現在/, '')
+  const snap = parseTeamStats(final, 'batting')
+
+  // 日付の分からないスナップショットを保存しない（呼び出し側が警告を出す）
+  assert.equal(snap.asOf, null)
+  assert.equal(snap.asOfFromPage, false)
 })
 
 test('parseTeamStats は打撃の列を英名に寄せる', () => {

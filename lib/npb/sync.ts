@@ -226,19 +226,30 @@ export async function runNpbSync(
 
   // 3-4. 個人成績のスナップショット
   await sleep(FETCH_INTERVAL_MS)
+  // シーズンが終わるとページから基準日が消えるので、最終戦の日を控えにする
+  const lastGame = latest?.gameDate ?? null
+
   const battingHtml = await fetchPage(battingStatsUrl(year))
   pages += 1
-  const batting = parseTeamStats(battingHtml, 'batting')
+  const batting = parseTeamStats(battingHtml, 'batting', lastGame)
 
   await sleep(FETCH_INTERVAL_MS)
   const pitchingHtml = await fetchPage(pitchingStatsUrl(year))
   pages += 1
-  const pitching = parseTeamStats(pitchingHtml, 'pitching')
+  const pitching = parseTeamStats(pitchingHtml, 'pitching', lastGame)
 
   if (batting.skipped > 0) warnings.push(`打撃成績で ${batting.skipped} 行を読み飛ばしました`)
   if (pitching.skipped > 0) warnings.push(`投手成績で ${pitching.skipped} 行を読み飛ばしました`)
+  // ページから読めず、控えも無いときだけ知らせる。控えを使ったときは
+  // 取り込めているので、何を使ったかだけ残す
   if (!batting.asOf) warnings.push('打撃成績の基準日を読めませんでした')
+  else if (!batting.asOfFromPage) {
+    warnings.push(`打撃成績に基準日がないため最終戦の日を使いました（${batting.asOf}）`)
+  }
   if (!pitching.asOf) warnings.push('投手成績の基準日を読めませんでした')
+  else if (!pitching.asOfFromPage) {
+    warnings.push(`投手成績に基準日がないため最終戦の日を使いました（${pitching.asOf}）`)
+  }
   if (batting.asOf && pitching.asOf && batting.asOf !== pitching.asOf) {
     warnings.push(
       `打撃と投手で基準日が違います（打撃 ${batting.asOf} / 投手 ${pitching.asOf}）`

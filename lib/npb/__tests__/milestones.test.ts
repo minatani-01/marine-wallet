@@ -237,6 +237,7 @@ test('個人成績から、節目に届いた選手を拾う', () => {
   // 2026-09-15 時点の実データ。山口は30本、横山は33セーブ
   const batting: StatSnapshot = {
     asOf: '2026-09-15',
+    asOfFromPage: true,
     columns: [],
     skipped: 0,
     rows: [
@@ -254,6 +255,7 @@ test('個人成績から、節目に届いた選手を拾う', () => {
 test('複数の節目を越えていれば、越えた分だけ拾う', () => {
   const pitching: StatSnapshot = {
     asOf: '2026-09-15',
+    asOfFromPage: true,
     columns: [],
     skipped: 0,
     rows: [{ playerName: '横山　陸人', isLeft: false, stats: { saves: 41, wins: 2 } }],
@@ -268,6 +270,7 @@ test('複数の節目を越えていれば、越えた分だけ拾う', () => {
 test('基準日が読めなければ、シーズン記録は作らない', () => {
   const snapshot: StatSnapshot = {
     asOf: null,
+    asOfFromPage: true,
     columns: [],
     skipped: 0,
     rows: [{ playerName: '山口　航輝', isLeft: false, stats: { home_runs: 40 } }],
@@ -279,6 +282,7 @@ test('シーズン記録の内容にも背番号が入る', () => {
   const roster = parseRoster(ROSTER_HTML)
   const snapshot: StatSnapshot = {
     asOf: '2026-09-15',
+    asOfFromPage: true,
     columns: [],
     skipped: 0,
     rows: [{ playerName: '山口　航輝', isLeft: false, stats: { home_runs: 30 } }],
