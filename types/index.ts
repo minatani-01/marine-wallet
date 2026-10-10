@@ -592,3 +592,123 @@ export type FavoriteItemRow = FavoriteItem & {
   /** image_path に対して発行した署名付きURL。出せなければ null */
   signed_url: string | null
 }
+
+// ------------------------------------------------- からだ（RE:FORM / 0064）----
+
+/** からだの基本データ。ワークアウトの初回負荷を出すのに使う */
+export type BodyProfile = {
+  user_id: string
+  /** cm */
+  height: number
+  /** kg。設定した時点のもの。日ごとの体重は BodyWeight が持つ */
+  weight: number
+  age: number
+  /** diet / muscle / fitness / health */
+  goal: string
+  target_weight: number | null
+  /** マシンの重量の刻み（kg） */
+  increment: number
+  created_at: string
+  updated_at: string
+}
+
+/** 日ごとの体重。1日1行 */
+export type BodyWeight = {
+  id: string
+  user_id: string
+  date: string
+  weight: number
+  created_at: string
+  updated_at: string
+}
+
+/** ワークアウトの種目ごとの予定と実績 */
+export type WorkoutExercise = {
+  id: string
+  session_id: string
+  user_id: string
+  exercise_id: string
+  name: string
+  /** strength / bodyweight / cardio */
+  kind: string
+  target_weight: number | null
+  actual_weight: number | null
+  target_reps: number | null
+  /** セットごとの実施回数 */
+  actual_reps: number[]
+  target_sets: number | null
+  target_minutes: number | null
+  actual_minutes: number | null
+  effort: string
+  /** その負荷にした理由 */
+  reason: string
+  position: number
+  created_at: string
+}
+
+/** マシンのワークアウト1回ぶん */
+export type WorkoutSession = {
+  id: string
+  user_id: string
+  date: string
+  /** かかった時間（分） */
+  duration: number
+  created_at: string
+}
+
+/** 種目を束ねたセッション。画面にはこの形で渡す */
+export type WorkoutSessionView = WorkoutSession & { exercises: WorkoutExercise[] }
+
+/** フリーウェイトの記録 */
+export type FreeWeightLog = {
+  id: string
+  user_id: string
+  date: string
+  exercise: string
+  equipment: string
+  weight: number
+  reps: number
+  sets: number
+  effort: string
+  note: string
+  created_at: string
+}
+
+/** サウナの記録 */
+export type SaunaLog = {
+  id: string
+  user_id: string
+  date: string
+  kind: string
+  temperature: number | null
+  humidity: number | null
+  /** 1セットあたりの分 */
+  sauna_minutes: number
+  sets: number
+  cooling_method: string
+  cooling_minutes: number | null
+  water_temperature: number | null
+  rest_minutes: number | null
+  loyly: boolean
+  loyly_count: number
+  condition: string
+  water_ml: number | null
+  note: string
+  created_at: string
+}
+
+/** 脱毛・エステ・ホワイトニングの記録。kind で使う列が変わる */
+export type BodyCareLog = {
+  id: string
+  user_id: string
+  date: string
+  /** hair / esthetic / whitening */
+  kind: string
+  part: string
+  minutes: number
+  level: string
+  skin: string
+  count: number
+  note: string
+  created_at: string
+}

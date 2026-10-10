@@ -9,11 +9,16 @@ import {
   RECEIPT_TTL_SECONDS,
   FAVORITE_BUCKET,
   FAVORITE_TTL_SECONDS,
+  BODY_LOG_LIMIT,
 } from '@/lib/constants'
 import type {
   AutophagySettings,
+  BodyCareLog,
+  BodyProfile,
+  BodyWeight,
   FavoriteItem,
   FavoriteItemRow,
+  FreeWeightLog,
   Game,
   GamePlan,
   LinkMonthlyCompare,
@@ -25,6 +30,7 @@ import type {
   MonthlySaving,
   NotificationPreferences,
   Profile,
+  SaunaLog,
   SavingEntryRow,
   SavingCustomPreset,
   SavingRecordName,
@@ -37,6 +43,9 @@ import type {
   SplitMember,
   SplitMemberView,
   SplitRecord,
+  WorkoutExercise,
+  WorkoutSession,
+  WorkoutSessionView,
   ScheduledGame,
   SeasonGame,
   StadiumVisit,
@@ -379,7 +388,122 @@ export async function getAutophagySettings(userId: string): Promise<AutophagySet
 }
 
 /**
- * お気に入りの品（0063）。からだタブに出す。
+ * からだの基本データ（0064）。
+ *
+ * 行が無いときは null を返す。既定値は置かない。身長も体重も入っていない
+ * まま初回の重量を見積もると、安全でない数字が出る。
+ */
+export async function getBodyProfile(userId: string): Promise<BodyProfile | null> {
+  const supabase = await createClient()
+  return await read<BodyProfile>('body_profiles', () =>
+    supabase.from('body_profiles').select('*').eq('user_id', userId).maybeSingle()
+  )
+}
+
+/** 日ごとの体重。新しい順。グラフは画面側で古い順に直す */
+export async function getBodyWeights(userId: string): Promise<BodyWeight[]> {
+  const supabase = await createClient()
+  const data = await read<BodyWeight[]>('body_weights', () =>
+    supabase
+      .from('body_weights')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(BODY_LOG_LIMIT)
+  )
+  return data ?? []
+}
+
+/**
+ * ワークアウトのセッションと、その中の種目。
+ *
+ * 2回に分けて引く。入れ込み（embed）で1回にすると、セッションを絞っても
+ * 種目はぜんぶ返ってくる作りになりやすく、件数が増えたときに重くなる。
+ *
+ * 次回の負荷を決めるのに必要なのは直近ぶんだけなので、上限を付ける。
+ */
+export async function getWorkoutSessions(userId: string): Promise<WorkoutSessionView[]> {
+  const supabase = await createClient()
+  const sessions = await read<WorkoutSession[]>('workout_sessions', () =>
+    supabase
+      .from('workout_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(BODY_LOG_LIMIT)
+  )
+  const rows = sessions ?? []
+  if (rows.length === 0) return []
+
+  const exercises = await read<WorkoutExercise[]>('workout_exercises', () =>
+    supabase
+      .from('workout_exercises')
+      .select('*')
+      .in(
+        'session_id',
+        rows.map((r) => r.id)
+      )
+      .order('position', { ascending: true })
+  )
+
+  const bySession = new Map<string, WorkoutExercise[]>()
+  for (const exercise of exercises ?? []) {
+    const held = bySession.get(exercise.session_id)
+    if (held) held.push(exercise)
+    else bySession.set(exercise.session_id, [exercise])
+  }
+
+  return rows.map((session) => ({ ...session, exercises: bySession.get(session.id) ?? [] }))
+}
+
+/** フリーウェイトの記録。新しい順 */
+export async function getFreeWeightLogs(userId: string): Promise<FreeWeightLog[]> {
+  const supabase = await createClient()
+  const data = await read<FreeWeightLog[]>('free_weight_logs', () =>
+    supabase
+      .from('free_weight_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(BODY_LOG_LIMIT)
+  )
+  return data ?? []
+}
+
+/** サウナの記録。新しい順 */
+export async function getSaunaLogs(userId: string): Promise<SaunaLog[]> {
+  const supabase = await createClient()
+  const data = await read<SaunaLog[]>('sauna_logs', () =>
+    supabase
+      .from('sauna_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(BODY_LOG_LIMIT)
+  )
+  return data ?? []
+}
+
+/** 脱毛・エステ・ホワイトニングの記録。種別は画面側で分ける */
+export async function getBodyCareLogs(userId: string): Promise<BodyCareLog[]> {
+  const supabase = await createClient()
+  const data = await read<BodyCareLog[]>('body_care_logs', () =>
+    supabase
+      .from('body_care_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(BODY_LOG_LIMIT)
+  )
+  return data ?? []
+}
+
+/**
+ * お気に入りの品（0063）。/select に出す。
  *
  * 画像は非公開のバケットに置いてあるので、見るための署名付きURLを
  * まとめて発行する。1件ずつ頼むと品の数だけ往復する。
