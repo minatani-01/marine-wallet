@@ -557,3 +557,38 @@ export type AutophagySettings = {
   created_at: string
   updated_at: string
 }
+
+/**
+ * お気に入りの品（0063）。
+ *
+ * もとは Google Apps Script の「RE:SELECT」。スプレッドシートをやめ、
+ * アプリの中で足せるようにした。からだタブに出す。
+ */
+export type FavoriteItem = {
+  id: string
+  user_id: string
+  genre: string
+  name: string
+  brand: string
+  /** favorites バケット上のパス。空なら image_url を見る */
+  image_path: string
+  /** 外から借りている画像URL。移行ぶんだけが持つ */
+  image_url: string
+  /** 円。分からないものは null */
+  price: number | null
+  memo: string
+  /** リピート / 欲しい */
+  status: string
+  shop_name: string
+  shop_url: string
+  sort_order: number
+  active: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** 署名付きURLを付けたお気に入り。画面にはこの形で渡す */
+export type FavoriteItemRow = FavoriteItem & {
+  /** image_path に対して発行した署名付きURL。出せなければ null */
+  signed_url: string | null
+}

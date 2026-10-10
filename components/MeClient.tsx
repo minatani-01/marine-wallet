@@ -11,6 +11,7 @@ import {
   IconCheck,
   IconChevronRight,
   IconCopy,
+  IconGoods,
   IconLogout,
   IconUsers,
 } from '@/components/icons'
@@ -268,6 +269,28 @@ export default function MeClient({
       <NotificationSettings userId={userId} initialPreferences={notificationPreferences} />
 
       <AppLinkSettings />
+
+      {/* お気に入りの品（RE:SELECT）。中身は人それぞれなので、タブには出さず
+          ここから入る。下のタブはすでに master で7つ並んでいて、8つ目を
+          足すと字が入らない */}
+      <div>
+        <SectionLabel>お気に入り</SectionLabel>
+        <Link
+          href="/select"
+          prefetch={false}
+          className="glass flex items-center gap-3 rounded-2xl p-4 transition-colors hover:border-marine/50"
+        >
+          <IconGoods size={18} className="shrink-0 text-fg-mute" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px]">RE:SELECT</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+              また買うもの・欲しいものを、ジャンル別に置いておく場所です。
+              入れたものが見えるのは自分だけです。
+            </p>
+          </div>
+          <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
+        </Link>
+      </div>
 
       {/* メンバーと Marine Link は、共有を組み立てる側の機能なのでマスターだけに出す */}
       {profile?.is_master ? (

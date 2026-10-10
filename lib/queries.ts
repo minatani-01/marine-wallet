@@ -7,9 +7,13 @@ import {
   MEMBER_AVATAR_TTL_SECONDS,
   RECEIPT_BUCKET,
   RECEIPT_TTL_SECONDS,
+  FAVORITE_BUCKET,
+  FAVORITE_TTL_SECONDS,
 } from '@/lib/constants'
 import type {
   AutophagySettings,
+  FavoriteItem,
+  FavoriteItemRow,
   Game,
   GamePlan,
   LinkMonthlyCompare,
@@ -372,6 +376,38 @@ export async function getAutophagySettings(userId: string): Promise<AutophagySet
   return await read<AutophagySettings>('autophagy_settings', () =>
     supabase.from('autophagy_settings').select('*').eq('user_id', userId).maybeSingle()
   )
+}
+
+/**
+ * お気に入りの品（0063）。からだタブに出す。
+ *
+ * 画像は非公開のバケットに置いてあるので、見るための署名付きURLを
+ * まとめて発行する。1件ずつ頼むと品の数だけ往復する。
+ * 署名に失敗しても投げない。画像が出ないだけで、品の一覧は正しいまま。
+ */
+export async function getFavoriteItems(userId: string): Promise<FavoriteItemRow[]> {
+  const supabase = await createClient()
+  const data = await read<FavoriteItem[]>('favorite_items', () =>
+    supabase
+      .from('favorite_items')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+  )
+  const rows = data ?? []
+  const paths = [...new Set(rows.map((r) => r.image_path).filter(Boolean))]
+  if (paths.length === 0) return rows.map((r) => ({ ...r, signed_url: null }))
+
+  const { data: signed } = await supabase.storage
+    .from(FAVORITE_BUCKET)
+    .createSignedUrls(paths, FAVORITE_TTL_SECONDS)
+
+  const urls = new Map<string, string>()
+  for (const row of signed ?? []) {
+    if (row.path && row.signedUrl && !row.error) urls.set(row.path, row.signedUrl)
+  }
+  return rows.map((r) => ({ ...r, signed_url: urls.get(r.image_path) ?? null }))
 }
 
 export async function getSplitRecords(ownerId: string): Promise<SplitRecord[]> {

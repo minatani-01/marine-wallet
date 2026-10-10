@@ -287,6 +287,15 @@ export const MEMBER_AVATAR_TTL_SECONDS = 60 * 60
 export const MEMBER_AVATAR_SIZE = 256
 
 // ------------------------------------------------- 領収書・決済画面（0055）----
+/** お気に入りの画像の置き場（0063）。非公開。見るときは署名付きURLを出す */
+export const FAVORITE_BUCKET = 'favorites'
+
+/** 署名付きURLの寿命。1画面見ているあいだ保てばよい */
+export const FAVORITE_TTL_SECONDS = 60 * 60
+
+/** お気に入りの画像の長辺。一覧に小さく並べるだけなので領収書より小さくてよい */
+export const FAVORITE_MAX_EDGE = 900
+
 export const RECEIPT_BUCKET = 'receipts'
 
 /** 署名付きURLの有効期間（秒）。アイコンと揃える */
