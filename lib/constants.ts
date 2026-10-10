@@ -295,6 +295,15 @@ export const MEMBER_AVATAR_SIZE = 256
  */
 export const BODY_LOG_LIMIT = 180
 
+/**
+ * やりかけのワークアウトの置き場（0064）。
+ *
+ * 端末の中にだけ残す。ジムで使うものなので、途中で別の面を見たり、
+ * 画面を閉じたりするのは普通に起きる。そのたびに入れた回数が消えると、
+ * 付ける気が無くなる。
+ */
+export const WORKOUT_DRAFT_STORAGE_KEY = 'marine_wallet_workout_draft_v1'
+
 // ------------------------------------------------- 領収書・決済画面（0055）----
 /** お気に入りの画像の置き場（0063）。非公開。見るときは署名付きURLを出す */
 export const FAVORITE_BUCKET = 'favorites'
