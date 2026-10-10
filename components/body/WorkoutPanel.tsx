@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import type { BodyTab } from '@/components/body/BodyClient'
@@ -12,10 +12,15 @@ import {
   effortLabel,
   kindLabel,
   planText,
-  type Effort,
   type PlannedExercise,
 } from '@/lib/reform'
 import { createClient } from '@/lib/supabase/client'
+import {
+  clearWorkoutDraft,
+  loadWorkoutDraft,
+  saveWorkoutDraft,
+  type WorkoutDraft,
+} from '@/lib/workout-draft'
 import type { BodyProfile, WorkoutSessionView } from '@/types'
 
 /**
@@ -27,19 +32,6 @@ import type { BodyProfile, WorkoutSessionView } from '@/types'
  * 予定は実績から作られる。どうしてこの重量なのかを行ごとに出しておく。
  * 数字だけ出ていると、増えた理由が分からず、合っているのか判断できない。
  */
-
-/** やりながら書き換える下書き。保存するまで DB には入れない */
-type Draft = {
-  startedAt: number
-  exercises: {
-    planned: PlannedExercise
-    actual_weight: string
-    /** セットごとの実施回数 */
-    actual_reps: string[]
-    actual_minutes: string
-    effort: Effort
-  }[]
-}
 
 export default function WorkoutPanel({
   userId,
@@ -57,16 +49,35 @@ export default function WorkoutPanel({
   onJump: (tab: BodyTab) => void
 }) {
   const router = useRouter()
-  const [draft, setDraft] = useState<Draft | null>(null)
+  const [draft, setDraft] = useState<WorkoutDraft | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /**
+   * やりかけがあれば読み戻す。
+   *
+   * ジムでは途中で履歴を見たり、画面を閉じたりする。状態を持っているだけだと
+   * そのたびに入れた回数が消え、保存までたどり着けない。
+   * localStorage はブラウザにしか無いので、読むのはマウント後にする。
+   */
+  useEffect(() => {
+    const held = loadWorkoutDraft(userId, today)
+    if (held) setDraft(held)
+  }, [userId, today])
+
+  /** 触るたびに残す。押した直後に閉じられても、そこまでは残る */
+  useEffect(() => {
+    if (draft) saveWorkoutDraft(draft)
+  }, [draft])
 
   /** 開始。予定をそのまま実績の初期値にする。できた日はそのまま押せばよい */
   const start = () => {
     if (!plan) return
     setError(null)
     setDraft({
-      startedAt: Date.now(),
+      user_id: userId,
+      date: today,
+      started_at: Date.now(),
       exercises: plan.map((planned) => ({
         planned,
         actual_weight: planned.target_weight != null ? String(planned.target_weight) : '',
@@ -80,7 +91,7 @@ export default function WorkoutPanel({
     })
   }
 
-  const patch = (index: number, next: Partial<Draft['exercises'][number]>) => {
+  const patch = (index: number, next: Partial<WorkoutDraft['exercises'][number]>) => {
     setDraft((held) =>
       held
         ? {
@@ -119,7 +130,7 @@ export default function WorkoutPanel({
     setError(null)
 
     const supabase = createClient()
-    const duration = Math.max(1, Math.round((Date.now() - draft.startedAt) / 60_000))
+    const duration = Math.max(1, Math.round((Date.now() - draft.started_at) / 60_000))
 
     const { data: session, error: sessionError } = await supabase
       .from('workout_sessions')
@@ -162,6 +173,7 @@ export default function WorkoutPanel({
 
     setSaving(false)
     setDraft(null)
+    clearWorkoutDraft()
     router.refresh()
   }
 
@@ -324,7 +336,10 @@ export default function WorkoutPanel({
             <Button
               variant="ghost"
               className="shrink-0 whitespace-nowrap"
-              onClick={withTapFeedback(() => setDraft(null))}
+              onClick={withTapFeedback(() => {
+                setDraft(null)
+                clearWorkoutDraft()
+              })}
               disabled={saving}
             >
               やめる
