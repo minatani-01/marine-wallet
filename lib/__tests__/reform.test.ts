@@ -255,6 +255,44 @@ test('自重は回数だけを動かす', () => {
   )
 })
 
+test('自重も 0〜1日なら上げない', () => {
+  // 同じ日にもう一度開いたとき。全セット達成していても回数は動かさない。
+  // ここに歯止めが無いと、1日に2回やるだけで回数が増え続ける
+  const sameDay = planExercise(
+    abBench,
+    profile(),
+    null,
+    last({ target_weight: null, actual_reps: [10, 10] }, '2026-10-08'),
+    '2026-10-08'
+  )
+  assert.equal(sameDay.target_reps, 10)
+  assert.match(sameDay.reason, /0〜1日/)
+
+  // 翌日も同じ
+  assert.equal(
+    planExercise(
+      abBench,
+      profile(),
+      null,
+      last({ target_weight: null, actual_reps: [10, 10] }, '2026-10-07'),
+      '2026-10-08'
+    ).target_reps,
+    10
+  )
+
+  // 2日空けば上がる。筋力と同じ区切り
+  assert.equal(
+    planExercise(
+      abBench,
+      profile(),
+      null,
+      last({ target_weight: null, actual_reps: [10, 10] }, '2026-10-06'),
+      '2026-10-08'
+    ).target_reps,
+    11
+  )
+})
+
 test('有酸素は20分のまま', () => {
   const planned = planExercise(cardio, profile(), null, null, '2026-10-08')
 

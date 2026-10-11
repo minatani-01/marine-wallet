@@ -255,7 +255,7 @@ export type PlannedExercise = {
  * 決め方（元のアプリのまま）。
  *
  *   前回が無い   身長・体重・年齢から見積もる
- *   0〜1日       上げない。間が空いていないので回復していない
+ *   0〜1日       上げない。間が空いていないので回復していない（自重も同じ）
  *   14日以上     重量を約10%落とす
  *   28日以上     重量を約10%落として回数も8回に戻す
  *   達成率8割未満 重量を1段階落とす
@@ -304,7 +304,11 @@ export function planExercise(
     const sets = last.exercise.target_sets ?? 2
     let reason = '前回実績を維持'
 
-    if (interval >= 28) {
+    if (interval <= 1) {
+      // 筋力と同じ歯止め。元のアプリは自重にだけ入れ忘れており、同じ日に
+      // 2回やると回数だけ増え続けた
+      reason = '前回から0〜1日のため負荷アップなし'
+    } else if (interval >= 28) {
       reps = Math.max(8, Math.floor(reps * 0.9))
       reason = '28日以上空いたため回数を約10%低減'
     } else if (min >= reps && (last.exercise.effort === 'easy' || last.exercise.effort === 'normal')) {
