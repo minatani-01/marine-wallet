@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 
@@ -48,7 +49,7 @@ export function useCardDrag({
   orderRef.current = order
 
   const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fromRef = useRef<{ x: number; y: number } | null>(null)
+  const fromRef = useRef<{ x: number; y: number; mouse: boolean } | null>(null)
   /** 並べ替えた直後かどうか。離したあとに続く click を無視するのに使う */
   const draggedRef = useRef(false)
   const blockRef = useRef<((e: TouchEvent) => void) | null>(null)
@@ -89,6 +90,17 @@ export function useCardDrag({
     }
   }, [])
 
+  /** 持ち上げる。指のときだけ、画面を送るのを止める */
+  const begin = useCallback((id: string, block: boolean) => {
+    tapFeedback()
+    if (block) {
+      const prevent = (event: TouchEvent) => event.preventDefault()
+      document.addEventListener('touchmove', prevent, { passive: false })
+      blockRef.current = prevent
+    }
+    setDragId(id)
+  }, [])
+
   // 持ち上げているあいだだけ、画面ぜんぶで指を追う。札の外へ出ても離せる
   useEffect(() => {
     if (!dragId) return
@@ -119,30 +131,35 @@ export function useCardDrag({
   const handlers = useCallback(
     (id: string) => ({
       'data-card-id': id,
+      // 画像やリンクは、ブラウザが自前で引きずろうとする。こちらの操作を
+      // 横取りされるので断る
+      draggable: false,
+      onDragStart: (e: ReactDragEvent) => e.preventDefault(),
       onPointerDown: (e: ReactPointerEvent) => {
         // 右クリックや、ペンの消しゴム側では始めない
         if (e.button !== 0) return
-        fromRef.current = { x: e.clientX, y: e.clientY }
+        fromRef.current = { x: e.clientX, y: e.clientY, mouse: e.pointerType === 'mouse' }
         cancelHold()
-        holdRef.current = setTimeout(() => {
-          tapFeedback()
-          const block = (event: TouchEvent) => event.preventDefault()
-          document.addEventListener('touchmove', block, { passive: false })
-          blockRef.current = block
-          setDragId(id)
-        }, HOLD_MS)
+        // マウスは待たせない。押してすぐ引きずるのが普通で、待っているあいだに
+        // 動いてしまい、いつまでも持ち上がらない。指と違って画面を送る操作と
+        // 紛れないので、少し動いた時点で持ち上げる
+        if (e.pointerType === 'mouse') return
+        holdRef.current = setTimeout(() => begin(id, true), HOLD_MS)
       },
       onPointerMove: (e: ReactPointerEvent) => {
         if (dragId || !fromRef.current) return
         const slipped =
           Math.abs(e.clientX - fromRef.current.x) > SLIP_PX ||
           Math.abs(e.clientY - fromRef.current.y) > SLIP_PX
-        if (slipped) cancelHold()
+        if (!slipped) return
+        // 指のときは画面を送るつもりだったとみなして取りやめる
+        if (fromRef.current.mouse) begin(id, false)
+        else cancelHold()
       },
       onPointerUp: cancelHold,
       onPointerCancel: cancelHold,
     }),
-    [cancelHold, dragId]
+    [begin, cancelHold, dragId]
   )
 
   return {
