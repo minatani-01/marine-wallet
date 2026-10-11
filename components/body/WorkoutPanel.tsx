@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import type { BodyTab } from '@/components/body/BodyClient'
@@ -70,10 +70,28 @@ export default function WorkoutPanel({
     if (draft) saveWorkoutDraft(draft)
   }, [draft])
 
+  /**
+   * 「開始」を押したら、入力欄まで送る。
+   *
+   * 入力欄はメニューの下に出る。電話の画面では折り返しの外なので、
+   * 押しても画面は動かず、消えた開始ボタンだけが見える。効かなかったように
+   * 見えて、そこで終わってしまう。読み戻したときは動かさない（開いた
+   * 瞬間に飛ばされると、何が起きたのか分からない）。
+   */
+  const recordRef = useRef<HTMLDivElement>(null)
+  const [goToRecord, setGoToRecord] = useState(false)
+
+  useEffect(() => {
+    if (!goToRecord || !draft) return
+    recordRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setGoToRecord(false)
+  }, [goToRecord, draft])
+
   /** 開始。予定をそのまま実績の初期値にする。できた日はそのまま押せばよい */
   const start = () => {
     if (!plan) return
     setError(null)
+    setGoToRecord(true)
     setDraft({
       user_id: userId,
       date: today,
@@ -229,7 +247,7 @@ export default function WorkoutPanel({
       </div>
 
       {draft ? (
-        <div>
+        <div ref={recordRef} className="scroll-mt-20">
           <SectionLabel action={<StatusPill tone="marine">進行中</StatusPill>}>実施記録</SectionLabel>
 
           <div className="flex flex-col gap-2.5">

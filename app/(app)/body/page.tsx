@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 
 import BodyClient from '@/components/body/BodyClient'
-import { today } from '@/lib/format'
+import { jstDate } from '@/lib/jst'
 import {
   getAutophagySettings,
   getBodyCareLogs,
@@ -41,13 +41,16 @@ export default async function BodyPage() {
       getBodyCareLogs(user.id),
     ])
 
-  // 最初の描画をブラウザと揃えるため、サーバーの時刻と今日を渡す
+  // 最初の描画をブラウザと揃えるため、サーバーの時刻と今日を渡す。
+  // 日付は日本時間に直してから渡す（lib/jst）。ここは UTC で動いているので、
+  // そのまま日付にすると、日本の 0時〜9時に付けた記録が前日のものになり、
+  // やりかけの下書きも朝9時に「別の日のもの」として捨てられる
   return (
     <BodyClient
       userId={user.id}
       settings={settings}
       nowIso={new Date().toISOString()}
-      today={today()}
+      today={jstDate(new Date())}
       profile={bodyProfile}
       weights={weights}
       sessions={sessions}
