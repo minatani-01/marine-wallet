@@ -503,7 +503,7 @@ export async function getBodyCareLogs(userId: string): Promise<BodyCareLog[]> {
 }
 
 /**
- * お気に入りの品（0063）。/select に出す。
+ * お気に入りの品（0063）。/shop に出す。
  *
  * 画像は非公開のバケットに置いてあるので、見るための署名付きURLを
  * まとめて発行する。1件ずつ頼むと品の数だけ往復する。
