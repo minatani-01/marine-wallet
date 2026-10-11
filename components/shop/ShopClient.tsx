@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import FavoriteSheet from '@/components/shop/FavoriteSheet'
+import { useCardDrag } from '@/components/shop/useCardDrag'
 import { IconExternal, IconGoods, IconPlus } from '@/components/icons'
 import { Button, EmptyState, PillTabs } from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
@@ -16,6 +17,8 @@ import {
   priceText,
   sortItems,
 } from '@/lib/favorites'
+import { reorderedSortOrders } from '@/lib/sortable'
+import { createClient } from '@/lib/supabase/client'
 import type { FavoriteItemRow } from '@/types'
 
 /**
@@ -37,6 +40,7 @@ export default function ShopClient({
   userId: string
   items: FavoriteItemRow[]
 }) {
+  const router = useRouter()
   const [genre, setGenre] = useState<string>(ALL_GENRES)
   /**
    * 読めなかった画像。
@@ -80,6 +84,45 @@ export default function ShopClient({
   // 画像がまだ Drive 任せのもの。取り込みが済めばこの行は出なくなる
   const borrowed = useMemo(() => sorted.filter(isBorrowedImage), [sorted])
 
+  const byId = useMemo(() => new Map(sorted.map((item) => [item.id, item])), [sorted])
+  const ids = useMemo(() => list.map((item) => item.id), [list])
+
+  /**
+   * 並べ替えを保存する。
+   *
+   * 変わった行だけ送る。全部に振り直すが、たいてい動くのは数行で、
+   * 送る数が品の数ぶんに増えない。
+   */
+  const saveOrder = useCallback(
+    async (nextIds: string[]) => {
+      const rows = reorderedSortOrders(
+        sorted.map((item) => ({ id: item.id, sort_order: item.sort_order })),
+        nextIds
+      )
+      if (rows.length === 0) return
+
+      const supabase = createClient()
+      await Promise.all(
+        rows.map((row) =>
+          supabase.from('favorite_items').update({ sort_order: row.sort_order }).eq('id', row.id)
+        )
+      )
+      router.refresh()
+    },
+    [router, sorted]
+  )
+
+  const { gridRef, order, dragId, handlers, justDragged } = useCardDrag({
+    ids,
+    onDrop: saveOrder,
+  })
+
+  // 持ち上げているあいだは手元の並びで出す。離すまで保存しない
+  const shownList = useMemo(
+    () => order.map((id) => byId.get(id)).filter((item): item is FavoriteItemRow => !!item),
+    [order, byId]
+  )
+
   return (
     <div className="space-y-4">
       {genres.length > 1 ? (
@@ -94,15 +137,31 @@ export default function ShopClient({
           description="右下の + から、また買うものを入れておけます。"
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 pb-16">
-          {list.map((item) => {
+        <div
+          ref={gridRef}
+          className={`grid grid-cols-2 gap-3 pb-16 ${dragId ? 'select-none' : ''}`}
+        >
+          {shownList.map((item) => {
             const src = broken.has(item.id) ? null : imageSrc(item, signed)
             const price = priceText(item.price)
             return (
-              <div key={item.id} className="glass relative overflow-hidden rounded-2xl">
+              <div
+                key={item.id}
+                {...handlers(item.id)}
+                // touch-pan-y は縦に送る操作を残すため。持ち上がったあとは
+                // touchmove を止めて送らせない（useCardDrag）
+                className={`glass relative touch-pan-y overflow-hidden rounded-2xl transition-transform ${
+                  dragId === item.id
+                    ? 'z-10 scale-[1.04] border-marine/70 opacity-90 shadow-[0_14px_34px_rgba(0,0,0,0.6)]'
+                    : ''
+                }`}
+              >
                 <button
                   type="button"
-                  onClick={withTapFeedback(() => setEditing(item))}
+                  onClick={withTapFeedback(() => {
+                    if (justDragged()) return
+                    setEditing(item)
+                  })}
                   aria-label={`${item.name}を編集`}
                   className="block w-full text-left transition-colors hover:bg-white/[0.03]"
                 >
@@ -160,6 +219,9 @@ export default function ShopClient({
                     href={item.shop_url}
                     target="_blank"
                     rel="noreferrer noopener"
+                    onClick={(e) => {
+                      if (justDragged()) e.preventDefault()
+                    }}
                     aria-label={`${item.name}を買う`}
                     title="買える場所を開く"
                     className="absolute top-1.5 right-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-ink/85 text-fg-dim backdrop-blur transition-colors hover:border-marine/60 hover:text-marine"
