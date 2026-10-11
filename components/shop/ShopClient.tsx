@@ -112,15 +112,15 @@ export default function ShopClient({
     [router, sorted]
   )
 
-  const { gridRef, order, dragId, handlers, justDragged } = useCardDrag({
+  const { gridRef, dropHint, shownOrder, dragId, handlers, styleFor, justDragged } = useCardDrag({
     ids,
     onDrop: saveOrder,
   })
 
-  // 持ち上げているあいだは手元の並びで出す。離すまで保存しない
+  // 掴んでいるあいだは並びを組み替えない。動かすのは位置だけ（useCardDrag）
   const shownList = useMemo(
-    () => order.map((id) => byId.get(id)).filter((item): item is FavoriteItemRow => !!item),
-    [order, byId]
+    () => shownOrder.map((id) => byId.get(id)).filter((item): item is FavoriteItemRow => !!item),
+    [shownOrder, byId]
   )
 
   return (
@@ -139,8 +139,24 @@ export default function ShopClient({
       ) : (
         <div
           ref={gridRef}
-          className={`grid grid-cols-2 gap-3 pb-16 ${dragId ? 'select-none' : ''}`}
+          className={`relative grid grid-cols-2 gap-3 pb-16 ${
+            dragId ? 'cursor-grabbing select-none' : ''
+          }`}
         >
+          {/* 置き場所。どこへ入るかを点線で見せる */}
+          {dropHint ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute rounded-2xl border-2 border-dashed border-marine/60 bg-marine/[0.06]"
+              style={{
+                left: dropHint.left,
+                top: dropHint.top,
+                width: dropHint.width,
+                height: dropHint.height,
+                transition: 'left 180ms ease, top 180ms ease',
+              }}
+            />
+          ) : null}
           {shownList.map((item) => {
             const src = broken.has(item.id) ? null : imageSrc(item, signed)
             const price = priceText(item.price)
@@ -148,13 +164,14 @@ export default function ShopClient({
               <div
                 key={item.id}
                 {...handlers(item.id)}
-                // touch-pan-y は縦に送る操作を残すため。持ち上がったあとは
+                style={styleFor(item.id)}
+                // touch-pan-y は縦に送る操作を残すため。掴んだあとは
                 // touchmove を止めて送らせない（useCardDrag）
-                className={`glass relative touch-pan-y overflow-hidden rounded-2xl transition-transform ${
+                className={`glass relative touch-pan-y overflow-hidden rounded-2xl ${
                   dragId === item.id
-                    ? 'z-10 scale-[1.04] border-marine/70 opacity-90 shadow-[0_14px_34px_rgba(0,0,0,0.6)]'
+                    ? 'border-marine/70 shadow-[0_18px_40px_rgba(0,0,0,0.65)]'
                     : ''
-                }`}
+                } ${dragId ? '' : 'cursor-grab'}`}
               >
                 <button
                   type="button"
