@@ -276,7 +276,7 @@ export default function MeClient({
       <div>
         <SectionLabel>お気に入り</SectionLabel>
         <Link
-          href="/select"
+          href="/shop"
           prefetch={false}
           className="glass flex items-center gap-3 rounded-2xl p-4 transition-colors hover:border-marine/50"
         >

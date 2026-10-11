@@ -267,9 +267,7 @@ export default function FavoriteSheet({
                 <p className="mt-1.5 text-[11px] text-fg-mute">保存すると差し替わります</p>
               ) : null}
               {!picked && !imagePath && imageUrl ? (
-                <p className="mt-1.5 text-[11px] text-warn">
-                  Google Drive から借りています。写真を選び直すとこのアプリの中に入ります。
-                </p>
+                <p className="mt-1.5 text-[11px] text-fg-mute">Drive から借りている画像です</p>
               ) : null}
             </div>
           ) : (
