@@ -1,19 +1,30 @@
 /**
- * サブスクの管理（0065）。
+ * サブスクの管理（0065 / 0066）。
  *
  * 毎月いくら出ていくかと、次にいつ落ちるかを出す。止めたものも消さずに
  * 残すので、「前に解約したはず」を後から確かめられる。
+ *
+ * 周期は「何か月ごと」で持つ。毎月と毎年だけでは、3か月ごとや半年ごとの
+ * ものが入らない。
+ *
+ * 支払日は日付そのもので持つ（anchor_on）。カレンダーから1回選べば、
+ * あとはそこから周期ぶんずつ進める。「毎月N日」の持ち方だと、3か月ごとの
+ * ように「どの月か」まで要るものを表せない。
  *
  * ここは純関数にしてある。DB も時計も触らないので、テストで確かめられる。
  * 日付は日本時間の 'YYYY-MM-DD' で受け渡す。
  */
 
-export type Cycle = 'monthly' | 'yearly'
-
-export const CYCLES = [
-  { id: 'monthly', label: '毎月' },
-  { id: 'yearly', label: '毎年' },
+/** よく使う周期。これ以外は数で入れてもらう */
+export const INTERVALS = [
+  { months: 1, label: '毎月' },
+  { months: 3, label: '3か月ごと' },
+  { months: 6, label: '半年ごと' },
+  { months: 12, label: '毎年' },
 ] as const
+
+/** 周期の上限（か月）。5年を超える間隔は、サブスクとしては考えにくい */
+export const MAX_INTERVAL_MONTHS = 60
 
 /** ジャンル。決め打ちにせず、書いたものが増える */
 export const SUB_CATEGORIES = [
@@ -32,11 +43,10 @@ export const DEFAULT_SUB_CATEGORY = 'その他'
 /** 計算に要るところだけ。画面からは行をそのまま渡せる */
 export type Billable = {
   amount: number
-  cycle: string
-  /** 毎月なら日、毎年なら月の中の日 */
-  billing_day: number
-  /** 毎年のときだけ使う（1〜12） */
-  billing_month: number | null
+  /** 何か月ごとに落ちるか */
+  interval_months: number
+  /** 支払日。ここを起点に周期ぶんずつ進める */
+  anchor_on: string
 }
 
 /** その月の日数。月末の指定を丸めるのに使う */
@@ -50,44 +60,55 @@ function dateText(year: number, month: number, day: number): string {
 }
 
 /**
- * ひと月あたりの額。
+ * 月を足す。無い日は末日に寄せる。
  *
- * 年払いは12で割る。月払いと並べて比べられないと、どれが重いのか分からない。
- * 円に小数は無いので丸める。
+ * 1月31日の3か月後は4月30日。そこからさらに進めるときも、必ず起点から
+ * 数え直す。前の結果に足していくと、末日に寄せたぶんが積もって
+ * 1月31日→4月30日→7月30日のようにずれていく。
  */
+export function addMonths(date: string, months: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const total = y * 12 + (m - 1) + months
+  const year = Math.floor(total / 12)
+  const month = (total % 12) + 1
+  return dateText(year, month, Math.min(d, daysInMonth(year, month)))
+}
+
+/** ひと月あたりの額。周期で割って、長さの違うものを並べて比べられるようにする */
 export function monthlyCost(sub: Billable): number {
-  return sub.cycle === 'yearly' ? Math.round(sub.amount / 12) : sub.amount
+  return Math.round(sub.amount / Math.max(1, sub.interval_months))
 }
 
 /** 1年あたりの額 */
 export function yearlyCost(sub: Billable): number {
-  return sub.cycle === 'yearly' ? sub.amount : sub.amount * 12
+  return Math.round((sub.amount * 12) / Math.max(1, sub.interval_months))
 }
 
 /**
  * 次に落ちる日。
  *
- * 31日を指定していても、2月や30日までの月では末日に寄せる。カードの
- * 引き落としと同じ考え方で、無い日は繰り上げない（翌月1日にしない）。
- *
- * 今日がその日なら「今日」を返す。過ぎていれば次の周期へ送る。
+ * 支払日から周期ぶんずつ進めて、今日以降で最初に来るものを返す。
+ * 今日がその日なら「今日」。支払日がこれから先なら、その日そのもの。
  */
 export function nextPayment(sub: Billable, today: string): string {
-  const [y, m, d] = today.split('-').map(Number)
+  const interval = Math.max(1, Math.round(sub.interval_months))
+  const anchor = sub.anchor_on
+  if (!anchor) return today
+  if (anchor >= today) return anchor
 
-  if (sub.cycle === 'yearly') {
-    const month = sub.billing_month ?? 1
-    const inYear = (year: number) => dateText(year, month, Math.min(sub.billing_day, daysInMonth(year, month)))
-    const thisYear = inYear(y)
-    return thisYear >= today ? thisYear : inYear(y + 1)
+  // 月数の差から当たりを付けてから、1周期ずつ合わせる。日の大小があるので
+  // 割り算だけでは1周期ぶんずれることがある
+  const [ay, am] = anchor.split('-').map(Number)
+  const [ty, tm] = today.split('-').map(Number)
+  const months = (ty * 12 + tm) - (ay * 12 + am)
+  let steps = Math.max(0, Math.floor(months / interval))
+
+  let date = addMonths(anchor, steps * interval)
+  while (date < today) {
+    steps += 1
+    date = addMonths(anchor, steps * interval)
   }
-
-  const inMonth = (year: number, month: number) =>
-    dateText(year, month, Math.min(sub.billing_day, daysInMonth(year, month)))
-
-  const thisMonth = inMonth(y, m)
-  if (thisMonth >= today) return thisMonth
-  return m === 12 ? inMonth(y + 1, 1) : inMonth(y, m + 1)
+  return date
 }
 
 /** 'YYYY-MM-DD' の間の日数。月をまたいでも時差でずれないよう UTC で引く */
@@ -110,9 +131,12 @@ export function dayText(date: string): string {
   return `${m}/${d}`
 }
 
-/** 周期の見出し */
-export function cycleLabel(cycle: string): string {
-  return CYCLES.find((c) => c.id === cycle)?.label ?? cycle
+/** 周期の見出し。よく使うものには名前を付ける */
+export function intervalLabel(months: number): string {
+  const known = INTERVALS.find((i) => i.months === months)
+  if (known) return known.label
+  if (months % 12 === 0) return `${months / 12}年ごと`
+  return `${months}か月ごと`
 }
 
 /**
@@ -155,16 +179,17 @@ export function byCategory(
   }
   return [...sums.entries()]
     .map(([category, monthly]) => ({ category, monthly }))
-    .sort((a, b) => (b.monthly !== a.monthly ? b.monthly - a.monthly : a.category.localeCompare(b.category, 'ja')))
+    .sort((a, b) =>
+      b.monthly !== a.monthly ? b.monthly - a.monthly : a.category.localeCompare(b.category, 'ja')
+    )
 }
 
 /** 入力を確かめる。駄目なら理由を返す */
 export function rejectReason(input: {
   name: string
   amount: string
-  billing_day: string
-  cycle: string
-  billing_month: string
+  interval_months: string
+  anchor_on: string
   url: string
 }): string | null {
   if (!input.name.trim()) return 'サービス名を入れてください'
@@ -172,13 +197,12 @@ export function rejectReason(input: {
   const amount = Number(input.amount)
   if (!Number.isFinite(amount) || amount < 0) return '金額を正しく入れてください'
 
-  const day = Number(input.billing_day)
-  if (!Number.isInteger(day) || day < 1 || day > 31) return '支払日は1〜31で入れてください'
-
-  if (input.cycle === 'yearly') {
-    const month = Number(input.billing_month)
-    if (!Number.isInteger(month) || month < 1 || month > 12) return '支払月は1〜12で入れてください'
+  const interval = Number(input.interval_months)
+  if (!Number.isInteger(interval) || interval < 1 || interval > MAX_INTERVAL_MONTHS) {
+    return `周期は1〜${MAX_INTERVAL_MONTHS}か月で入れてください`
   }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.anchor_on)) return '支払日を選んでください'
 
   const url = input.url.trim()
   if (url && !/^https?:\/\//i.test(url)) return '解約ページは http:// か https:// から入れてください'

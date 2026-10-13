@@ -3,20 +3,21 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { Button, Chip, Field, Segmented, Sheet, inputClass } from '@/components/ui'
+import { Button, Chip, Field, Sheet, inputClass } from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
-  CYCLES,
   DEFAULT_SUB_CATEGORY,
+  INTERVALS,
+  MAX_INTERVAL_MONTHS,
   SUB_CATEGORIES,
+  intervalLabel,
   rejectReason,
-  type Cycle,
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
 
 /**
- * サブスクを足す・直す（0065）。
+ * サブスクを足す・直す（0065 / 0066）。
  *
  * 必須はサービス名と金額と支払日だけ。思い出したときに名前と額だけ
  * 入れておけるほうが、全部そろうまで入れられないより残る。
@@ -28,6 +29,7 @@ export default function SubSheet({
   sub,
   userId,
   categoryOptions,
+  today,
   onClose,
 }: {
   /** null なら新しく足す */
@@ -35,17 +37,17 @@ export default function SubSheet({
   userId: string
   /** すでに使っているジャンル。選ぶだけで書かずに済むようにする */
   categoryOptions: string[]
+  /** 日本時間の今日。新しく足すときの支払日の初期値に使う */
+  today: string
   onClose: () => void
 }) {
   const router = useRouter()
 
   const [name, setName] = useState(sub?.name ?? '')
+  const [plan, setPlan] = useState(sub?.plan ?? '')
   const [amount, setAmount] = useState(sub ? String(sub.amount) : '')
-  const [cycle, setCycle] = useState<Cycle>((sub?.cycle as Cycle) ?? 'monthly')
-  const [billingDay, setBillingDay] = useState(String(sub?.billing_day ?? 1))
-  const [billingMonth, setBillingMonth] = useState(
-    sub?.billing_month != null ? String(sub.billing_month) : '1'
-  )
+  const [months, setMonths] = useState(String(sub?.interval_months ?? 1))
+  const [anchorOn, setAnchorOn] = useState(sub?.anchor_on ?? today)
   const [category, setCategory] = useState(sub?.category ?? DEFAULT_SUB_CATEGORY)
   const [method, setMethod] = useState(sub?.method ?? '')
   const [url, setUrl] = useState(sub?.url ?? '')
@@ -61,9 +63,8 @@ export default function SubSheet({
     const reason = rejectReason({
       name,
       amount,
-      billing_day: billingDay,
-      cycle,
-      billing_month: billingMonth,
+      interval_months: months,
+      anchor_on: anchorOn,
       url,
     })
     if (reason) {
@@ -78,11 +79,10 @@ export default function SubSheet({
     const payload = {
       user_id: userId,
       name: name.trim(),
+      plan: plan.trim(),
       amount: Math.round(Number(amount)),
-      cycle,
-      billing_day: Number(billingDay),
-      // 毎月のときは持たない。残すと、周期を戻したときに古い月が効いてしまう
-      billing_month: cycle === 'yearly' ? Number(billingMonth) : null,
+      interval_months: Number(months),
+      anchor_on: anchorOn,
       category: category.trim() || DEFAULT_SUB_CATEGORY,
       method: method.trim(),
       url: url.trim(),
@@ -164,62 +164,69 @@ export default function SubSheet({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="金額" hint="1回ぶん">
+        <Field label="プラン名" hint="任意">
+          <input
+            type="text"
+            value={plan}
+            aria-label="プラン名"
+            onChange={(e) => setPlan(e.target.value)}
+            placeholder="スタンダード"
+            className={inputClass}
+          />
+        </Field>
+
+        <Field label="金額" hint="1回ぶん">
+          <input
+            type="number"
+            inputMode="numeric"
+            aria-label="金額"
+            min={0}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="1590"
+            className={`tnum ${inputClass}`}
+          />
+        </Field>
+
+        {/* 周期。よく使うものは押すだけで入り、それ以外は数で入れる。
+            「3か月ごと」のようなものを選べないと、年払いに丸めるしかなくなる */}
+        <Field label="支払い周期" hint={intervalLabel(Number(months) || 1)}>
+          <div className="mb-2 flex flex-wrap gap-2">
+            {INTERVALS.map((item) => (
+              <Chip
+                key={item.months}
+                selected={Number(months) === item.months}
+                onClick={() => setMonths(String(item.months))}
+              >
+                {item.label}
+              </Chip>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
             <input
               type="number"
               inputMode="numeric"
-              aria-label="金額"
-              min={0}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="1590"
+              aria-label="支払い周期"
+              min={1}
+              max={MAX_INTERVAL_MONTHS}
+              value={months}
+              onChange={(e) => setMonths(e.target.value)}
               className={`tnum ${inputClass}`}
             />
-          </Field>
-          <Field label="周期">
-            <Segmented
-              value={cycle}
-              options={CYCLES.map((c) => ({ id: c.id, label: c.label }))}
-              onChange={(next) => setCycle(next)}
-            />
-          </Field>
-        </div>
-
-        <Field
-          label="支払日"
-          hint={cycle === 'yearly' ? '毎年いつか' : '無い日は末日に寄せます'}
-        >
-          <div className={cycle === 'yearly' ? 'grid grid-cols-2 gap-3' : ''}>
-            {cycle === 'yearly' ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  aria-label="支払月"
-                  min={1}
-                  max={12}
-                  value={billingMonth}
-                  onChange={(e) => setBillingMonth(e.target.value)}
-                  className={`tnum ${inputClass}`}
-                />
-                <span className="shrink-0 text-[13px] text-fg-mute">月</span>
-              </div>
-            ) : null}
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                inputMode="numeric"
-                aria-label="支払日"
-                min={1}
-                max={31}
-                value={billingDay}
-                onChange={(e) => setBillingDay(e.target.value)}
-                className={`tnum ${inputClass}`}
-              />
-              <span className="shrink-0 text-[13px] text-fg-mute">日</span>
-            </div>
+            <span className="shrink-0 text-[13px] text-fg-mute">か月ごと</span>
           </div>
+        </Field>
+
+        {/* 支払日はカレンダーから選ぶ。ここを起点に周期ぶんずつ進めるので、
+            「どの月か」まで決まるものも1回選べば済む */}
+        <Field label="支払日" hint="ここから周期ぶんずつ進めます">
+          <input
+            type="date"
+            aria-label="支払日"
+            value={anchorOn}
+            onChange={(e) => setAnchorOn(e.target.value)}
+            className={`tnum ${inputClass}`}
+          />
         </Field>
 
         <Field label="ジャンル" hint="書いたものが候補に増えます">

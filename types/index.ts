@@ -713,19 +713,19 @@ export type BodyCareLog = {
   created_at: string
 }
 
-/** サブスク（0065）。止めたものも残す */
+/** サブスク（0065 / 0066）。止めたものも残す */
 export type Subscription = {
   id: string
   user_id: string
   name: string
+  /** プラン名。スタンダード・200GB など */
+  plan: string
   /** 1回の請求額（円） */
   amount: number
-  /** monthly / yearly */
-  cycle: string
-  /** 支払日（1〜31）。その月に無い日は末日へ寄せる */
-  billing_day: number
-  /** 毎年のときの支払月（1〜12）。毎月のときは null */
-  billing_month: number | null
+  /** 何か月ごとに落ちるか。毎月は1、3か月ごとは3、毎年は12 */
+  interval_months: number
+  /** 支払日。ここを起点に周期ぶんずつ進めて次回を出す */
+  anchor_on: string
   category: string
   method: string
   url: string
