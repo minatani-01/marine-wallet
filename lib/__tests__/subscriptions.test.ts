@@ -5,6 +5,7 @@ import {
   addMonths,
   byCategory,
   daysUntil,
+  fullDayText,
   intervalLabel,
   maxIntervalCount,
   monthlyCost,
@@ -95,6 +96,12 @@ test('月末の起点でも、周期ごとに末日へ寄る', () => {
   assert.equal(nextPayment(monthly, '2026-02-01'), '2026-02-28')
   assert.equal(nextPayment(monthly, '2026-03-01'), '2026-03-31')
   assert.equal(nextPayment(monthly, '2026-04-01'), '2026-04-30')
+})
+
+test('先の日付は年まで出す', () => {
+  // 'M/D' だけだと、1年以上先の支払日が今年の話に見える
+  assert.equal(fullDayText('2027-04-02'), '2027/4/2')
+  assert.equal(fullDayText('2026-11-20'), '2026/11/20')
 })
 
 test('あと何日か', () => {
@@ -200,7 +207,7 @@ test('入力を確かめる', () => {
   assert.equal(rejectReason({ ...ok, interval_months: '60' }), null)
   assert.match(String(rejectReason({ ...ok, interval_months: '1.5' })), /周期/)
   // カレンダーから選ばずに保存しようとした
-  assert.match(String(rejectReason({ ...ok, anchor_on: '' })), /支払日/)
+  assert.match(String(rejectReason({ ...ok, anchor_on: '' })), /契約日/)
   // 押した人の画面で動くものをリンクにしない
   assert.match(String(rejectReason({ ...ok, url: 'javascript:alert(1)' })), /解約ページ/)
 

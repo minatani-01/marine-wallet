@@ -8,9 +8,9 @@
  * ものが入らない。入れてもらうときは年でも月でも書けるようにして、
  * ここへ来る前に月数へ直す。「24か月ごと」では長さが掴めない。
  *
- * 支払日は日付そのもので持つ（anchor_on）。カレンダーから1回選べば、
- * あとはそこから周期ぶんずつ進める。「毎月N日」の持ち方だと、3か月ごとの
- * ように「どの月か」まで要るものを表せない。
+ * 入れてもらうのは契約日（anchor_on）。支払日はそこから周期ぶんずつ
+ * 進めて出す。契約した日なら調べずに書けるし、「毎月N日」の持ち方では
+ * 3か月ごとのように「どの月か」まで要るものを表せない。
  *
  * ここは純関数にしてある。DB も時計も触らないので、テストで確かめられる。
  * 日付は日本時間の 'YYYY-MM-DD' で受け渡す。
@@ -71,7 +71,7 @@ export type Billable = {
   amount: number
   /** 何か月ごとに落ちるか */
   interval_months: number
-  /** 支払日。ここを起点に周期ぶんずつ進める */
+  /** 契約日。ここを起点に周期ぶんずつ進めて支払日を出す */
   anchor_on: string
 }
 
@@ -157,6 +157,16 @@ export function dayText(date: string): string {
   return `${m}/${d}`
 }
 
+/**
+ * 'YYYY-MM-DD' → 'YYYY/M/D'。
+ *
+ * 年まで出す。1年以上先の支払日を 'M/D' で出すと、今年の話に見える。
+ */
+export function fullDayText(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return `${y}/${m}/${d}`
+}
+
 /** 周期の見出し。よく使うものには名前を付ける */
 export function intervalLabel(months: number): string {
   const known = INTERVALS.find((i) => i.months === months)
@@ -228,7 +238,7 @@ export function rejectReason(input: {
     return `周期は1か月〜${MAX_INTERVAL_MONTHS / 12}年で入れてください`
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.anchor_on)) return '支払日を選んでください'
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.anchor_on)) return '契約日を選んでください'
 
   const url = input.url.trim()
   if (url && !/^https?:\/\//i.test(url)) return '解約ページは http:// か https:// から入れてください'
