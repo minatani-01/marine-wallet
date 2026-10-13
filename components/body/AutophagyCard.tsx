@@ -190,8 +190,10 @@ export default function AutophagyCard({
         </div>
       ) : null}
 
-      {/* 決めるのは始まりと長さだけ。終わりは足して出す */}
-      <div className="mt-3 flex items-center gap-2 border-t border-line-soft pt-3">
+      {/* 決めるのは始まりと長さだけ。終わりは足して出す。
+          折り返しを許す。「から断食スタート」まで書くと 320px では
+          時間の選択まで1行に入らない */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-line-soft pt-3">
         <input
           type="time"
           value={fastStart}
@@ -203,9 +205,12 @@ export default function AutophagyCard({
           // 端末の時計が12時間表示だと「02:00 AM」と出る。切れない幅を取る
           className={`${inputClassCompact} tnum !w-[108px] !min-w-0 shrink-0 px-2`}
         />
-        <span className="shrink-0 text-[11px] text-fg-mute">から</span>
+        {/* 「から」だけでは何が始まるのか書いていない。時刻の欄が
+            食べない時間の始まりだと、ここで言い切る */}
+        <span className="shrink-0 text-[11px] text-fg-mute">から断食スタート</span>
 
-        <div className="ml-auto flex shrink-0 items-center rounded-full border border-line p-0.5">
+        {/* 折り返したときは時刻の欄の下に来てほしいので、右には寄せない */}
+        <div className="flex shrink-0 items-center rounded-full border border-line p-0.5">
           {FAST_HOURS_CHOICES.map((hours) => {
             const on = hours === fastHours
             return (
