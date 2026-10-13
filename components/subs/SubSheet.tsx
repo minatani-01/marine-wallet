@@ -3,16 +3,19 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { Button, Chip, Field, Sheet, inputClass } from '@/components/ui'
+import { Button, Chip, Field, Segmented, Sheet, inputClass } from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
   DEFAULT_SUB_CATEGORY,
   INTERVALS,
-  MAX_INTERVAL_MONTHS,
   SUB_CATEGORIES,
   intervalLabel,
+  maxIntervalCount,
   rejectReason,
+  splitInterval,
+  toMonths,
+  type IntervalUnit,
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
 
@@ -46,12 +49,19 @@ export default function SubSheet({
   const [name, setName] = useState(sub?.name ?? '')
   const [plan, setPlan] = useState(sub?.plan ?? '')
   const [amount, setAmount] = useState(sub ? String(sub.amount) : '')
-  const [months, setMonths] = useState(String(sub?.interval_months ?? 1))
+  // 周期は「数」と「単位」に分けて持つ。1つの数で「24か月ごと」と書かれても
+  // 長さが掴めない。保存のときに月数へ直す
+  const start = splitInterval(sub?.interval_months ?? 1)
+  const [count, setCount] = useState(String(start.count))
+  const [unit, setUnit] = useState<IntervalUnit>(start.unit)
   const [anchorOn, setAnchorOn] = useState(sub?.anchor_on ?? today)
   const [category, setCategory] = useState(sub?.category ?? DEFAULT_SUB_CATEGORY)
   const [method, setMethod] = useState(sub?.method ?? '')
   const [url, setUrl] = useState(sub?.url ?? '')
   const [note, setNote] = useState(sub?.note ?? '')
+
+  /** 入れてもらった数と単位から出した月数。保存も見出しもこれで決まる */
+  const months = toMonths(Number(count), unit)
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,7 +73,7 @@ export default function SubSheet({
     const reason = rejectReason({
       name,
       amount,
-      interval_months: months,
+      interval_months: String(months),
       anchor_on: anchorOn,
       url,
     })
@@ -81,7 +91,7 @@ export default function SubSheet({
       name: name.trim(),
       plan: plan.trim(),
       amount: Math.round(Number(amount)),
-      interval_months: Number(months),
+      interval_months: months,
       anchor_on: anchorOn,
       category: category.trim() || DEFAULT_SUB_CATEGORY,
       method: method.trim(),
@@ -188,32 +198,50 @@ export default function SubSheet({
           />
         </Field>
 
-        {/* 周期。よく使うものは押すだけで入り、それ以外は数で入れる。
-            「3か月ごと」のようなものを選べないと、年払いに丸めるしかなくなる */}
-        <Field label="支払い周期" hint={intervalLabel(Number(months) || 1)}>
+        {/* 周期。よく使うものは押すだけで入り、それ以外は数と単位で入れる。
+            「3か月ごと」のようなものを選べないと、年払いに丸めるしかなくなる。
+            単位を分けるのは、2年を「24か月ごと」と書かれても長さが掴めないから */}
+        <Field label="支払い周期" hint={months >= 1 ? intervalLabel(months) : undefined}>
           <div className="mb-2 flex flex-wrap gap-2">
             {INTERVALS.map((item) => (
               <Chip
                 key={item.months}
-                selected={Number(months) === item.months}
-                onClick={() => setMonths(String(item.months))}
+                selected={months === item.months}
+                onClick={() => {
+                  const next = splitInterval(item.months)
+                  setCount(String(next.count))
+                  setUnit(next.unit)
+                }}
               >
                 {item.label}
               </Chip>
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="number"
-              inputMode="numeric"
-              aria-label="支払い周期"
-              min={1}
-              max={MAX_INTERVAL_MONTHS}
-              value={months}
-              onChange={(e) => setMonths(e.target.value)}
-              className={`tnum ${inputClass}`}
-            />
-            <span className="shrink-0 text-[13px] text-fg-mute">か月ごと</span>
+          <div className="flex items-center gap-2">
+            {/* inputClass が w-full を持つので、幅は外の箱で決める。
+                input に w-20 を足しても w-full に負ける */}
+            <div className="w-[88px] shrink-0">
+              <input
+                type="number"
+                inputMode="numeric"
+                aria-label="周期の数"
+                min={1}
+                max={maxIntervalCount(unit)}
+                value={count}
+                onChange={(e) => setCount(e.target.value)}
+                className={`tnum ${inputClass}`}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <Segmented
+                value={unit}
+                options={[
+                  { id: 'month' as IntervalUnit, label: 'か月ごと' },
+                  { id: 'year' as IntervalUnit, label: '年ごと' },
+                ]}
+                onChange={(next) => setUnit(next)}
+              />
+            </div>
           </div>
         </Field>
 

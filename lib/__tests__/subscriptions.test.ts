@@ -6,10 +6,13 @@ import {
   byCategory,
   daysUntil,
   intervalLabel,
+  maxIntervalCount,
   monthlyCost,
   nextPayment,
   rejectReason,
   sortByNext,
+  splitInterval,
+  toMonths,
   totals,
   untilText,
   yearlyCost,
@@ -113,6 +116,30 @@ test('周期の見出し', () => {
   assert.equal(intervalLabel(24), '2年ごと')
 })
 
+test('周期は数と単位で入れてもらい、月数に直す', () => {
+  assert.equal(toMonths(3, 'month'), 3)
+  assert.equal(toMonths(2, 'year'), 24)
+  assert.equal(toMonths(1, 'year'), 12)
+
+  // 12の倍数は年で出す。「24か月ごと」では長さが掴めない
+  assert.deepEqual(splitInterval(24), { count: 2, unit: 'year' })
+  assert.deepEqual(splitInterval(12), { count: 1, unit: 'year' })
+  assert.deepEqual(splitInterval(6), { count: 6, unit: 'month' })
+  assert.deepEqual(splitInterval(1), { count: 1, unit: 'month' })
+  // 割り切れないものは月のまま
+  assert.deepEqual(splitInterval(18), { count: 18, unit: 'month' })
+
+  // 単位を変えても往復して同じになる
+  for (const months of [1, 2, 3, 6, 12, 18, 24, 60]) {
+    const { count, unit } = splitInterval(months)
+    assert.equal(toMonths(count, unit), months)
+  }
+
+  // 上限はどちらの単位でも60か月ぶん
+  assert.equal(toMonths(maxIntervalCount('month'), 'month'), 60)
+  assert.equal(toMonths(maxIntervalCount('year'), 'year'), 60)
+})
+
 test('次に落ちる順に並べる。同じ日なら高いほうが先', () => {
   const rows = [
     { ...sub({ anchor_on: '2026-10-28', amount: 500 }), name: 'C' },
@@ -168,6 +195,9 @@ test('入力を確かめる', () => {
   assert.match(String(rejectReason({ ...ok, amount: '-1' })), /金額/)
   assert.match(String(rejectReason({ ...ok, interval_months: '0' })), /周期/)
   assert.match(String(rejectReason({ ...ok, interval_months: '61' })), /周期/)
+  // 6年ぶん。年で入れても上限を越えれば止まる
+  assert.match(String(rejectReason({ ...ok, interval_months: '72' })), /周期/)
+  assert.equal(rejectReason({ ...ok, interval_months: '60' }), null)
   assert.match(String(rejectReason({ ...ok, interval_months: '1.5' })), /周期/)
   // カレンダーから選ばずに保存しようとした
   assert.match(String(rejectReason({ ...ok, anchor_on: '' })), /支払日/)
