@@ -724,13 +724,12 @@ export type Subscription = {
   amount: number
   /** 何か月ごとに落ちるか。毎月は1、3か月ごとは3、毎年は12 */
   interval_months: number
-  /** 支払日。ここを起点に周期ぶんずつ進めて次回を出す */
+  /** 契約日。ここを起点に周期ぶんずつ進めて支払日を出す */
   anchor_on: string
   category: string
   method: string
   url: string
   note: string
-  started_on: string | null
   active: boolean
   created_at: string
   updated_at: string

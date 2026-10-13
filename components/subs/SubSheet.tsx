@@ -9,11 +9,15 @@ import { createClient } from '@/lib/supabase/client'
 import {
   DEFAULT_SUB_CATEGORY,
   SUB_CATEGORIES,
+  daysUntil,
+  fullDayText,
   intervalLabel,
   maxIntervalCount,
+  nextPayment,
   rejectReason,
   splitInterval,
   toMonths,
+  untilText,
   type IntervalUnit,
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
@@ -39,7 +43,7 @@ export default function SubSheet({
   userId: string
   /** すでに使っているジャンル。選ぶだけで書かずに済むようにする */
   categoryOptions: string[]
-  /** 日本時間の今日。新しく足すときの支払日の初期値に使う */
+  /** 日本時間の今日。契約日の初期値と、次の支払日の計算に使う */
   today: string
   onClose: () => void
 }) {
@@ -61,6 +65,17 @@ export default function SubSheet({
 
   /** 入れてもらった数と単位から出した月数。保存も見出しもこれで決まる */
   const months = toMonths(Number(count), unit)
+
+  /**
+   * 次の支払日。契約日と周期から出す。
+   *
+   * 入れてもらうのは契約日だけにして、落ちる日はこちらで数える。
+   * 「3か月ごとなら次はいつか」を人に数えさせない。
+   */
+  const due =
+    months >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(anchorOn)
+      ? nextPayment({ amount: 0, interval_months: months, anchor_on: anchorOn }, today)
+      : null
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -228,16 +243,23 @@ export default function SubSheet({
           </div>
         </Field>
 
-        {/* 支払日はカレンダーから選ぶ。ここを起点に周期ぶんずつ進めるので、
-            「どの月か」まで決まるものも1回選べば済む */}
-        <Field label="支払日" hint="ここから周期ぶんずつ進めます">
+        {/* 入れてもらうのは契約日だけ。支払日はここから周期ぶんずつ進めて出す。
+            契約した日なら調べずに書けるし、間違えても次の支払日を見れば気づける */}
+        <Field label="契約日" hint="ここから周期ぶんずつ数えます">
           <input
             type="date"
-            aria-label="支払日"
+            aria-label="契約日"
             value={anchorOn}
             onChange={(e) => setAnchorOn(e.target.value)}
             className={`tnum ${inputClass}`}
           />
+          {due ? (
+            <p className="mt-1.5 text-[12px] text-fg-mute">
+              次の支払日
+              <span className="tnum ml-1.5 text-fg-dim">{fullDayText(due)}</span>
+              <span className="ml-1.5">{untilText(daysUntil(due, today))}</span>
+            </p>
+          ) : null}
         </Field>
 
         <Field label="ジャンル" hint="書いたものが候補に増えます">
