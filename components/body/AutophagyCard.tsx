@@ -9,7 +9,6 @@ import { createClient } from '@/lib/supabase/client'
 import {
   DEFAULT_PLAN,
   FAST_HOURS_CHOICES,
-  eatWindowText,
   fastEnd,
   isFasting,
   jstMinutes,
@@ -91,7 +90,6 @@ export default function AutophagyCard({
   const minutes = jstMinutes(now)
   const fasting = isFasting(plan, minutes)
   const endAt = fastEnd(plan)
-  const eatWindow = eatWindowText(plan)
   const valid = toMinutes(fastStart) !== null && endAt !== null
 
   /**
@@ -234,21 +232,6 @@ export default function AutophagyCard({
           <span className="pr-1.5 pl-0.5 text-[10px] text-fg-mute">時間</span>
         </div>
       </div>
-
-      <p className="mt-2 text-[11px] text-fg-mute">
-        {valid ? (
-          <>
-            <span className="tnum text-fg-dim">
-              {fastStart}〜{endAt}
-            </span>
-            {' は食べられません。食べてよいのは '}
-            <span className="tnum text-marine">{eatWindow}</span>
-            {'。始まりと終わりに通知します。'}
-          </>
-        ) : (
-          '時間を決めると、始まりと終わりに通知します。'
-        )}
-      </p>
 
       {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
     </Card>

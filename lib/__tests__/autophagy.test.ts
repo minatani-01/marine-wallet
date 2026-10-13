@@ -4,10 +4,8 @@ import assert from 'node:assert/strict'
 import {
   DEFAULT_PLAN,
   dueBoundary,
-  eatWindowText,
   eatingMinutes,
   fastEnd,
-  fastWindowText,
   fastingMinutes,
   isFasting,
   jstMinutes,
@@ -104,21 +102,6 @@ test('食べる時間と食べない時間の長さが出る', () => {
   assert.equal(eatingMinutes(half), 720)
 
   assert.equal(fastingMinutes({ fast_start: '02:00', fast_hours: 24 }), null)
-})
-
-test('食べない時間と食べてよい時間を時刻で出す', () => {
-  // 「16時間」では、いま何時まで我慢するのかが分からない
-  assert.equal(fastWindowText({ fast_start: '09:00', fast_hours: 14 }), '09:00〜23:00')
-  assert.equal(eatWindowText({ fast_start: '09:00', fast_hours: 14 }), '23:00〜09:00')
-
-  // 日をまたぐ
-  assert.equal(fastWindowText(DEFAULT_PLAN), '02:00〜18:00')
-  assert.equal(eatWindowText(DEFAULT_PLAN), '18:00〜02:00')
-  assert.equal(fastWindowText({ fast_start: '22:00', fast_hours: 8 }), '22:00〜06:00')
-
-  // 長さが使えない値なら出さない
-  assert.equal(fastWindowText({ fast_start: '09:00', fast_hours: 0 }), null)
-  assert.equal(eatWindowText({ fast_start: 'なんとか', fast_hours: 16 }), null)
 })
 
 test('残り時間の書き方', () => {
