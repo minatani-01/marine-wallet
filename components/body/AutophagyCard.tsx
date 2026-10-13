@@ -120,7 +120,7 @@ export default function AutophagyCard({
   }
 
   return (
-    <Card className="!p-3.5">
+    <Card className="!p-3">
       {/* いまどちらの時間か。開いた瞬間にこれだけ分かればよい */}
       <div className="flex items-center gap-2.5">
         <span
@@ -183,15 +183,15 @@ export default function AutophagyCard({
 
       {/* 1日の帯。食べない時間を落とし、いまの位置を線で出す */}
       {valid ? (
-        <div className="mt-3">
+        <div className="mt-2.5">
           <DayBar plan={plan} minutes={minutes} enabled={enabled} />
         </div>
       ) : null}
 
       {/* 決めるのは始まりと長さだけ。終わりは足して出す。
-          折り返しを許す。「から断食スタート」まで書くと 320px では
-          時間の選択まで1行に入らない */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-line-soft pt-3">
+          1行に収めるため、余白も文字も詰めてある。それでも入らない幅では
+          折り返す（gap-y） */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-1.5 gap-y-2 border-t border-line-soft pt-2.5">
         <input
           type="time"
           value={fastStart}
@@ -200,12 +200,15 @@ export default function AutophagyCard({
             setFastStart(e.target.value)
             void save({ fast_start: e.target.value })
           }}
-          // 端末の時計が12時間表示だと「02:00 AM」と出る。切れない幅を取る
-          className={`${inputClassCompact} tnum !w-[108px] !min-w-0 shrink-0 px-2`}
+          // 文字は 16px のまま。これより小さいと iOS が画面を拡大する
+          className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
         />
         {/* 「から」だけでは何が始まるのか書いていない。時刻の欄が
-            食べない時間の始まりだと、ここで言い切る */}
-        <span className="shrink-0 text-[11px] text-fg-mute">から断食スタート</span>
+            食べない時間の始まりだと、ここで言い切る。
+            1行に収まらない幅では「スタート」を落とす。意味は変わらない */}
+        <span className="shrink-0 text-[11px] text-fg-mute">
+          から断食<span className="max-[379px]:hidden">スタート</span>
+        </span>
 
         {/* 折り返したときは時刻の欄の下に来てほしいので、右には寄せない */}
         <div className="flex shrink-0 items-center rounded-full border border-line p-0.5">
@@ -221,7 +224,7 @@ export default function AutophagyCard({
                   setFastHours(hours)
                   void save({ fast_hours: hours })
                 }}
-                className={`tnum h-7 rounded-full px-2 text-[11px] transition-colors ${
+                className={`tnum h-7 rounded-full px-1.5 text-[11px] transition-colors ${
                   on ? 'bg-marine font-medium text-ink' : 'text-fg-mute hover:text-marine'
                 }`}
               >
@@ -229,7 +232,8 @@ export default function AutophagyCard({
               </button>
             )
           })}
-          <span className="pr-1.5 pl-0.5 text-[10px] text-fg-mute">時間</span>
+          {/* 320px では「時間」まで入らない。数字の意味は左の「断食」で分かる */}
+          <span className="pr-1.5 pl-0.5 text-[10px] text-fg-mute max-[339px]:hidden">時間</span>
         </div>
       </div>
 
@@ -263,7 +267,7 @@ function DayBar({ plan, minutes, enabled }: { plan: Plan; minutes: number; enabl
     <div className="relative">
       {/* 地の色が食事。落としたところが食べない時間 */}
       <div
-        className={`relative h-2.5 overflow-hidden rounded-full border border-line ${
+        className={`relative h-2 overflow-hidden rounded-full border border-line ${
           enabled ? 'bg-marine/30' : 'bg-white/[0.04]'
         }`}
       >
@@ -281,7 +285,7 @@ function DayBar({ plan, minutes, enabled }: { plan: Plan; minutes: number; enabl
         />
       </div>
 
-      <div className="mt-1 flex justify-between text-[9px] text-fg-mute">
+      <div className="mt-0.5 flex justify-between text-[9px] text-fg-mute">
         <span>0</span>
         <span>6</span>
         <span>12</span>
