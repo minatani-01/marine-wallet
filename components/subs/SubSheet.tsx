@@ -8,7 +8,6 @@ import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
   DEFAULT_SUB_CATEGORY,
-  INTERVALS,
   SUB_CATEGORIES,
   intervalLabel,
   maxIntervalCount,
@@ -198,25 +197,9 @@ export default function SubSheet({
           />
         </Field>
 
-        {/* 周期。よく使うものは押すだけで入り、それ以外は数と単位で入れる。
-            「3か月ごと」のようなものを選べないと、年払いに丸めるしかなくなる。
-            単位を分けるのは、2年を「24か月ごと」と書かれても長さが掴めないから */}
+        {/* 周期は数と単位で入れてもらう。単位を分けるのは、2年を
+            「24か月ごと」と書かれても長さが掴めないから */}
         <Field label="支払い周期" hint={months >= 1 ? intervalLabel(months) : undefined}>
-          <div className="mb-2 flex flex-wrap gap-2">
-            {INTERVALS.map((item) => (
-              <Chip
-                key={item.months}
-                selected={months === item.months}
-                onClick={() => {
-                  const next = splitInterval(item.months)
-                  setCount(String(next.count))
-                  setUnit(next.unit)
-                }}
-              >
-                {item.label}
-              </Chip>
-            ))}
-          </div>
           <div className="flex items-center gap-2">
             {/* inputClass が w-full を持つので、幅は外の箱で決める。
                 input に w-20 を足しても w-full に負ける */}
