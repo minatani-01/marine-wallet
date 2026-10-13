@@ -10,6 +10,7 @@ import AppLinkSettings from '@/components/me/AppLinkSettings'
 import {
   IconCheck,
   IconChevronRight,
+  IconCalendar,
   IconCopy,
   IconGoods,
   IconLogout,
@@ -291,6 +292,28 @@ export default function MeClient({
           <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
         </Link>
       </div>
+
+      {/* サブスクは払っている本人のものなので、master だけに出す。
+          割り勘や貯金の計算にも入れない */}
+      {profile?.is_master ? (
+        <div>
+          <SectionLabel>サブスク</SectionLabel>
+          <Link
+            href="/subs"
+            prefetch={false}
+            className="glass flex items-center gap-3 rounded-2xl p-4 transition-colors hover:border-marine/50"
+          >
+            <IconCalendar size={18} className="shrink-0 text-fg-mute" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px]">毎月のサブスク</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+                払っているものと、次に落ちる日をまとめます。ひと月あたりの合計も出ます。
+              </p>
+            </div>
+            <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
+          </Link>
+        </div>
+      ) : null}
 
       {/* メンバーと Marine Link は、共有を組み立てる側の機能なのでマスターだけに出す */}
       {profile?.is_master ? (

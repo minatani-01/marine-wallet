@@ -86,6 +86,7 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/places/genres': { title: 'ジャンルの設定', back: '/places' },
   '/body': { title: 'からだ' },
   '/shop': { title: 'RE:SELECT', back: '/me' },
+  '/subs': { title: 'サブスク', back: '/me' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }
