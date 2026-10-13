@@ -712,3 +712,26 @@ export type BodyCareLog = {
   note: string
   created_at: string
 }
+
+/** サブスク（0065）。止めたものも残す */
+export type Subscription = {
+  id: string
+  user_id: string
+  name: string
+  /** 1回の請求額（円） */
+  amount: number
+  /** monthly / yearly */
+  cycle: string
+  /** 支払日（1〜31）。その月に無い日は末日へ寄せる */
+  billing_day: number
+  /** 毎年のときの支払月（1〜12）。毎月のときは null */
+  billing_month: number | null
+  category: string
+  method: string
+  url: string
+  note: string
+  started_on: string | null
+  active: boolean
+  created_at: string
+  updated_at: string
+}

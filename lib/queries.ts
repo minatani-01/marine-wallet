@@ -43,6 +43,7 @@ import type {
   SplitMember,
   SplitMemberView,
   SplitRecord,
+  Subscription,
   WorkoutExercise,
   WorkoutSession,
   WorkoutSessionView,
@@ -532,6 +533,26 @@ export async function getFavoriteItems(userId: string): Promise<FavoriteItemRow[
     if (row.path && row.signedUrl && !row.error) urls.set(row.path, row.signedUrl)
   }
   return rows.map((r) => ({ ...r, signed_url: urls.get(r.image_path) ?? null }))
+}
+
+/**
+ * サブスク（0065）。/subs に出す。
+ *
+ * 止めたものも返す。画面の下にまとめて出し、「前に解約したはず」を
+ * 確かめられるようにする。並べ替えは次の支払日で、画面側で行う
+ * （日によって変わるので、DB の並び順では決められない）。
+ */
+export async function getSubscriptions(userId: string): Promise<Subscription[]> {
+  const supabase = await createClient()
+  const data = await read<Subscription[]>('subscriptions', () =>
+    supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('active', { ascending: false })
+      .order('amount', { ascending: false })
+  )
+  return data ?? []
 }
 
 export async function getSplitRecords(ownerId: string): Promise<SplitRecord[]> {
