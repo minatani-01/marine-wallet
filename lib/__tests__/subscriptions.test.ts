@@ -2,8 +2,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  addMonths,
   byCategory,
   daysUntil,
+  intervalLabel,
   monthlyCost,
   nextPayment,
   rejectReason,
@@ -15,64 +17,86 @@ import {
 } from '@/lib/subscriptions'
 
 /**
- * サブスクの計算（0065）。
+ * サブスクの計算（0065 / 0066）。
  *
- * 次に落ちる日の出し方が肝。月末の指定と、年をまたぐところを固定しておく。
+ * 次に落ちる日の出し方が肝。支払日から周期ぶんずつ進めるので、
+ * 月末の寄せ方と、何周ぶん進めるかを固定しておく。
  */
 
 const sub = (over: Partial<Billable> = {}): Billable => ({
   amount: 1000,
-  cycle: 'monthly',
-  billing_day: 10,
-  billing_month: null,
+  interval_months: 1,
+  anchor_on: '2026-10-10',
   ...over,
+})
+
+test('月を足す。無い日は末日に寄せる', () => {
+  assert.equal(addMonths('2026-01-15', 1), '2026-02-15')
+  assert.equal(addMonths('2026-01-31', 1), '2026-02-28')
+  assert.equal(addMonths('2028-01-31', 1), '2028-02-29')
+  assert.equal(addMonths('2026-01-31', 3), '2026-04-30')
+  // 年をまたぐ
+  assert.equal(addMonths('2026-11-20', 3), '2027-02-20')
+  assert.equal(addMonths('2026-12-01', 12), '2027-12-01')
+})
+
+test('寄せたぶんが積もらない。いつも起点から数える', () => {
+  // 1/31 を起点に1か月ずつ。2月で28日に寄るが、3月は31日に戻る
+  assert.equal(addMonths('2026-01-31', 2), '2026-03-31')
+  assert.equal(addMonths('2026-01-31', 4), '2026-05-31')
 })
 
 test('ひと月あたりに直して比べられるようにする', () => {
   assert.equal(monthlyCost(sub({ amount: 980 })), 980)
-  // 年払いは12で割る。円に小数は無いので丸める
-  assert.equal(monthlyCost(sub({ amount: 11800, cycle: 'yearly' })), 983)
+  assert.equal(monthlyCost(sub({ amount: 11800, interval_months: 12 })), 983)
+  // 3か月ごと
+  assert.equal(monthlyCost(sub({ amount: 3000, interval_months: 3 })), 1000)
   assert.equal(yearlyCost(sub({ amount: 980 })), 11760)
-  assert.equal(yearlyCost(sub({ amount: 11800, cycle: 'yearly' })), 11800)
+  assert.equal(yearlyCost(sub({ amount: 3000, interval_months: 3 })), 12000)
+  assert.equal(yearlyCost(sub({ amount: 11800, interval_months: 12 })), 11800)
 })
 
-test('毎月：まだ来ていなければ今月、過ぎていれば翌月', () => {
-  assert.equal(nextPayment(sub({ billing_day: 25 }), '2026-10-13'), '2026-10-25')
-  assert.equal(nextPayment(sub({ billing_day: 5 }), '2026-10-13'), '2026-11-05')
+test('支払日がこれから先なら、その日そのもの', () => {
+  assert.equal(nextPayment(sub({ anchor_on: '2026-10-25' }), '2026-10-13'), '2026-10-25')
   // 今日がその日なら今日
-  assert.equal(nextPayment(sub({ billing_day: 13 }), '2026-10-13'), '2026-10-13')
+  assert.equal(nextPayment(sub({ anchor_on: '2026-10-13' }), '2026-10-13'), '2026-10-13')
 })
 
-test('毎月：無い日は末日に寄せる', () => {
-  // 2月に31日は無い。翌月1日に繰り上げない
-  assert.equal(nextPayment(sub({ billing_day: 31 }), '2026-02-01'), '2026-02-28')
-  // うるう年
-  assert.equal(nextPayment(sub({ billing_day: 31 }), '2028-02-01'), '2028-02-29')
-  // 30日までの月
-  assert.equal(nextPayment(sub({ billing_day: 31 }), '2026-04-02'), '2026-04-30')
+test('過ぎていれば、周期ぶんずつ進めて最初に来る日', () => {
+  // 毎月。9/25 を起点に、10/13 から見ると 10/25
+  assert.equal(nextPayment(sub({ anchor_on: '2026-09-25' }), '2026-10-13'), '2026-10-25')
+  // 毎月。10/5 を起点に、10/13 から見ると 11/5
+  assert.equal(nextPayment(sub({ anchor_on: '2026-10-05' }), '2026-10-13'), '2026-11-05')
+
+  // 3か月ごと。2/20 を起点にすると 2→5→8→11 月
+  const quarterly = sub({ interval_months: 3, anchor_on: '2026-02-20' })
+  assert.equal(nextPayment(quarterly, '2026-10-13'), '2026-11-20')
+  assert.equal(nextPayment(quarterly, '2026-11-20'), '2026-11-20')
+  assert.equal(nextPayment(quarterly, '2026-11-21'), '2027-02-20')
+
+  // 半年ごと
+  assert.equal(
+    nextPayment(sub({ interval_months: 6, anchor_on: '2025-04-02' }), '2026-10-13'),
+    '2027-04-02'
+  )
+  // 毎年
+  assert.equal(
+    nextPayment(sub({ interval_months: 12, anchor_on: '2024-06-03' }), '2026-10-13'),
+    '2027-06-03'
+  )
 })
 
-test('毎月：12月を過ぎたら翌年の1月', () => {
-  assert.equal(nextPayment(sub({ billing_day: 5 }), '2026-12-20'), '2027-01-05')
-})
-
-test('毎年：月と日で決め、過ぎていれば翌年', () => {
-  const yearly = sub({ cycle: 'yearly', billing_month: 3, billing_day: 20 })
-  assert.equal(nextPayment(yearly, '2026-01-10'), '2026-03-20')
-  assert.equal(nextPayment(yearly, '2026-03-20'), '2026-03-20')
-  assert.equal(nextPayment(yearly, '2026-03-21'), '2027-03-20')
-
-  // 2月29日の指定。うるう年でない年は28日へ寄せる
-  const leap = sub({ cycle: 'yearly', billing_month: 2, billing_day: 29 })
-  assert.equal(nextPayment(leap, '2026-01-01'), '2026-02-28')
-  assert.equal(nextPayment(leap, '2028-01-01'), '2028-02-29')
+test('月末の起点でも、周期ごとに末日へ寄る', () => {
+  // 1/31 を起点に毎月。2月は28日、3月は31日
+  const monthly = sub({ anchor_on: '2026-01-31' })
+  assert.equal(nextPayment(monthly, '2026-02-01'), '2026-02-28')
+  assert.equal(nextPayment(monthly, '2026-03-01'), '2026-03-31')
+  assert.equal(nextPayment(monthly, '2026-04-01'), '2026-04-30')
 })
 
 test('あと何日か', () => {
   assert.equal(daysUntil('2026-10-25', '2026-10-13'), 12)
-  assert.equal(daysUntil('2026-11-05', '2026-10-13'), 23)
   assert.equal(daysUntil('2026-10-13', '2026-10-13'), 0)
-  // 年をまたいでも合う
   assert.equal(daysUntil('2027-01-05', '2026-12-20'), 16)
 
   assert.equal(untilText(0), '今日')
@@ -80,11 +104,20 @@ test('あと何日か', () => {
   assert.equal(untilText(12), '12日後')
 })
 
+test('周期の見出し', () => {
+  assert.equal(intervalLabel(1), '毎月')
+  assert.equal(intervalLabel(3), '3か月ごと')
+  assert.equal(intervalLabel(6), '半年ごと')
+  assert.equal(intervalLabel(12), '毎年')
+  assert.equal(intervalLabel(2), '2か月ごと')
+  assert.equal(intervalLabel(24), '2年ごと')
+})
+
 test('次に落ちる順に並べる。同じ日なら高いほうが先', () => {
   const rows = [
-    { ...sub({ billing_day: 28, amount: 500 }), name: 'C' },
-    { ...sub({ billing_day: 20, amount: 300 }), name: 'A' },
-    { ...sub({ billing_day: 20, amount: 900 }), name: 'B' },
+    { ...sub({ anchor_on: '2026-10-28', amount: 500 }), name: 'C' },
+    { ...sub({ anchor_on: '2026-10-20', amount: 300 }), name: 'A' },
+    { ...sub({ anchor_on: '2026-10-20', amount: 900 }), name: 'B' },
   ]
 
   assert.deepEqual(
@@ -96,22 +129,21 @@ test('次に落ちる順に並べる。同じ日なら高いほうが先', () =>
 test('合計は使っているものだけ数える', () => {
   const rows = [
     { ...sub({ amount: 980 }), active: true },
-    { ...sub({ amount: 11800, cycle: 'yearly' }), active: true },
-    // 止めたものは数えない。記録としては残す
+    { ...sub({ amount: 3000, interval_months: 3 }), active: true },
     { ...sub({ amount: 5000 }), active: false },
   ]
 
   const sum = totals(rows)
   assert.equal(sum.count, 2)
-  assert.equal(sum.monthly, 980 + 983)
-  assert.equal(sum.yearly, 11760 + 11800)
+  assert.equal(sum.monthly, 980 + 1000)
+  assert.equal(sum.yearly, 11760 + 12000)
 })
 
 test('ジャンルごとに多い順でまとめる', () => {
   const rows = [
     { ...sub({ amount: 500 }), active: true, category: '音楽' },
     { ...sub({ amount: 1200 }), active: true, category: '動画' },
-    { ...sub({ amount: 800 }), active: true, category: '動画' },
+    { ...sub({ amount: 2400, interval_months: 3 }), active: true, category: '動画' },
     { ...sub({ amount: 9000 }), active: false, category: '仕事' },
   ]
 
@@ -125,9 +157,8 @@ test('入力を確かめる', () => {
   const ok = {
     name: 'Netflix',
     amount: '1590',
-    billing_day: '25',
-    cycle: 'monthly',
-    billing_month: '',
+    interval_months: '1',
+    anchor_on: '2026-10-25',
     url: 'https://example.com',
   }
   assert.equal(rejectReason(ok), null)
@@ -135,15 +166,14 @@ test('入力を確かめる', () => {
   assert.match(String(rejectReason({ ...ok, name: '  ' })), /サービス名/)
   assert.match(String(rejectReason({ ...ok, amount: 'ただ' })), /金額/)
   assert.match(String(rejectReason({ ...ok, amount: '-1' })), /金額/)
-  assert.match(String(rejectReason({ ...ok, billing_day: '0' })), /支払日/)
-  assert.match(String(rejectReason({ ...ok, billing_day: '32' })), /支払日/)
+  assert.match(String(rejectReason({ ...ok, interval_months: '0' })), /周期/)
+  assert.match(String(rejectReason({ ...ok, interval_months: '61' })), /周期/)
+  assert.match(String(rejectReason({ ...ok, interval_months: '1.5' })), /周期/)
+  // カレンダーから選ばずに保存しようとした
+  assert.match(String(rejectReason({ ...ok, anchor_on: '' })), /支払日/)
   // 押した人の画面で動くものをリンクにしない
   assert.match(String(rejectReason({ ...ok, url: 'javascript:alert(1)' })), /解約ページ/)
 
-  // 毎年は月も要る
-  assert.match(
-    String(rejectReason({ ...ok, cycle: 'yearly', billing_month: '' })),
-    /支払月/
-  )
-  assert.equal(rejectReason({ ...ok, cycle: 'yearly', billing_month: '3' }), null)
+  // 3か月ごとも通る
+  assert.equal(rejectReason({ ...ok, interval_months: '3' }), null)
 })

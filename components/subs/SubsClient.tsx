@@ -9,9 +9,9 @@ import { yen } from '@/lib/format'
 import { withTapFeedback } from '@/lib/haptics'
 import {
   byCategory,
-  cycleLabel,
   dayText,
   daysUntil,
+  intervalLabel,
   nextPayment,
   sortByNext,
   totals,
@@ -20,7 +20,7 @@ import {
 import type { Subscription } from '@/types'
 
 /**
- * サブスクの一覧（0065）。
+ * サブスクの一覧（0065 / 0066）。
  *
  * まず合計を出す。1つずつの額は小さくても、足すと毎月それだけ出ていく、
  * というのがこの画面の存在理由なので、そこを一番上に置く。
@@ -97,7 +97,7 @@ export default function SubsClient({
           ) : null}
 
           <p className="mt-2.5 text-[11px] text-fg-mute">
-            年払いは12で割って足しています。止めたものは数えません。
+            周期で割ってひと月あたりに直しています。止めたものは数えません。
           </p>
         </Card>
       </div>
@@ -160,6 +160,7 @@ export default function SubsClient({
           sub={editing}
           userId={userId}
           categoryOptions={categories}
+          today={today}
           onClose={() => setEditing(undefined)}
         />
       ) : null}
@@ -197,11 +198,16 @@ function Row({
       >
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-baseline gap-2">
-            <span className="min-w-0 truncate text-[14px] font-semibold">{sub.name}</span>
-            <span className="shrink-0 text-[10px] text-fg-mute">{sub.category}</span>
+            <span className="shrink-0 truncate text-[14px] font-semibold">{sub.name}</span>
+            {/* プラン名はサービス名に続けて小さく出す。同じサービスで
+                契約が分かれているとき、どちらの話か札だけで分かる */}
+            {sub.plan ? (
+              <span className="min-w-0 truncate text-[11px] text-fg-dim">{sub.plan}</span>
+            ) : null}
+            <span className="ml-auto shrink-0 text-[10px] text-fg-mute">{sub.category}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[11px] text-fg-mute">
-            <span>{cycleLabel(sub.cycle)}</span>
+            <span>{intervalLabel(sub.interval_months)}</span>
             {due ? (
               <span className={near ? 'text-warn' : 'text-fg-dim'}>
                 <span className="tnum">{dayText(due)}</span>
