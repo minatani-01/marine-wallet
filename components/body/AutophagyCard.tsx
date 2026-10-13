@@ -9,11 +9,10 @@ import { createClient } from '@/lib/supabase/client'
 import {
   DEFAULT_PLAN,
   FAST_HOURS_CHOICES,
+  eatWindowText,
   fastEnd,
   isFasting,
   jstMinutes,
-  nextBoundary,
-  spanText,
   toMinutes,
   type Plan,
 } from '@/lib/autophagy'
@@ -91,8 +90,8 @@ export default function AutophagyCard({
   const plan: Plan = { fast_start: fastStart, fast_hours: fastHours }
   const minutes = jstMinutes(now)
   const fasting = isFasting(plan, minutes)
-  const next = nextBoundary(plan, minutes)
   const endAt = fastEnd(plan)
+  const eatWindow = eatWindowText(plan)
   const valid = toMinutes(fastStart) !== null && endAt !== null
 
   /**
@@ -146,13 +145,14 @@ export default function AutophagyCard({
           >
             {!enabled ? 'お休み中' : fasting ? '食べない時間' : '食べてOK'}
           </span>
-          {/* 機能の名前は上の見出しに出してある。ここは残り時間だけにする。
-              320px では両方入らず、肝心の残り時間のほうが切れる */}
+          {/* 残り時間ではなく時刻で出す。「あと6時間2分」では、何時までなのかを
+              自分で足すことになる。時刻なら予定と突き合わせられる。
+              320px に収めるため、ここは一方の時刻だけにする（帯は下に出す） */}
           <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
-            {enabled && next && valid ? (
+            {enabled && valid ? (
               <>
-                あと<span className="tnum text-fg-dim">{spanText(next.inMinutes)}</span>
-                {next.kind === 'eat' ? 'で解禁' : 'で断食'}
+                <span className="tnum text-fg-dim">{fasting ? endAt : fastStart}</span>
+                {fasting ? 'まで食べられません' : 'から食べられません'}
               </>
             ) : (
               '時間を決めると通知します'
@@ -236,8 +236,8 @@ export default function AutophagyCard({
             <span className="tnum text-fg-dim">
               {fastStart}〜{endAt}
             </span>
-            {' は食べません。解禁は '}
-            <span className="tnum text-marine">{endAt}</span>
+            {' は食べられません。食べてよいのは '}
+            <span className="tnum text-marine">{eatWindow}</span>
             {'。始まりと終わりに通知します。'}
           </>
         ) : (

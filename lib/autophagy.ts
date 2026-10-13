@@ -142,6 +142,27 @@ export function nextBoundary(plan: Plan, minutes: number): Boundary | null {
 }
 
 /**
+ * 食べない時間の帯 'HH:MM〜HH:MM'。
+ *
+ * 長さではなく時刻で出す。「16時間」と言われても、いま何時まで我慢するのかは
+ * 自分で足さないと分からない。
+ */
+export function fastWindowText(plan: Plan): string | null {
+  const start = toMinutes(plan.fast_start)
+  const end = fastEndMinutes(plan)
+  if (start === null || end === null) return null
+  return `${toHhmm(start)}〜${toHhmm(end)}`
+}
+
+/** 食べてよい時間の帯 'HH:MM〜HH:MM'。食べない時間の裏返し */
+export function eatWindowText(plan: Plan): string | null {
+  const start = toMinutes(plan.fast_start)
+  const end = fastEndMinutes(plan)
+  if (start === null || end === null) return null
+  return `${toHhmm(end)}〜${toHhmm(start)}`
+}
+
+/**
  * 残り時間の書き方。
  *
  * 「あと3時間20分」より「3時間20分」のほうが短く、前に付ける言葉を
