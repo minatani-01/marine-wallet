@@ -5,7 +5,8 @@
  * 残すので、「前に解約したはず」を後から確かめられる。
  *
  * 周期は「何か月ごと」で持つ。毎月と毎年だけでは、3か月ごとや半年ごとの
- * ものが入らない。
+ * ものが入らない。入れてもらうときは年でも月でも書けるようにして、
+ * ここへ来る前に月数へ直す。「24か月ごと」では長さが掴めない。
  *
  * 支払日は日付そのもので持つ（anchor_on）。カレンダーから1回選べば、
  * あとはそこから周期ぶんずつ進める。「毎月N日」の持ち方だと、3か月ごとの
@@ -25,6 +26,31 @@ export const INTERVALS = [
 
 /** 周期の上限（か月）。5年を超える間隔は、サブスクとしては考えにくい */
 export const MAX_INTERVAL_MONTHS = 60
+
+/** 周期の単位。「60か月ごと」と書かれても長さが掴めないので、年でも入れられるようにする */
+export type IntervalUnit = 'month' | 'year'
+
+/** 単位ごとの上限。年は5、月は60。どちらも 60 か月に当たる */
+export function maxIntervalCount(unit: IntervalUnit): number {
+  return unit === 'year' ? MAX_INTERVAL_MONTHS / 12 : MAX_INTERVAL_MONTHS
+}
+
+/** 「3」と「か月」から月数を出す */
+export function toMonths(count: number, unit: IntervalUnit): number {
+  return unit === 'year' ? count * 12 : count
+}
+
+/**
+ * 月数を「数と単位」に割る。画面に出すときに使う。
+ *
+ * 12の倍数なら年にする。24を「24か月ごと」と書かれても長さが掴めない。
+ * 12で割り切れない18のようなものは、月のまま出すほかない。
+ */
+export function splitInterval(months: number): { count: number; unit: IntervalUnit } {
+  const safe = Math.max(1, Math.round(months))
+  if (safe % 12 === 0) return { count: safe / 12, unit: 'year' }
+  return { count: safe, unit: 'month' }
+}
 
 /** ジャンル。決め打ちにせず、書いたものが増える */
 export const SUB_CATEGORIES = [
@@ -199,7 +225,7 @@ export function rejectReason(input: {
 
   const interval = Number(input.interval_months)
   if (!Number.isInteger(interval) || interval < 1 || interval > MAX_INTERVAL_MONTHS) {
-    return `周期は1〜${MAX_INTERVAL_MONTHS}か月で入れてください`
+    return `周期は1か月〜${MAX_INTERVAL_MONTHS / 12}年で入れてください`
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.anchor_on)) return '支払日を選んでください'
