@@ -189,9 +189,9 @@ export default function AutophagyCard({
       ) : null}
 
       {/* 決めるのは始まりと長さだけ。終わりは足して出す。
-          1行に収めるため、余白も文字も詰めてある。それでも入らない幅では
-          折り返す（gap-y） */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-1.5 gap-y-2 border-t border-line-soft pt-2.5">
+          1行に収めるため、余白も文字も詰めてある。区切り線は引かない。
+          帯との間が空いていれば、別のものだと分かる */}
+      <div className="mt-5 flex flex-wrap items-center gap-x-1.5 gap-y-2">
         <input
           type="time"
           value={fastStart}
@@ -210,8 +210,8 @@ export default function AutophagyCard({
           から断食<span className="max-[379px]:hidden">スタート</span>
         </span>
 
-        {/* 折り返したときは時刻の欄の下に来てほしいので、右には寄せない */}
-        <div className="flex shrink-0 items-center rounded-full border border-line p-0.5">
+        {/* 時間数は右端へ。決めるものが2つだと分かり、押す的も端に寄って大きくなる */}
+        <div className="ml-auto flex shrink-0 items-center rounded-full border border-line p-0.5">
           {FAST_HOURS_CHOICES.map((hours) => {
             const on = hours === fastHours
             return (
