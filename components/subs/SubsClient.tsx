@@ -4,7 +4,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import SubSheet from '@/components/subs/SubSheet'
-import { IconExternal, IconPlus } from '@/components/icons'
+import {
+  IconBook,
+  IconBriefcase,
+  IconDots,
+  IconExternal,
+  IconGame,
+  IconHome,
+  IconMusic,
+  IconPlay,
+  IconPlus,
+  IconSignal,
+} from '@/components/icons'
 import { Card, EmptyState, SectionLabel } from '@/components/ui'
 import { yen } from '@/lib/format'
 import { withTapFeedback } from '@/lib/haptics'
@@ -295,6 +306,22 @@ export default function SubsClient({
 }
 
 /**
+ * ジャンルの絵。札の左端に出して、何のための支払いかを文字より先に伝える。
+ *
+ * 自分で書いたジャンルには当てる絵が無いので、点3つにする。無理に
+ * それらしい絵を当てると、別のものだと思わせる。
+ */
+const CATEGORY_ICONS: Record<string, typeof IconDots> = {
+  動画: IconPlay,
+  音楽: IconMusic,
+  読み物: IconBook,
+  ゲーム: IconGame,
+  仕事: IconBriefcase,
+  生活: IconHome,
+  通信: IconSignal,
+}
+
+/**
  * 1件ぶんの札。
  *
  * 縦の線を揃える。左は名前とその素性、右は決まった幅の箱にして、金額を
@@ -329,8 +356,26 @@ function Row({
   // 1週間を切ったら色を付ける。見直すなら落ちる前である
   const near = typeof days === 'number' && days <= 7
 
+  const Glyph = CATEGORY_ICONS[sub.category] ?? IconDots
+  const color = tint ?? 'var(--color-fg-mute)'
+
   return (
-    <div className="glass flex items-center gap-2 overflow-hidden rounded-2xl py-3 pr-3 pl-3.5">
+    <div className="glass flex items-center gap-2.5 overflow-hidden rounded-2xl py-3 pr-3 pl-3">
+      {/* ジャンルの絵。色は上の帯と同じにして、札と内訳を結べるようにする */}
+      <span
+        aria-hidden="true"
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+          sub.active ? '' : 'opacity-55'
+        }`}
+        style={{
+          color,
+          borderColor: tint ? `${tint}55` : 'var(--color-line)',
+          backgroundColor: tint ? `${tint}14` : 'rgba(255,255,255,0.03)',
+        }}
+      >
+        <Glyph size={17} />
+      </span>
+
       <button
         type="button"
         onClick={withTapFeedback(onEdit)}
@@ -348,11 +393,6 @@ function Row({
 
         {/* 折り返さない。1件が3行になると、その札だけ背が高くなる */}
         <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] whitespace-nowrap text-fg-mute">
-          <span
-            aria-hidden="true"
-            className="h-1.5 w-1.5 shrink-0 rounded-full"
-            style={{ backgroundColor: tint ?? 'var(--color-fg-mute)' }}
-          />
           <span className="shrink-0 text-fg-dim">{sub.category}</span>
           <span className="shrink-0 text-line">|</span>
           <span className="shrink-0">{intervalLabel(sub.interval_months)}</span>

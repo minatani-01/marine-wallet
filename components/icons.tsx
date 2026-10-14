@@ -491,3 +491,68 @@ export function IconFast(props: IconProps) {
     </Icon>
   )
 }
+
+/* --------------------------------------------------------------------------
+ * サブスクのジャンル（0065）。札の左端に出して、何のための支払いかを
+ * 文字より先に伝える。
+ * ------------------------------------------------------------------------ */
+
+export function IconPlay(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.5" y="4.5" width="19" height="15" rx="3" />
+      <path d="M10.5 9.5 15 12l-4.5 2.5z" />
+    </Icon>
+  )
+}
+
+export function IconMusic(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="7" cy="17.5" r="2.5" />
+      <circle cx="17.5" cy="15.5" r="2.5" />
+      <path d="M9.5 17.5V6.5l10.5-2.5v11.5" />
+      <path d="M9.5 9.5 20 7" />
+    </Icon>
+  )
+}
+
+export function IconBook(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 6.8C10.6 5.3 8.6 4.6 6 4.6H3.5v13H6c2.6 0 4.6.7 6 2.2 1.4-1.5 3.4-2.2 6-2.2h2.5v-13H18c-2.6 0-4.6.7-6 2.2z" />
+      <path d="M12 6.8v13" />
+    </Icon>
+  )
+}
+
+export function IconGame(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.5" y="8" width="19" height="9.5" rx="4.5" />
+      <path d="M7.5 11v3.5M5.75 12.75h3.5" />
+      <path d="M15.5 12h.01M17.75 14h.01" />
+    </Icon>
+  )
+}
+
+export function IconBriefcase(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="7.5" width="18" height="12" rx="2.5" />
+      <path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" />
+      <path d="M3 12.5h18" />
+    </Icon>
+  )
+}
+
+export function IconSignal(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M2.5 8.8a15 15 0 0 1 19 0" />
+      <path d="M5.5 12.3a10.5 10.5 0 0 1 13 0" />
+      <path d="M8.5 15.8a6 6 0 0 1 7 0" />
+      <path d="M12 19.3h.01" />
+    </Icon>
+  )
+}
