@@ -24,18 +24,26 @@ import { yen } from '@/lib/format'
 import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
+  DEFAULT_SUB_SORT,
   SHARE_COLORS,
   SHARE_REST,
+  SUB_SORTS,
   byCategory,
   dayText,
   daysUntil,
   intervalLabel,
+  monthlyCost,
   nextPayment,
-  sortByNext,
+  sortSubs,
+  toSubSort,
   topShares,
   totals,
+  type SubSort,
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
+
+/** 並べ方を覚えておく場所。端末ごとで、他の人には移らない */
+const SORT_KEY = 'marine-wallet:subs-sort'
 
 /**
  * サブスクの一覧（0065 / 0066）。
@@ -81,7 +89,31 @@ export default function SubsClient({
 
   const living = useMemo(() => rows.filter((sub) => sub.active), [rows])
   const stopped = useMemo(() => rows.filter((sub) => !sub.active), [rows])
-  const ordered = useMemo(() => sortByNext(living, today), [living, today])
+  /**
+   * 並べ方。選んだものは次に開いたときにも残す。
+   *
+   * 最初の描画はサーバーと揃える必要があるので、既定で描いてから読み直す。
+   * localStorage をそのまま初期値にすると、サーバーの描画と食い違う。
+   */
+  const [sort, setSort] = useState<SubSort>(DEFAULT_SUB_SORT)
+  useEffect(() => {
+    try {
+      setSort(toSubSort(localStorage.getItem(SORT_KEY)))
+    } catch {
+      // 読めなくても既定で動く
+    }
+  }, [])
+
+  const pickSort = (next: SubSort) => {
+    setSort(next)
+    try {
+      localStorage.setItem(SORT_KEY, next)
+    } catch {
+      // 覚えられなくても並べ替えはできる
+    }
+  }
+
+  const ordered = useMemo(() => sortSubs(living, today, sort), [living, today, sort])
   const sum = useMemo(() => totals(rows), [rows])
   const shares = useMemo(() => topShares(byCategory(rows)), [rows])
 
@@ -233,7 +265,30 @@ export default function SubsClient({
       {error ? <p className="text-[12px] text-danger">{error}</p> : null}
 
       <div>
-        <SectionLabel>
+        <SectionLabel
+          action={
+            living.length > 1 ? (
+              <div className="flex shrink-0 items-center gap-1 rounded-full border border-line p-0.5">
+                {SUB_SORTS.map((item) => {
+                  const on = item.id === sort
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={withTapFeedback(() => pickSort(item.id))}
+                      className={`h-6 rounded-full px-2 text-[11px] transition-colors ${
+                        on ? 'bg-marine font-medium text-ink' : 'text-fg-mute hover:text-marine'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null
+          }
+        >
           {living.length > 0 ? `使っているもの ${living.length}件` : '使っているもの'}
         </SectionLabel>
 
@@ -402,6 +457,11 @@ function Row({
           <span className="shrink-0 text-fg-dim">{sub.category}</span>
           <span className="shrink-0 text-line">|</span>
           <span className="shrink-0">{intervalLabel(sub.interval_months)}</span>
+          {/* 毎月でないものは月あたりも添える。合計も金額順も月あたりで
+              出しているので、これが無いと年払いの並びが外れて見える */}
+          {sub.interval_months > 1 ? (
+            <span className="tnum shrink-0">月{yen(monthlyCost(sub))}</span>
+          ) : null}
           {due ? (
             <span className={`tnum shrink-0 ${near ? 'text-warn' : ''}`}>{dayText(due)}</span>
           ) : null}

@@ -227,6 +227,52 @@ export function sortByNext<T extends Billable & { name: string }>(subs: T[], tod
   })
 }
 
+/** 並べ方。見たい目的がそのつど変わるので、選べるようにしてある */
+export const SUB_SORTS = [
+  { id: 'due', label: '支払日' },
+  { id: 'cost', label: '金額' },
+  { id: 'category', label: 'ジャンル' },
+] as const
+
+export type SubSort = (typeof SUB_SORTS)[number]['id']
+
+export const DEFAULT_SUB_SORT: SubSort = 'due'
+
+/** 覚えておいた並べ方。知らない値なら既定に戻す */
+export function toSubSort(value: string | null): SubSort {
+  return SUB_SORTS.some((sort) => sort.id === value) ? (value as SubSort) : DEFAULT_SUB_SORT
+}
+
+/**
+ * 並べ替える。
+ *
+ * 支払日順: 次に落ちる日が近い順。「今月もう落ちたか」を追うとき。
+ * 金額順: ひと月あたりが高い順。「何に一番payっているか」を見るとき。
+ *         年払いも月額に直して比べるので、下に沈まない。
+ * ジャンル順: ジャンルの決まった並びでまとめ、中は金額順。
+ *
+ * どれも最後は名前で決める。並びが毎回変わると、同じ場所を探せない。
+ */
+export function sortSubs<T extends Billable & { name: string; category: string }>(
+  subs: T[],
+  today: string,
+  by: SubSort
+): T[] {
+  if (by === 'due') return sortByNext(subs, today)
+
+  const order = sortCategories(subs.map((sub) => sub.category))
+
+  return [...subs].sort((a, b) => {
+    if (by === 'category') {
+      const rank = order.indexOf(a.category) - order.indexOf(b.category)
+      if (rank !== 0) return rank
+    }
+    const cost = monthlyCost(b) - monthlyCost(a)
+    if (cost !== 0) return cost
+    return a.name.localeCompare(b.name, 'ja')
+  })
+}
+
 /** 使っているものの合計。止めたものは数えない */
 export function totals(subs: (Billable & { active: boolean })[]): {
   monthly: number
