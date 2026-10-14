@@ -17,7 +17,6 @@ import {
   nextPayment,
   sortByNext,
   totals,
-  untilText,
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
 
@@ -264,6 +263,9 @@ export default function SubsClient({
 /**
  * 1件ぶんの札。
  *
+ * どれも必ず2行にする。メモの有る無しで高さが変わると、並べたときに
+ * 段が揃わず、目が上下に振られて金額を追いにくい。メモは開けば読める。
+ *
  * 押すと編集。右端に使う・止めるのスイッチを置く。見直すのは一覧を
  * 眺めているときなので、そこから1回で止められるようにする。
  *
@@ -306,17 +308,16 @@ function Row({
             ) : null}
             <span className="ml-auto shrink-0 text-[10px] text-fg-mute">{sub.category}</span>
           </div>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[11px] text-fg-mute">
-            <span>{intervalLabel(sub.interval_months)}</span>
+          {/* 折り返さない。1件が3行になると、その札だけ背が高くなる */}
+          <div className="mt-1 flex items-baseline gap-x-2 overflow-hidden text-[11px] whitespace-nowrap text-fg-mute">
+            <span className="shrink-0">{intervalLabel(sub.interval_months)}</span>
             {due ? (
-              <span className={near ? 'text-warn' : 'text-fg-dim'}>
-                <span className="tnum">{dayText(due)}</span>
-                <span className="ml-1">{untilText(days ?? 0)}</span>
+              <span className={`tnum shrink-0 ${near ? 'text-warn' : 'text-fg-dim'}`}>
+                {dayText(due)}
               </span>
             ) : null}
-            {sub.method ? <span className="truncate">{sub.method}</span> : null}
+            {sub.method ? <span className="min-w-0 truncate">{sub.method}</span> : null}
           </div>
-          {sub.note ? <p className="mt-1 truncate text-[11px] text-fg-mute">{sub.note}</p> : null}
         </div>
 
         <span className="tnum shrink-0 text-right text-[15px] font-semibold text-marine">
