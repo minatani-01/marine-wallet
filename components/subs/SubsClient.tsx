@@ -74,6 +74,15 @@ export default function SubsClient({
     [subs]
   )
 
+  /** すでに使っている支払い方法。同じカードを何度も書かずに済ませる */
+  const methods = useMemo(
+    () =>
+      [...new Set(subs.map((sub) => sub.method))]
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'ja')),
+    [subs]
+  )
+
   /**
    * 使う・止めるを札のまま切り替える。
    *
@@ -217,6 +226,7 @@ export default function SubsClient({
           sub={editing}
           userId={userId}
           categoryOptions={categories}
+          methodOptions={methods}
           today={today}
           onClose={() => setEditing(undefined)}
         />
