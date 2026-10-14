@@ -12,6 +12,7 @@ import {
   nextPayment,
   rejectReason,
   sortByNext,
+  sortCategories,
   splitInterval,
   toMonths,
   totals,
@@ -185,6 +186,31 @@ test('ジャンルごとに多い順でまとめる', () => {
     { category: '動画', monthly: 2000 },
     { category: '音楽', monthly: 500 },
   ])
+})
+
+test('ジャンルは決まった順に並べ、その他を最後に置く', () => {
+  // 使った順で出すと、開くたびに位置が変わって目で探し直すことになる
+  assert.deepEqual(sortCategories(['その他', '通信', '動画', '仕事']), [
+    '動画',
+    '仕事',
+    '通信',
+    'その他',
+  ])
+
+  // 自分で書いたものは決まったものの後ろ、「その他」の前。五十音順
+  assert.deepEqual(sortCategories(['その他', 'ジム', '動画', 'サウナ']), [
+    '動画',
+    'サウナ',
+    'ジム',
+    'その他',
+  ])
+
+  // 重複は外す
+  assert.deepEqual(sortCategories(['動画', '動画', 'その他', 'その他']), ['動画', 'その他'])
+
+  // 「その他」が無ければ付け足さない
+  assert.deepEqual(sortCategories(['音楽', '動画']), ['動画', '音楽'])
+  assert.deepEqual(sortCategories([]), [])
 })
 
 test('入力を確かめる', () => {
