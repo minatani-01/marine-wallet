@@ -15,8 +15,10 @@ import {
   SHARE_REST,
   sortByNext,
   sortCategories,
+  sortSubs,
   splitInterval,
   toMonths,
+  toSubSort,
   topShares,
   totals,
   untilText,
@@ -183,6 +185,45 @@ test('次に落ちる順に並べる。同じ日なら高いほうが先', () =>
     sortByNext(rows, '2026-10-13').map((r) => r.name),
     ['B', 'A', 'C']
   )
+})
+
+test('並べ方を選べる', () => {
+  const rows = [
+    { ...sub({ amount: 12000, interval_months: 12, anchor_on: '2026-03-03' }), name: '年払い', category: '音楽' },
+    { ...sub({ amount: 890, anchor_on: '2026-11-12' }), name: '動画A', category: '動画' },
+    { ...sub({ amount: 3278, anchor_on: '2026-11-11' }), name: '回線', category: '通信' },
+    { ...sub({ amount: 76500, anchor_on: '2026-11-01' }), name: '家賃', category: '生活' },
+  ]
+  const today = '2026-10-14'
+
+  // 支払日が近い順
+  assert.deepEqual(
+    sortSubs(rows, today, 'due').map((r) => r.name),
+    ['家賃', '回線', '動画A', '年払い']
+  )
+
+  // 月あたりが高い順。年払いも月額に直すので下に沈まない（12000/12=1000）
+  assert.deepEqual(
+    sortSubs(rows, today, 'cost').map((r) => r.name),
+    ['家賃', '回線', '年払い', '動画A']
+  )
+
+  // ジャンルの決まった並びでまとめ、中は金額順
+  assert.deepEqual(
+    sortSubs(rows, today, 'category').map((r) => r.category),
+    ['動画', '音楽', '生活', '通信']
+  )
+
+  // 元の配列は変えない
+  assert.equal(rows[0].name, '年払い')
+})
+
+test('覚えておいた並べ方を読み直す', () => {
+  assert.equal(toSubSort('cost'), 'cost')
+  assert.equal(toSubSort('category'), 'category')
+  // 知らない値や空なら既定に戻す
+  assert.equal(toSubSort('なんとか'), 'due')
+  assert.equal(toSubSort(null), 'due')
 })
 
 test('合計は使っているものだけ数える', () => {
