@@ -7,6 +7,7 @@ import {
   daysUntil,
   fullDayText,
   intervalLabel,
+  isMonthEnd,
   maxIntervalCount,
   monthlyCost,
   nextPayment,
@@ -45,6 +46,27 @@ test('月を足す。無い日は末日に寄せる', () => {
   // 年をまたぐ
   assert.equal(addMonths('2026-11-20', 3), '2027-02-20')
   assert.equal(addMonths('2026-12-01', 12), '2027-12-01')
+})
+
+test('起点が末日なら、進めた先でも末日になる', () => {
+  // 月末締めを「28日」「30日」として持つと、短い月のぶんだけ手前にずれる
+  assert.equal(addMonths('2026-02-28', 1), '2026-03-31')
+  assert.equal(addMonths('2026-04-30', 1), '2026-05-31')
+  assert.equal(addMonths('2026-04-30', 2), '2026-06-30')
+  assert.equal(addMonths('2026-06-30', 8), '2027-02-28')
+  // 閏年の2月29日も末日
+  assert.equal(addMonths('2028-02-29', 1), '2028-03-31')
+  assert.equal(addMonths('2028-02-29', 12), '2029-02-28')
+
+  // 末日でなければ、これまでどおり無い日だけ寄せる
+  assert.equal(addMonths('2026-01-30', 1), '2026-02-28')
+  assert.equal(addMonths('2026-01-30', 2), '2026-03-30')
+
+  assert.equal(isMonthEnd('2026-02-28'), true)
+  assert.equal(isMonthEnd('2028-02-29'), true)
+  assert.equal(isMonthEnd('2026-04-30'), true)
+  assert.equal(isMonthEnd('2026-04-29'), false)
+  assert.equal(isMonthEnd('2026-03-30'), false)
 })
 
 test('寄せたぶんが積もらない。いつも起点から数える', () => {

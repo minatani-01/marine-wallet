@@ -108,19 +108,30 @@ function dateText(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+/** その月の末日か。2月28日（平年）も末日として扱う */
+export function isMonthEnd(date: string): boolean {
+  const [y, m, d] = date.split('-').map(Number)
+  return d === daysInMonth(y, m)
+}
+
 /**
- * 月を足す。無い日は末日に寄せる。
+ * 月を足す。
  *
- * 1月31日の3か月後は4月30日。そこからさらに進めるときも、必ず起点から
- * 数え直す。前の結果に足していくと、末日に寄せたぶんが積もって
- * 1月31日→4月30日→7月30日のようにずれていく。
+ * 起点が末日なら、進めた先でも末日にする。2月28日の翌月は3月31日、
+ * 4月30日の翌月は5月31日。月末締めのものを「28日」「30日」として
+ * 持つと、短い月のぶんだけ毎回手前にずれていく。
+ *
+ * 末日でなければ、無い日だけ末日に寄せる（1月31日の翌月は2月28日）。
+ * そこからさらに進めるときも、必ず起点から数え直す。前の結果に足して
+ * いくと、寄せたぶんが積もって 1/31→4/30→7/30 のようにずれていく。
  */
 export function addMonths(date: string, months: number): string {
   const [y, m, d] = date.split('-').map(Number)
   const total = y * 12 + (m - 1) + months
   const year = Math.floor(total / 12)
   const month = (total % 12) + 1
-  return dateText(year, month, Math.min(d, daysInMonth(year, month)))
+  const last = daysInMonth(year, month)
+  return dateText(year, month, isMonthEnd(date) ? last : Math.min(d, last))
 }
 
 /** ひと月あたりの額。周期で割って、長さの違うものを並べて比べられるようにする */

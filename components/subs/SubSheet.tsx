@@ -12,6 +12,7 @@ import {
   daysUntil,
   fullDayText,
   intervalLabel,
+  isMonthEnd,
   maxIntervalCount,
   nextPayment,
   rejectReason,
@@ -289,7 +290,14 @@ export default function SubSheet({
 
         {/* 入れてもらうのは契約日だけ。支払日はここから周期ぶんずつ進めて出す。
             契約した日なら調べずに書けるし、間違えても次の支払日を見れば気づける */}
-        <Field label="契約日" hint="ここから周期ぶんずつ数えます">
+        {/* 末日に契約したものは、進めた先でも末日に合わせる。その旨をここで
+            言っておかないと、2月28日が3月31日になったときに驚く */}
+        <Field
+          label="契約日"
+          hint={
+            isMonthEnd(anchorOn) ? '月末どうしで合わせます' : 'ここから周期ぶんずつ数えます'
+          }
+        >
           <input
             type="date"
             aria-label="契約日"
