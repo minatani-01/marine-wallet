@@ -66,6 +66,29 @@ export const SUB_CATEGORIES = [
 
 export const DEFAULT_SUB_CATEGORY = 'その他'
 
+/**
+ * ジャンルを並べる順。
+ *
+ * 決まった順に並べる。使った順で出すと、前に開いたときと位置が変わり、
+ * 目で探し直すことになる。
+ *
+ * 順番は SUB_CATEGORIES のとおり。自分で書いたものはそのうしろ、
+ * 「その他」は最後。どれにも当てはまらなかったときの逃げ場なので、
+ * 先に目に入ると、ちゃんとしたジャンルがあっても押してしまう。
+ */
+export function sortCategories(items: string[]): string[] {
+  const known = SUB_CATEGORIES.filter((c) => c !== DEFAULT_SUB_CATEGORY)
+  const unique = [...new Set(items)]
+
+  return [
+    ...known.filter((c) => unique.includes(c)),
+    ...unique
+      .filter((c) => c !== DEFAULT_SUB_CATEGORY && !known.includes(c as (typeof known)[number]))
+      .sort((a, b) => a.localeCompare(b, 'ja')),
+    ...(unique.includes(DEFAULT_SUB_CATEGORY) ? [DEFAULT_SUB_CATEGORY] : []),
+  ]
+}
+
 /** 計算に要るところだけ。画面からは行をそのまま渡せる */
 export type Billable = {
   amount: number

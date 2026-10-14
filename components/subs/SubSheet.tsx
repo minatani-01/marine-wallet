@@ -15,6 +15,7 @@ import {
   maxIntervalCount,
   nextPayment,
   rejectReason,
+  sortCategories,
   splitInterval,
   toMonths,
   untilText,
@@ -93,8 +94,11 @@ export default function SubSheet({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  /** ジャンルの候補。使っているものと、よくあるものを混ぜて重複を外す */
-  const chips = [...new Set([...categoryOptions, ...SUB_CATEGORIES])]
+  /**
+   * ジャンルの候補。使っているものと、よくあるものを混ぜる。
+   * 並びは決まった順にする（使った順だと、開くたびに位置が変わる）
+   */
+  const chips = sortCategories([...categoryOptions, ...SUB_CATEGORIES])
 
   const save = async () => {
     const reason = rejectReason({
