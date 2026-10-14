@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { Button, Chip, Field, Segmented, Sheet, inputClass } from '@/components/ui'
+import { Button, Chip, Field, PickList, Segmented, Sheet, inputClass } from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -40,6 +40,7 @@ export default function SubSheet({
   userId,
   categoryOptions,
   methodOptions,
+  onRemoveMethod,
   today,
   onClose,
 }: {
@@ -48,8 +49,10 @@ export default function SubSheet({
   userId: string
   /** すでに使っているジャンル。選ぶだけで書かずに済むようにする */
   categoryOptions: string[]
-  /** すでに使っている支払い方法。カードは数枚しかないので、たいてい選ぶだけで済む */
-  methodOptions: string[]
+  /** すでに使っている支払い方法と、それぞれ何件で使っているか */
+  methodOptions: { name: string; count: number }[]
+  /** 支払い方法を候補から消す。使っている行からも外れる */
+  onRemoveMethod: (name: string) => Promise<boolean>
   /** 日本時間の今日。契約日の初期値と、次の支払日の計算に使う */
   today: string
   onClose: () => void
@@ -93,6 +96,30 @@ export default function SubSheet({
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /**
+   * 支払い方法を候補から消す。
+   *
+   * 候補は使っている行から作っているので、消すには使っている行から
+   * 外すしかない。他のサブスクにも触るので、何件に効くかを出して確かめる。
+   */
+  const removeMethod = async (name: string) => {
+    const used = methodOptions.find((item) => item.name === name)?.count ?? 0
+    const ok = window.confirm(
+      `「${name}」を候補から消しますか？\n${used}件のサブスクから支払い方法が外れます（サブスクそのものは消えません）。`
+    )
+    if (!ok) return
+
+    if (!(await onRemoveMethod(name))) {
+      setError('消せませんでした')
+      return
+    }
+    // いま開いている札がそれを使っていたら、画面の中からも外す
+    if (method === name) {
+      setMethod('')
+      setWritingMethod(false)
+    }
+  }
 
   /**
    * ジャンルの候補。使っているものと、よくあるものを混ぜる。
@@ -300,28 +327,30 @@ export default function SubSheet({
         <Field label="支払い方法" hint="任意">
           {/* 使ったことのあるものから選ぶ。カードは数枚しかないので、
               たいていは選ぶだけで済む。無ければ書いて足せる */}
-          <select
+          <PickList
+            label="支払い方法"
             value={writingMethod ? NEW_METHOD : method}
-            aria-label="支払い方法"
-            onChange={(e) => {
-              if (e.target.value === NEW_METHOD) {
+            onChange={(next) => {
+              if (next === NEW_METHOD) {
                 setWritingMethod(true)
                 setMethod('')
                 return
               }
               setWritingMethod(false)
-              setMethod(e.target.value)
+              setMethod(next)
             }}
-            className={`${inputClass} min-w-0`}
-          >
-            <option value="">選ばない</option>
-            {methodOptions.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-            <option value={NEW_METHOD}>新しく入れる…</option>
-          </select>
+            onRemove={(name) => void removeMethod(name)}
+            options={[
+              { id: '', label: '選ばない', aside: true },
+              ...methodOptions.map((item) => ({
+                id: item.name,
+                label: item.name,
+                note: `${item.count}件`,
+                removable: true,
+              })),
+              { id: NEW_METHOD, label: '新しく入れる…', aside: true },
+            ]}
+          />
 
           {writingMethod ? (
             <input
