@@ -22,6 +22,9 @@ import {
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
 
+/** 「新しく入れる」を選んだときの値。支払い方法そのものと混ざらない文字にする */
+const NEW_METHOD = '\u0000new'
+
 /**
  * サブスクを足す・直す（0065 / 0066）。
  *
@@ -35,6 +38,7 @@ export default function SubSheet({
   sub,
   userId,
   categoryOptions,
+  methodOptions,
   today,
   onClose,
 }: {
@@ -43,6 +47,8 @@ export default function SubSheet({
   userId: string
   /** すでに使っているジャンル。選ぶだけで書かずに済むようにする */
   categoryOptions: string[]
+  /** すでに使っている支払い方法。カードは数枚しかないので、たいてい選ぶだけで済む */
+  methodOptions: string[]
   /** 日本時間の今日。契約日の初期値と、次の支払日の計算に使う */
   today: string
   onClose: () => void
@@ -60,6 +66,13 @@ export default function SubSheet({
   const [anchorOn, setAnchorOn] = useState(sub?.anchor_on ?? today)
   const [category, setCategory] = useState(sub?.category ?? DEFAULT_SUB_CATEGORY)
   const [method, setMethod] = useState(sub?.method ?? '')
+  /**
+   * 支払い方法を書いて入れるか。
+   *
+   * 1枚目を入れるときは候補が無いので、最初から書く側にしておく。
+   * 候補があるのに毎回書かせると、「楽天カード」と「楽天ｶｰﾄﾞ」が並ぶ。
+   */
+  const [writingMethod, setWritingMethod] = useState(methodOptions.length === 0)
   const [url, setUrl] = useState(sub?.url ?? '')
   const [note, setNote] = useState(sub?.note ?? '')
 
@@ -281,14 +294,41 @@ export default function SubSheet({
         </Field>
 
         <Field label="支払い方法" hint="任意">
-          <input
-            type="text"
-            value={method}
+          {/* 使ったことのあるものから選ぶ。カードは数枚しかないので、
+              たいていは選ぶだけで済む。無ければ書いて足せる */}
+          <select
+            value={writingMethod ? NEW_METHOD : method}
             aria-label="支払い方法"
-            onChange={(e) => setMethod(e.target.value)}
-            placeholder="楽天カード"
-            className={inputClass}
-          />
+            onChange={(e) => {
+              if (e.target.value === NEW_METHOD) {
+                setWritingMethod(true)
+                setMethod('')
+                return
+              }
+              setWritingMethod(false)
+              setMethod(e.target.value)
+            }}
+            className={`${inputClass} min-w-0`}
+          >
+            <option value="">選ばない</option>
+            {methodOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+            <option value={NEW_METHOD}>新しく入れる…</option>
+          </select>
+
+          {writingMethod ? (
+            <input
+              type="text"
+              value={method}
+              aria-label="新しい支払い方法"
+              onChange={(e) => setMethod(e.target.value)}
+              placeholder="楽天カード"
+              className={`mt-2 ${inputClass}`}
+            />
+          ) : null}
         </Field>
 
         <Field label="管理・解約のページ" hint="任意">
