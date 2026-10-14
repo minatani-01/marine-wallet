@@ -56,10 +56,13 @@ export function splitInterval(months: number): { count: number; unit: IntervalUn
 export const SUB_CATEGORIES = [
   '動画',
   '音楽',
-  '読み物',
+  '読書',
   'ゲーム',
   '仕事',
   '生活',
+  '美容',
+  '治療',
+  '保険',
   '通信',
   'その他',
 ] as const

@@ -243,7 +243,7 @@ test('内訳は上から数件にまとめ、割合を付ける', () => {
     { category: '通信', monthly: 1000 },
     { category: '動画', monthly: 800 },
     { category: 'ゲーム', monthly: 300 },
-    { category: '読み物', monthly: 150 },
+    { category: '読書', monthly: 150 },
     { category: '音楽', monthly: 30 },
     { category: '仕事', monthly: 20 },
   ]
@@ -252,7 +252,7 @@ test('内訳は上から数件にまとめ、割合を付ける', () => {
   // 6件目から先は「ほか」にまとめる
   assert.deepEqual(
     shares.map((s) => s.category),
-    ['生活', '通信', '動画', 'ゲーム', '読み物', SHARE_REST]
+    ['生活', '通信', '動画', 'ゲーム', '読書', SHARE_REST]
   )
   assert.equal(shares.at(-1)?.monthly, 50)
   assert.equal(shares[0].percent, 77)

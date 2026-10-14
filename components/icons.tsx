@@ -556,3 +556,20 @@ export function IconSignal(props: IconProps) {
     </Icon>
   )
 }
+
+export function IconShield(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.2 5 6v5.4c0 4.1 2.8 7.6 7 9.4 4.2-1.8 7-5.3 7-9.4V6z" />
+      <path d="m9.3 12.1 1.9 1.9 3.5-3.6" />
+    </Icon>
+  )
+}
+
+export function IconMedical(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9.8 3.5h4.4a1 1 0 0 1 1 1v4.3h4.3a1 1 0 0 1 1 1v4.4a1 1 0 0 1-1 1h-4.3v4.3a1 1 0 0 1-1 1H9.8a1 1 0 0 1-1-1v-4.3H4.5a1 1 0 0 1-1-1V9.8a1 1 0 0 1 1-1h4.3V4.5a1 1 0 0 1 1-1z" />
+    </Icon>
+  )
+}

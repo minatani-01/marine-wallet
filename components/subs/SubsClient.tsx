@@ -11,10 +11,13 @@ import {
   IconExternal,
   IconGame,
   IconHome,
+  IconMedical,
   IconMusic,
   IconPlay,
   IconPlus,
+  IconShield,
   IconSignal,
+  IconSpark,
 } from '@/components/icons'
 import { Card, EmptyState, SectionLabel } from '@/components/ui'
 import { yen } from '@/lib/format'
@@ -314,10 +317,13 @@ export default function SubsClient({
 const CATEGORY_ICONS: Record<string, typeof IconDots> = {
   動画: IconPlay,
   音楽: IconMusic,
-  読み物: IconBook,
+  読書: IconBook,
   ゲーム: IconGame,
   仕事: IconBriefcase,
   生活: IconHome,
+  美容: IconSpark,
+  治療: IconMedical,
+  保険: IconShield,
   通信: IconSignal,
 }
 
