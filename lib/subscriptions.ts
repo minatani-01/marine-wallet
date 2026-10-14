@@ -238,9 +238,51 @@ export function byCategory(
   }
   return [...sums.entries()]
     .map(([category, monthly]) => ({ category, monthly }))
+    .filter((share) => share.monthly > 0)
     .sort((a, b) =>
       b.monthly !== a.monthly ? b.monthly - a.monthly : a.category.localeCompare(b.category, 'ja')
     )
+}
+
+/** 内訳の色。順番に当てる。隣り合う色が似ていると、帯と名前を結べない */
+export const SHARE_COLORS = [
+  '#22d3ee',
+  '#2dd4bf',
+  '#7dd3fc',
+  '#f0b840',
+  '#a78bfa',
+  '#94a3b8',
+] as const
+
+/** まとめたときの名前 */
+export const SHARE_REST = 'ほか'
+
+export type Share = { category: string; monthly: number; percent: number }
+
+/**
+ * 内訳を上から数件にまとめる。
+ *
+ * ジャンルが増えると、1%に満たないものまで並んで読めなくなる。
+ * 多い順に max 件まで出し、残りは「ほか」に足す。
+ *
+ * 割合も付ける。帯の長さだけでは、1位が8割なのか6割なのかが読めない。
+ * 0%にはしない。出ているのに0と書くと、無いのかと思う。
+ */
+export function topShares(
+  items: { category: string; monthly: number }[],
+  max = 5
+): Share[] {
+  const total = items.reduce((sum, item) => sum + item.monthly, 0)
+  if (total <= 0) return []
+
+  const head = items.slice(0, max)
+  const rest = items.slice(max).reduce((sum, item) => sum + item.monthly, 0)
+  const shown = rest > 0 ? [...head, { category: SHARE_REST, monthly: rest }] : head
+
+  return shown.map((item) => ({
+    ...item,
+    percent: Math.max(1, Math.round((item.monthly / total) * 100)),
+  }))
 }
 
 /** 入力を確かめる。駄目なら理由を返す */
