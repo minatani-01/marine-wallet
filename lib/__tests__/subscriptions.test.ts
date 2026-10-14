@@ -11,10 +11,12 @@ import {
   monthlyCost,
   nextPayment,
   rejectReason,
+  SHARE_REST,
   sortByNext,
   sortCategories,
   splitInterval,
   toMonths,
+  topShares,
   totals,
   untilText,
   yearlyCost,
@@ -211,6 +213,45 @@ test('ジャンルは決まった順に並べ、その他を最後に置く', ()
   // 「その他」が無ければ付け足さない
   assert.deepEqual(sortCategories(['音楽', '動画']), ['動画', '音楽'])
   assert.deepEqual(sortCategories([]), [])
+})
+
+test('内訳は上から数件にまとめ、割合を付ける', () => {
+  const items = [
+    { category: '生活', monthly: 7700 },
+    { category: '通信', monthly: 1000 },
+    { category: '動画', monthly: 800 },
+    { category: 'ゲーム', monthly: 300 },
+    { category: '読み物', monthly: 150 },
+    { category: '音楽', monthly: 30 },
+    { category: '仕事', monthly: 20 },
+  ]
+
+  const shares = topShares(items, 5)
+  // 6件目から先は「ほか」にまとめる
+  assert.deepEqual(
+    shares.map((s) => s.category),
+    ['生活', '通信', '動画', 'ゲーム', '読み物', SHARE_REST]
+  )
+  assert.equal(shares.at(-1)?.monthly, 50)
+  assert.equal(shares[0].percent, 77)
+
+  // 出ているのに0%とは書かない。無いのかと思う
+  assert.equal(shares.at(-1)?.percent, 1)
+
+  // まとめる必要が無ければ「ほか」を足さない
+  assert.deepEqual(
+    topShares(items.slice(0, 3), 5).map((s) => s.category),
+    ['生活', '通信', '動画']
+  )
+  assert.deepEqual(topShares([], 5), [])
+})
+
+test('内訳に0円のジャンルを出さない', () => {
+  const rows = [
+    { ...sub({ amount: 1000 }), active: true, category: '動画' },
+    { ...sub({ amount: 0 }), active: true, category: 'その他' },
+  ]
+  assert.deepEqual(byCategory(rows), [{ category: '動画', monthly: 1000 }])
 })
 
 test('入力を確かめる', () => {

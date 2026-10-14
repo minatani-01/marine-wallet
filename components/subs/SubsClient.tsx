@@ -10,12 +10,14 @@ import { yen } from '@/lib/format'
 import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
+  SHARE_COLORS,
   byCategory,
   dayText,
   daysUntil,
   intervalLabel,
   nextPayment,
   sortByNext,
+  topShares,
   totals,
 } from '@/lib/subscriptions'
 import type { Subscription } from '@/types'
@@ -66,7 +68,7 @@ export default function SubsClient({
   const stopped = useMemo(() => rows.filter((sub) => !sub.active), [rows])
   const ordered = useMemo(() => sortByNext(living, today), [living, today])
   const sum = useMemo(() => totals(rows), [rows])
-  const shares = useMemo(() => byCategory(rows), [rows])
+  const shares = useMemo(() => topShares(byCategory(rows)), [rows])
 
   const categories = useMemo(
     () => [...new Set(subs.map((sub) => sub.category))].filter(Boolean),
@@ -145,8 +147,11 @@ export default function SubsClient({
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <span className="block text-[11px] text-fg-mute">ひと月あたり</span>
-              <span className="tnum block text-[28px] leading-none font-semibold text-marine">
+              <span className="tnum block text-[30px] leading-none font-semibold text-marine">
                 {yen(sum.monthly)}
+              </span>
+              <span className="mt-1.5 block text-[10px] text-fg-mute">
+                {sum.count}件・周期で割った額
               </span>
             </div>
             <div className="shrink-0 text-right">
@@ -157,30 +162,42 @@ export default function SubsClient({
 
           {/* ジャンルごとの内訳。何に効いているかが分かる */}
           {shares.length > 0 ? (
-            <div className="mt-3 border-t border-line-soft pt-3">
-              <div className="flex h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+            <div className="mt-3.5 border-t border-line-soft pt-3">
+              {/* 細い帯だと、1割に満たないものが線にもならない。
+                  少しだけ太くして、最小の幅も決めておく */}
+              <div className="flex h-2 gap-0.5 overflow-hidden rounded-full">
                 {shares.map((share, index) => (
                   <span
                     key={share.category}
-                    className={index % 2 === 0 ? 'bg-marine' : 'bg-teal'}
-                    style={{ width: `${(share.monthly / Math.max(1, sum.monthly)) * 100}%` }}
+                    className="min-w-[4px] first:rounded-l-full last:rounded-r-full"
+                    style={{
+                      width: `${share.percent}%`,
+                      backgroundColor: SHARE_COLORS[index % SHARE_COLORS.length],
+                    }}
                   />
                 ))}
               </div>
-              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                {shares.map((share) => (
-                  <span key={share.category} className="text-[11px] text-fg-mute">
+
+              {/* 色と名前を結ぶ印を付ける。付けないと、帯のどれがどれか分からない */}
+              <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1.5">
+                {shares.map((share, index) => (
+                  <span
+                    key={share.category}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-fg-dim"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: SHARE_COLORS[index % SHARE_COLORS.length] }}
+                    />
                     {share.category}
-                    <span className="tnum ml-1 text-fg-dim">{yen(share.monthly)}</span>
+                    <span className="tnum text-fg">{yen(share.monthly)}</span>
+                    <span className="tnum text-fg-mute">{share.percent}%</span>
                   </span>
                 ))}
               </div>
             </div>
           ) : null}
-
-          <p className="mt-2.5 text-[11px] text-fg-mute">
-            周期で割ってひと月あたりに直しています。止めたものは数えません。
-          </p>
         </Card>
       </div>
 
