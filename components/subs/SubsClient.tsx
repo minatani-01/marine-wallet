@@ -1,12 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import SubSheet from '@/components/subs/SubSheet'
 import { IconExternal, IconPlus } from '@/components/icons'
 import { Card, EmptyState, SectionLabel } from '@/components/ui'
 import { yen } from '@/lib/format'
 import { withTapFeedback } from '@/lib/haptics'
+import { createClient } from '@/lib/supabase/client'
 import {
   byCategory,
   dayText,
@@ -41,19 +43,66 @@ export default function SubsClient({
   /** サーバーが出した日本時間の今日 */
   today: string
 }) {
+  const router = useRouter()
+
   /** 編集中。null は「追加」で開いたとき。閉じているあいだは undefined */
   const [editing, setEditing] = useState<Subscription | null | undefined>(undefined)
+  const [error, setError] = useState<string | null>(null)
 
-  const living = useMemo(() => subs.filter((sub) => sub.active), [subs])
-  const stopped = useMemo(() => subs.filter((sub) => !sub.active), [subs])
+  /**
+   * 押した直後の状態。サーバーに書いて読み直すまでのあいだ、これを先に出す。
+   *
+   * 待たせると、押したのに動かなかったのかと思ってもう一度押す。
+   * 新しい一覧が届いたら捨てて、サーバーの値に戻す。
+   */
+  const [flipped, setFlipped] = useState<Record<string, boolean>>({})
+  useEffect(() => setFlipped({}), [subs])
+
+  const rows = useMemo(
+    () => subs.map((sub) => (sub.id in flipped ? { ...sub, active: flipped[sub.id] } : sub)),
+    [subs, flipped]
+  )
+
+  const living = useMemo(() => rows.filter((sub) => sub.active), [rows])
+  const stopped = useMemo(() => rows.filter((sub) => !sub.active), [rows])
   const ordered = useMemo(() => sortByNext(living, today), [living, today])
-  const sum = useMemo(() => totals(subs), [subs])
-  const shares = useMemo(() => byCategory(subs), [subs])
+  const sum = useMemo(() => totals(rows), [rows])
+  const shares = useMemo(() => byCategory(rows), [rows])
 
   const categories = useMemo(
     () => [...new Set(subs.map((sub) => sub.category))].filter(Boolean),
     [subs]
   )
+
+  /**
+   * 使う・止めるを札のまま切り替える。
+   *
+   * 消さずに印を変えるだけ。解約したことも記録のうちで、消してしまうと、
+   * また同じものを申し込んだときに気づけない。
+   */
+  const toggleActive = async (sub: Subscription) => {
+    const next = !sub.active
+    setFlipped((all) => ({ ...all, [sub.id]: next }))
+    setError(null)
+
+    const supabase = createClient()
+    const { error: failed } = await supabase
+      .from('subscriptions')
+      .update({ active: next })
+      .eq('id', sub.id)
+
+    if (failed) {
+      // 戻す。押したとおりに見えたまま直っていない、が一番まずい
+      setFlipped((all) => {
+        const rest = { ...all }
+        delete rest[sub.id]
+        return rest
+      })
+      setError('変えられませんでした')
+      return
+    }
+    router.refresh()
+  }
 
   return (
     <div className="space-y-5 pb-16">
@@ -102,6 +151,8 @@ export default function SubsClient({
         </Card>
       </div>
 
+      {error ? <p className="text-[12px] text-danger">{error}</p> : null}
+
       <div>
         <SectionLabel>
           {living.length > 0 ? `使っているもの ${living.length}件` : '使っているもの'}
@@ -124,6 +175,7 @@ export default function SubsClient({
                   due={due}
                   days={days}
                   onEdit={() => setEditing(sub)}
+                  onToggle={() => void toggleActive(sub)}
                 />
               )
             })}
@@ -134,9 +186,14 @@ export default function SubsClient({
       {stopped.length > 0 ? (
         <div>
           <SectionLabel>止めたもの {stopped.length}件</SectionLabel>
-          <div className="flex flex-col gap-2.5 opacity-60">
+          <div className="flex flex-col gap-2.5">
             {stopped.map((sub) => (
-              <Row key={sub.id} sub={sub} onEdit={() => setEditing(sub)} />
+              <Row
+                key={sub.id}
+                sub={sub}
+                onEdit={() => setEditing(sub)}
+                onToggle={() => void toggleActive(sub)}
+              />
             ))}
           </div>
         </div>
@@ -171,30 +228,37 @@ export default function SubsClient({
 /**
  * 1件ぶんの札。
  *
- * 押すと編集。解約ページを入れてあるものは、右端から直接開けるようにする。
- * 止めたいと思ったときに、探すところから始めずに済む。
+ * 押すと編集。右端に使う・止めるのスイッチを置く。見直すのは一覧を
+ * 眺めているときなので、そこから1回で止められるようにする。
+ *
+ * 解約ページを入れてあるものは、その隣から直接開ける。アプリで止めても
+ * 請求は止まらないので、本当に解約するにはそちらへ行くことになる。
  */
 function Row({
   sub,
   due,
   days,
   onEdit,
+  onToggle,
 }: {
   sub: Subscription
   due?: string
   days?: number
   onEdit: () => void
+  onToggle: () => void
 }) {
   // 1週間を切ったら色を付ける。見直すなら落ちる前である
   const near = typeof days === 'number' && days <= 7
 
   return (
-    <div className="glass relative overflow-hidden rounded-2xl">
+    <div className="glass flex items-center overflow-hidden rounded-2xl">
       <button
         type="button"
         onClick={withTapFeedback(onEdit)}
         aria-label={`${sub.name}を編集`}
-        className="flex w-full items-center gap-3 p-3.5 text-left transition-colors hover:bg-white/[0.03]"
+        className={`flex min-w-0 flex-1 items-center gap-3 py-3.5 pr-2 pl-3.5 text-left transition-colors hover:bg-white/[0.03] ${
+          sub.active ? '' : 'opacity-55'
+        }`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-baseline gap-2">
@@ -216,32 +280,46 @@ function Row({
             ) : null}
             {sub.method ? <span className="truncate">{sub.method}</span> : null}
           </div>
-          {sub.note ? (
-            <p className="mt-1 truncate text-[11px] text-fg-mute">{sub.note}</p>
-          ) : null}
+          {sub.note ? <p className="mt-1 truncate text-[11px] text-fg-mute">{sub.note}</p> : null}
         </div>
 
-        <span
-          className={`tnum shrink-0 text-right text-[15px] font-semibold text-marine ${
-            sub.url ? 'pr-7' : ''
-          }`}
-        >
+        <span className="tnum shrink-0 text-right text-[15px] font-semibold text-marine">
           {yen(sub.amount)}
         </span>
       </button>
 
-      {sub.url ? (
-        <a
-          href={sub.url}
-          target="_blank"
-          rel="noreferrer noopener"
-          aria-label={`${sub.name}の管理ページを開く`}
-          title="管理・解約のページを開く"
-          className="absolute top-1/2 right-2.5 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-ink/85 text-fg-mute backdrop-blur transition-colors hover:border-marine/60 hover:text-marine"
+      <div className="flex shrink-0 items-center gap-1.5 py-3.5 pr-3 pl-1.5">
+        {sub.url ? (
+          <a
+            href={sub.url}
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label={`${sub.name}の管理ページを開く`}
+            title="管理・解約のページを開く"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
+          >
+            <IconExternal size={14} />
+          </a>
+        ) : null}
+
+        {/* 使っているかどうか。消さずに印を変えるだけなので、戻すのも1回 */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={sub.active}
+          aria-label={`${sub.name}を使う`}
+          onClick={withTapFeedback(onToggle)}
+          className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${
+            sub.active ? 'border-marine/70 bg-marine/30' : 'border-line bg-white/[0.04]'
+          }`}
         >
-          <IconExternal size={14} />
-        </a>
-      ) : null}
+          <span
+            className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all ${
+              sub.active ? 'left-[24px] bg-marine' : 'left-[3px] bg-fg-mute'
+            }`}
+          />
+        </button>
+      </div>
     </div>
   )
 }
