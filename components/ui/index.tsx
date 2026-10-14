@@ -1,8 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { IconCheck, IconClose, IconMinus, IconPlus } from '@/components/icons'
+import {
+  IconCheck,
+  IconChevronDown,
+  IconClose,
+  IconMinus,
+  IconPlus,
+  IconTrash,
+} from '@/components/icons'
 import { yen } from '@/lib/format'
 import { tapFeedback } from '@/lib/haptics'
 
@@ -640,5 +647,143 @@ export function IconFrame({ children, tone = 'default' }: { children: ReactNode;
     >
       {children}
     </span>
+  )
+}
+
+// -------------------------------------------------------------- PickList ----
+export type PickOption = {
+  id: string
+  label: string
+  /** 「選ばない」「新しく入れる…」のような、中身ではない行 */
+  aside?: boolean
+  /** 消せる行。消すものが何件で使われているかを添える */
+  removable?: boolean
+  note?: string
+}
+
+/**
+ * 選ぶ欄。
+ *
+ * <select> を使わない。開いたときの一覧は端末まかせで、暗い画面の中に
+ * 白い一覧が出る。行ごとにボタンを足すこともできない。
+ *
+ * 見た目を揃えるためだけなら我慢もできるが、ここは要らなくなったものを
+ * その場で消せるようにしたいので、自分で出す。
+ */
+export function PickList({
+  value,
+  options,
+  label,
+  placeholder = '選ばない',
+  onChange,
+  onRemove,
+}: {
+  value: string
+  options: PickOption[]
+  label: string
+  placeholder?: string
+  onChange: (id: string) => void
+  /** 行の「消す」を押したとき。渡さなければ消すボタンは出さない */
+  onRemove?: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+
+  // 外を押したら閉じる。開いたまま他の欄を触れると、どれを選んだのか
+  // 分からないまま次へ進んでしまう
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+
+  const picked = options.find((o) => o.id === value && !o.aside)
+
+  return (
+    <div ref={box} className="relative">
+      <button
+        type="button"
+        aria-label={label}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          tapFeedback()
+          setOpen((shown) => !shown)
+        }}
+        className={`${inputClass} flex items-center gap-2 text-left`}
+      >
+        <span className={`min-w-0 flex-1 truncate ${picked ? '' : 'text-fg-mute'}`}>
+          {picked ? picked.label : (options.find((o) => o.id === value)?.label ?? placeholder)}
+        </span>
+        <IconChevronDown
+          size={16}
+          className={`shrink-0 text-fg-mute transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open ? (
+        <div
+          role="listbox"
+          aria-label={label}
+          className="absolute inset-x-0 top-[calc(100%+4px)] z-30 max-h-64 overflow-y-auto rounded-xl border border-line bg-ink-2 p-1 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.85)]"
+        >
+          {options.map((option) => {
+            const on = option.id === value
+            return (
+              <div key={option.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => {
+                    tapFeedback()
+                    onChange(option.id)
+                    setOpen(false)
+                  }}
+                  className={`flex min-h-[40px] min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-[14px] transition-colors ${
+                    on
+                      ? 'bg-marine/15 text-marine'
+                      : option.aside
+                        ? 'text-fg-mute hover:bg-white/[0.04]'
+                        : 'text-fg hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                  {option.note ? (
+                    <span className="shrink-0 text-[10px] text-fg-mute">{option.note}</span>
+                  ) : null}
+                  {on ? <IconCheck size={14} /> : null}
+                </button>
+
+                {/* 消すのは行の右端。選ぶつもりで押してしまわないよう離す */}
+                {onRemove && option.removable ? (
+                  <button
+                    type="button"
+                    aria-label={`${option.label}を消す`}
+                    onClick={() => {
+                      tapFeedback()
+                      onRemove(option.id)
+                    }}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-fg-mute transition-colors hover:bg-danger/10 hover:text-danger"
+                  >
+                    <IconTrash size={14} />
+                  </button>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
   )
 }

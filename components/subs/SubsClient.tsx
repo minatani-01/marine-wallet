@@ -74,14 +74,39 @@ export default function SubsClient({
     [subs]
   )
 
-  /** すでに使っている支払い方法。同じカードを何度も書かずに済ませる */
-  const methods = useMemo(
-    () =>
-      [...new Set(subs.map((sub) => sub.method))]
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'ja')),
-    [subs]
-  )
+  /**
+   * すでに使っている支払い方法と、それぞれ何件で使っているか。
+   * 同じカードを何度も書かずに済み、消すときに何に効くかも分かる
+   */
+  const methods = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const sub of subs) {
+      if (!sub.method) continue
+      counts.set(sub.method, (counts.get(sub.method) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+  }, [subs])
+
+  /**
+   * 支払い方法を候補から消す。
+   *
+   * 候補は使っている行から作っているので、使っている行から外すしかない。
+   * サブスクそのものは消さない。払い方を変えただけ、ということもある。
+   */
+  const removeMethod = async (name: string) => {
+    const supabase = createClient()
+    const { error: failed } = await supabase
+      .from('subscriptions')
+      .update({ method: '' })
+      .eq('user_id', userId)
+      .eq('method', name)
+
+    if (failed) return false
+    router.refresh()
+    return true
+  }
 
   /**
    * 使う・止めるを札のまま切り替える。
@@ -227,6 +252,7 @@ export default function SubsClient({
           userId={userId}
           categoryOptions={categories}
           methodOptions={methods}
+          onRemoveMethod={removeMethod}
           today={today}
           onClose={() => setEditing(undefined)}
         />
