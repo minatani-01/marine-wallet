@@ -11,6 +11,7 @@ import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
   SHARE_COLORS,
+  SHARE_REST,
   byCategory,
   dayText,
   daysUntil,
@@ -69,6 +70,20 @@ export default function SubsClient({
   const ordered = useMemo(() => sortByNext(living, today), [living, today])
   const sum = useMemo(() => totals(rows), [rows])
   const shares = useMemo(() => topShares(byCategory(rows)), [rows])
+
+  /**
+   * ジャンルごとの色。上の帯と札で同じ色を使う。
+   *
+   * 色が一致していれば、札を見たときに「これは帯のどの部分か」がすぐ分かる。
+   * まとめた先（ほか）に入るものは、最後の色で揃える。
+   */
+  const tint = useMemo(() => {
+    const map = new Map<string, string>()
+    shares.forEach((share, index) => {
+      if (share.category !== SHARE_REST) map.set(share.category, SHARE_COLORS[index % SHARE_COLORS.length])
+    })
+    return map
+  }, [shares])
 
   const categories = useMemo(
     () => [...new Set(subs.map((sub) => sub.category))].filter(Boolean),
@@ -224,6 +239,7 @@ export default function SubsClient({
                   sub={sub}
                   due={due}
                   days={days}
+                  tint={tint.get(sub.category)}
                   onEdit={() => setEditing(sub)}
                   onToggle={() => void toggleActive(sub)}
                 />
@@ -241,6 +257,7 @@ export default function SubsClient({
               <Row
                 key={sub.id}
                 sub={sub}
+                tint={tint.get(sub.category)}
                 onEdit={() => setEditing(sub)}
                 onToggle={() => void toggleActive(sub)}
               />
@@ -280,25 +297,32 @@ export default function SubsClient({
 /**
  * 1件ぶんの札。
  *
+ * 縦の線を揃える。左は名前とその素性、右は決まった幅の箱にして、金額を
+ * 上、スイッチを下に置く。金額の右端が札ごとにずれていると、いくら
+ * 出ていくのかを上から下へ目で追えない。
+ *
  * どれも必ず2行にする。メモの有る無しで高さが変わると、並べたときに
- * 段が揃わず、目が上下に振られて金額を追いにくい。メモは開けば読める。
+ * 段が揃わない。メモは開けば読める。
  *
- * 押すと編集。右端に使う・止めるのスイッチを置く。見直すのは一覧を
- * 眺めているときなので、そこから1回で止められるようにする。
+ * 2行目の頭はジャンル。何のための支払いかが先に目に入るようにする。
+ * 印の色は上の帯と同じにしてあるので、札と内訳を見た目で結べる。
  *
- * 解約ページを入れてあるものは、その隣から直接開ける。アプリで止めても
- * 請求は止まらないので、本当に解約するにはそちらへ行くことになる。
+ * 押すと編集。解約ページを入れてあるものはスイッチの隣から直接開ける。
+ * アプリで止めても請求は止まらないので、本当に解約するにはそちらへ行く。
  */
 function Row({
   sub,
   due,
   days,
+  tint,
   onEdit,
   onToggle,
 }: {
   sub: Subscription
   due?: string
   days?: number
+  /** ジャンルの色。上の帯と合わせる */
+  tint?: string
   onEdit: () => void
   onToggle: () => void
 }) {
@@ -306,73 +330,81 @@ function Row({
   const near = typeof days === 'number' && days <= 7
 
   return (
-    <div className="glass flex items-center overflow-hidden rounded-2xl">
+    <div className="glass flex items-center gap-2 overflow-hidden rounded-2xl py-3 pr-3 pl-3.5">
       <button
         type="button"
         onClick={withTapFeedback(onEdit)}
         aria-label={`${sub.name}を編集`}
-        className={`flex min-w-0 flex-1 items-center gap-3 py-3.5 pr-2 pl-3.5 text-left transition-colors hover:bg-white/[0.03] ${
-          sub.active ? '' : 'opacity-55'
-        }`}
+        className={`min-w-0 flex-1 text-left ${sub.active ? '' : 'opacity-55'}`}
       >
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="shrink-0 truncate text-[14px] font-semibold">{sub.name}</span>
-            {/* プラン名はサービス名に続けて小さく出す。同じサービスで
-                契約が分かれているとき、どちらの話か札だけで分かる */}
-            {sub.plan ? (
-              <span className="min-w-0 truncate text-[11px] text-fg-dim">{sub.plan}</span>
-            ) : null}
-            <span className="ml-auto shrink-0 text-[10px] text-fg-mute">{sub.category}</span>
-          </div>
-          {/* 折り返さない。1件が3行になると、その札だけ背が高くなる */}
-          <div className="mt-1 flex items-baseline gap-x-2 overflow-hidden text-[11px] whitespace-nowrap text-fg-mute">
-            <span className="shrink-0">{intervalLabel(sub.interval_months)}</span>
-            {due ? (
-              <span className={`tnum shrink-0 ${near ? 'text-warn' : 'text-fg-dim'}`}>
-                {dayText(due)}
-              </span>
-            ) : null}
-            {sub.method ? <span className="min-w-0 truncate">{sub.method}</span> : null}
-          </div>
+        <div className="flex min-w-0 items-baseline gap-2 overflow-hidden whitespace-nowrap">
+          <span className="min-w-0 shrink truncate text-[14px] font-semibold">{sub.name}</span>
+          {/* プラン名はサービス名に続けて小さく出す。同じサービスで
+              契約が分かれているとき、どちらの話か札だけで分かる */}
+          {sub.plan ? (
+            <span className="min-w-0 shrink truncate text-[11px] text-fg-dim">{sub.plan}</span>
+          ) : null}
         </div>
 
-        <span className="tnum shrink-0 text-right text-[15px] font-semibold text-marine">
-          {yen(sub.amount)}
-        </span>
+        {/* 折り返さない。1件が3行になると、その札だけ背が高くなる */}
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] whitespace-nowrap text-fg-mute">
+          <span
+            aria-hidden="true"
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: tint ?? 'var(--color-fg-mute)' }}
+          />
+          <span className="shrink-0 text-fg-dim">{sub.category}</span>
+          <span className="shrink-0 text-line">|</span>
+          <span className="shrink-0">{intervalLabel(sub.interval_months)}</span>
+          {due ? (
+            <span className={`tnum shrink-0 ${near ? 'text-warn' : ''}`}>{dayText(due)}</span>
+          ) : null}
+          {sub.method ? <span className="min-w-0 truncate">{sub.method}</span> : null}
+        </div>
       </button>
 
-      <div className="flex shrink-0 items-center gap-1.5 py-3.5 pr-3 pl-1.5">
-        {sub.url ? (
-          <a
-            href={sub.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            aria-label={`${sub.name}の管理ページを開く`}
-            title="管理・解約のページを開く"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
-          >
-            <IconExternal size={14} />
-          </a>
-        ) : null}
-
-        {/* 使っているかどうか。消さずに印を変えるだけなので、戻すのも1回 */}
-        <button
-          type="button"
-          role="switch"
-          aria-checked={sub.active}
-          aria-label={`${sub.name}を使う`}
-          onClick={withTapFeedback(onToggle)}
-          className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${
-            sub.active ? 'border-marine/70 bg-marine/30' : 'border-line bg-white/[0.04]'
+      {/* 右は決まった幅。札がどれでも金額の右端とスイッチの位置が揃う */}
+      <div className="flex w-[84px] shrink-0 flex-col items-end gap-1.5">
+        <span
+          className={`tnum text-[15px] leading-none font-semibold ${
+            sub.active ? 'text-marine' : 'text-fg-mute'
           }`}
         >
-          <span
-            className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all ${
-              sub.active ? 'left-[24px] bg-marine' : 'left-[3px] bg-fg-mute'
+          {yen(sub.amount)}
+        </span>
+
+        <div className="flex items-center gap-1.5">
+          {sub.url ? (
+            <a
+              href={sub.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label={`${sub.name}の管理ページを開く`}
+              title="管理・解約のページを開く"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-line text-fg-mute transition-colors hover:border-marine/60 hover:text-marine"
+            >
+              <IconExternal size={12} />
+            </a>
+          ) : null}
+
+          {/* 使っているかどうか。消さずに印を変えるだけなので、戻すのも1回 */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sub.active}
+            aria-label={`${sub.name}を使う`}
+            onClick={withTapFeedback(onToggle)}
+            className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${
+              sub.active ? 'border-marine/70 bg-marine/30' : 'border-line bg-white/[0.04]'
             }`}
-          />
-        </button>
+          >
+            <span
+              className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all ${
+                sub.active ? 'left-[24px] bg-marine' : 'left-[3px] bg-fg-mute'
+              }`}
+            />
+          </button>
+        </div>
       </div>
     </div>
   )
