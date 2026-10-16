@@ -16,8 +16,6 @@ import {
   isAsleep,
   isFasting,
   jstMinutes,
-  sleepInsideFast,
-  spanText,
   toMinutes,
   wakeAt,
   type Plan,
@@ -106,8 +104,6 @@ export default function AutophagyCard({
   const wake = wakeAt(sleep)
   const valid = toMinutes(fastStart) !== null && endAt !== null
   const sleepValid = toMinutes(sleepStart) !== null && wake !== null
-  /** 食べない時間のうち寝ているぶん。残りどれくらい起きて我慢するかが読める */
-  const asleepInFast = valid && sleepValid ? sleepInsideFast(plan, sleep) : null
 
   /**
    * 触ったらすぐ保存する。
@@ -163,24 +159,13 @@ export default function AutophagyCard({
           >
             {!enabled ? 'お休み中' : fasting ? '食べない時間' : '食べてOK'}
           </span>
-          {/* 残り時間ではなく時刻で出す。「あと6時間2分」では、何時までなのかを
-              自分で足すことになる。時刻なら予定と突き合わせられる。
-              320px に収めるため、ここは一方の時刻だけにする（帯は下に出す） */}
-          <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
-            {enabled && valid ? (
-              <>
-                <span className="tnum text-fg-dim">{fasting ? endAt : fastStart}</span>
-                {fasting ? 'まで食べられません' : 'から食べられません'}
-                {/* そのうち何時間を寝て過ごすか。書かないと、まるごと
-                    空腹の時間に見える */}
-                {asleepInFast ? (
-                  <span className="ml-1.5">（うち睡眠{spanText(asleepInFast)}）</span>
-                ) : null}
-              </>
-            ) : (
-              '時間を決めると通知します'
-            )}
-          </span>
+          {/* 何時までかは下の行と帯に出ている。ここで言い直さない。
+              決まっていないときだけ、何をすればよいかを書く */}
+          {enabled && valid ? null : (
+            <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
+              時間を決めると通知します
+            </span>
+          )}
         </div>
 
         {/* 使うかどうか。止めているあいだは通知もしない */}
@@ -232,7 +217,6 @@ export default function AutophagyCard({
             setFastHours(next)
             void save({ fast_hours: next })
           }}
-          endAt={endAt}
         />
 
         <TimeRow
@@ -250,7 +234,6 @@ export default function AutophagyCard({
             setSleepHours(next)
             void save({ sleep_hours: next })
           }}
-          endAt={wake}
         />
       </div>
 
@@ -264,9 +247,6 @@ export default function AutophagyCard({
  *
  * 断食と睡眠で同じ並びにする。別々の作りにすると、どちらがどちらの
  * 設定なのかを毎回読み直すことになる。
- *
- * 終わりの時刻は右端に小さく添える。足せば出るものを入れてもらうと
- * 食い違うが、出さないと「で、何時までなのか」を自分で足すことになる。
  */
 function TimeRow({
   label,
@@ -277,7 +257,6 @@ function TimeRow({
   hoursLabel,
   choices,
   onHours,
-  endAt,
 }: {
   label: string
   time: string
@@ -288,8 +267,6 @@ function TimeRow({
   hoursLabel: string
   choices: readonly number[]
   onHours: (next: number) => void
-  /** 足して出した終わりの時刻 */
-  endAt: string | null
 }) {
   // 前に選んだ値が今の選択肢に無いことがある（選べる長さを変えたとき）。
   // 混ぜて出す。消すと、何も選んでいないように見えて、実際の設定と食い違う
@@ -318,10 +295,6 @@ function TimeRow({
         />
       </div>
 
-      {/* 狭い画面では落とす。帯を見れば、どこで終わるかは分かる */}
-      <span className="tnum truncate text-[11px] text-fg-mute max-[379px]:hidden">
-        〜{endAt ?? '--:--'}
-      </span>
     </div>
   )
 }
