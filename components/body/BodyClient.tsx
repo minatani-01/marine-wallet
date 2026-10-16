@@ -6,6 +6,7 @@ import AutophagyCard from '@/components/body/AutophagyCard'
 import CarePanel from '@/components/body/CarePanel'
 import FreeWeightPanel from '@/components/body/FreeWeightPanel'
 import HistoryPanel from '@/components/body/HistoryPanel'
+import DrinkRecipes from '@/components/body/DrinkRecipes'
 import HomePanel from '@/components/body/HomePanel'
 import ProfilePanel from '@/components/body/ProfilePanel'
 import SaunaPanel from '@/components/body/SaunaPanel'
@@ -17,6 +18,7 @@ import type {
   BodyCareLog,
   BodyProfile,
   BodyWeight,
+  DrinkRecipe,
   FreeWeightLog,
   SaunaLog,
   WorkoutSessionView,
@@ -61,6 +63,7 @@ export default function BodyClient({
   freeWeights,
   saunaLogs,
   careLogs,
+  recipes,
 }: {
   userId: string
   settings: AutophagySettings | null
@@ -74,6 +77,8 @@ export default function BodyClient({
   freeWeights: FreeWeightLog[]
   saunaLogs: SaunaLog[]
   careLogs: BodyCareLog[]
+  /** 特製ドリンクのレシピ（0069） */
+  recipes: DrinkRecipe[]
 }) {
   const [tab, setTab] = useState<BodyTab>('home')
 
@@ -95,6 +100,13 @@ export default function BodyClient({
           <div>
             <SectionLabel>オートファジー</SectionLabel>
             <AutophagyCard userId={userId} settings={settings} nowIso={nowIso} />
+          </div>
+
+          {/* 食べない時間と地続きの話なので、すぐ下に置く。作るときに
+              画面を移らずに済む */}
+          <div>
+            <SectionLabel>特製ドリンク</SectionLabel>
+            <DrinkRecipes userId={userId} recipes={recipes} />
           </div>
 
           <HomePanel

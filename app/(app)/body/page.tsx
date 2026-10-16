@@ -7,6 +7,7 @@ import {
   getBodyCareLogs,
   getBodyProfile,
   getBodyWeights,
+  getDrinkRecipes,
   getFreeWeightLogs,
   getProfile,
   getSaunaLogs,
@@ -30,7 +31,7 @@ export default async function BodyPage() {
   const profile = await getProfile(user.id)
   if (!profile?.is_master) redirect('/')
 
-  const [settings, bodyProfile, weights, sessions, freeWeights, saunaLogs, careLogs] =
+  const [settings, bodyProfile, weights, sessions, freeWeights, saunaLogs, careLogs, recipes] =
     await Promise.all([
       getAutophagySettings(user.id),
       getBodyProfile(user.id),
@@ -39,6 +40,7 @@ export default async function BodyPage() {
       getFreeWeightLogs(user.id),
       getSaunaLogs(user.id),
       getBodyCareLogs(user.id),
+      getDrinkRecipes(user.id),
     ])
 
   // 最初の描画をブラウザと揃えるため、サーバーの時刻と今日を渡す。
@@ -57,6 +59,7 @@ export default async function BodyPage() {
       freeWeights={freeWeights}
       saunaLogs={saunaLogs}
       careLogs={careLogs}
+      recipes={recipes}
     />
   )
 }
