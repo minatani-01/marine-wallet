@@ -140,13 +140,13 @@ export default function AutophagyCard({
       {/* いまどちらの時間か。開いた瞬間にこれだけ分かればよい */}
       <div className="flex items-center gap-2.5">
         <span
-          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${
             enabled && fasting
               ? 'border-line bg-white/[0.03] text-fg-mute'
               : 'border-marine/50 bg-marine/10 text-marine'
           }`}
         >
-          {enabled && fasting ? <IconFast size={17} /> : <IconPlate size={17} />}
+          {enabled && fasting ? <IconFast size={16} /> : <IconPlate size={16} />}
         </span>
 
         {/* 状態と残り時間を縦に積む。横に並べると、320px で状態のほうが
@@ -193,7 +193,7 @@ export default function AutophagyCard({
 
       {/* 1日の帯。食べない時間を落とし、いまの位置を線で出す */}
       {valid ? (
-        <div className="mt-2.5">
+        <div className="mt-2">
           <DayBar plan={plan} sleep={sleepValid ? sleep : null} minutes={minutes} enabled={enabled} />
         </div>
       ) : null}
@@ -201,7 +201,7 @@ export default function AutophagyCard({
       {/* 決めるのは始まりと長さだけ。終わりは足して出す。
           2行とも「名前・時刻・長さ」の同じ並びにする。読み方を2通り
           覚えずに済み、縦の線も揃う */}
-      <div className="mt-5 flex flex-col gap-2">
+      <div className="mt-3 flex flex-col gap-1.5">
         <TimeRow
           label="断食"
           time={fastStart}
@@ -285,7 +285,7 @@ function TimeRow({
         className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
       />
 
-      <div className="w-[108px] shrink-0">
+      <div className="min-w-0 flex-1">
         <PickList
           compact
           label={hoursLabel}
