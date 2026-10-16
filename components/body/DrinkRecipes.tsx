@@ -3,28 +3,44 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { IconPlus, IconTrash } from '@/components/icons'
-import { Button, Card, EmptyState, Field, Sheet, inputClass } from '@/components/ui'
+import { IconClose, IconPlus, IconTrash } from '@/components/icons'
+import {
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  PickList,
+  Sheet,
+  inputClass,
+  inputClassCompact,
+} from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
-import { ingredientLines, rejectRecipeReason } from '@/lib/drinks'
+import {
+  DRINK_UNITS,
+  MAX_ITEMS,
+  cleanItems,
+  emptyItem,
+  itemText,
+  needsAmount,
+  rejectRecipeReason,
+  toItems,
+  type DrinkItem,
+  type DrinkUnit,
+} from '@/lib/drinks'
 import { createClient } from '@/lib/supabase/client'
 import type { DrinkRecipe } from '@/types'
 
 /**
- * 特製ドリンクのレシピ（0069）。
+ * 特製ドリンクのレシピ（0069 / 0071）。
  *
  * 断食の前後や運動のあとに作るものが決まってくる。そのたびに思い出すのでは
  * 分量が毎回ぶれるし、良かった配合を忘れる。書いて残しておく。
  *
- * オートファジーの下に置く。食べない時間と地続きの話なので、作るときに
- * 画面を移らずに済む。
- *
  * 置くのは名前と分量だけ。いつ飲むかや作り方まで持たせると、書くことが
- * 増えて残らなくなる。作り方が要るものは、そもそも思い出せる。
+ * 増えて残らなくなる。
  *
- * 分量は1行1つの文字列で持つ。「プロテイン 30g」のように材料と量を
- * まとめて書けるようにしたいので、分けない。分けると、粉・液体・個数で
- * 単位が割れて、どれにも当てはまらない書き方が出てくる。
+ * 分量は「名前・数・単位」に分けて入れてもらう。自由に書けると、
+ * 「水300」「水 300ml」「お水300cc」が並んで、同じものか見分けが付かない。
  */
 export default function DrinkRecipes({
   userId,
@@ -80,7 +96,7 @@ export default function DrinkRecipes({
  * 置いておく意味が薄い。
  */
 function RecipeCard({ recipe, onEdit }: { recipe: DrinkRecipe; onEdit: () => void }) {
-  const lines = ingredientLines(recipe.ingredients)
+  const items = toItems(recipe.items)
 
   return (
     <Card className="!p-0">
@@ -92,20 +108,19 @@ function RecipeCard({ recipe, onEdit }: { recipe: DrinkRecipe; onEdit: () => voi
       >
         <span className="block truncate text-[14px] font-semibold">{recipe.name}</span>
 
-        {lines.length > 0 ? (
+        {items.length > 0 ? (
           <ul className="mt-2 flex flex-col gap-1">
-            {lines.map((line, index) => (
+            {items.map((item, index) => (
               <li
-                key={`${line}-${index}`}
+                key={`${item.name}-${index}`}
                 className="flex items-baseline gap-2 text-[12px] text-fg-dim"
               >
                 <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-teal" />
-                <span className="min-w-0">{line}</span>
+                <span className="min-w-0">{itemText(item)}</span>
               </li>
             ))}
           </ul>
         ) : null}
-
       </button>
     </Card>
   )
@@ -133,13 +148,21 @@ function RecipeSheet({
   const router = useRouter()
 
   const [name, setName] = useState(recipe?.name ?? '')
-  const [ingredients, setIngredients] = useState(recipe?.ingredients ?? '')
+  /** 1行は必ず出しておく。空の枠があるほうが、何を入れるのか分かる */
+  const [items, setItems] = useState<DrinkItem[]>(() => {
+    const saved = toItems(recipe?.items)
+    return saved.length > 0 ? saved : [emptyItem()]
+  })
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const patch = (index: number, next: Partial<DrinkItem>) => {
+    setItems((all) => all.map((item, i) => (i === index ? { ...item, ...next } : item)))
+  }
+
   const save = async () => {
-    const reason = rejectRecipeReason({ name, ingredients })
+    const reason = rejectRecipeReason({ name, items })
     if (reason) {
       setError(reason)
       return
@@ -149,11 +172,7 @@ function RecipeSheet({
     setError(null)
     const supabase = createClient()
 
-    const payload = {
-      user_id: userId,
-      name: name.trim(),
-      ingredients: ingredientLines(ingredients).join('\n'),
-    }
+    const payload = { user_id: userId, name: name.trim(), items: cleanItems(items) }
 
     const { error: failed } = recipe
       ? await supabase.from('drink_recipes').update(payload).eq('id', recipe.id)
@@ -228,17 +247,75 @@ function RecipeSheet({
           />
         </Field>
 
-        {/* 1行1つ。量まで書いてもらう。名前と量に分けると、粉・液体・個数で
-            単位が割れて、どれにも当てはまらない書き方が出てくる */}
-        <Field label="分量" hint="1行に1つ">
-          <textarea
-            value={ingredients}
-            aria-label="分量"
-            onChange={(e) => setIngredients(e.target.value)}
-            rows={6}
-            placeholder={'水 300ml\nプロテイン 30g\nレモン汁 小さじ1'}
-            className={`${inputClass} resize-none`}
-          />
+        {/* 名前・数・単位に分ける。自由に書かせると、同じものが別の書き方で
+            並んで見分けが付かなくなる */}
+        <Field label="分量">
+          <div className="flex flex-col gap-2">
+            {items.map((item, index) => (
+              <div key={index} className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={item.name}
+                  aria-label={`材料${index + 1}`}
+                  onChange={(e) => patch(index, { name: e.target.value })}
+                  placeholder="水"
+                  className={`${inputClassCompact} min-w-0 flex-1`}
+                />
+
+                {/* 適量に数は無い。欄を出したままにすると、入れるものだと思う */}
+                {needsAmount(item.unit) ? (
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    aria-label={`材料${index + 1}の数`}
+                    value={item.amount ?? ''}
+                    min={0}
+                    step="any"
+                    onChange={(e) =>
+                      patch(index, { amount: e.target.value === '' ? null : Number(e.target.value) })
+                    }
+                    placeholder="300"
+                    className={`${inputClassCompact} tnum !w-[68px] shrink-0 !px-2`}
+                  />
+                ) : null}
+
+                <div className="w-[100px] shrink-0">
+                  <PickList
+                    compact
+                    label={`材料${index + 1}の単位`}
+                    value={item.unit}
+                    onChange={(next) => patch(index, { unit: next as DrinkUnit })}
+                    options={DRINK_UNITS.map((unit) => ({ id: unit, label: unit }))}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  aria-label={`材料${index + 1}を消す`}
+                  onClick={withTapFeedback(() =>
+                    setItems((all) =>
+                      all.length > 1 ? all.filter((_, i) => i !== index) : [emptyItem()]
+                    )
+                  )}
+                  className="inline-flex h-8 w-6 shrink-0 items-center justify-center rounded-lg text-fg-mute transition-colors hover:text-danger"
+                >
+                  <IconClose size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {items.length < MAX_ITEMS ? (
+            <Button
+              variant="outline"
+              full
+              className="mt-2"
+              onClick={withTapFeedback(() => setItems((all) => [...all, emptyItem()]))}
+            >
+              <IconPlus size={14} />
+              材料を足す
+            </Button>
+          ) : null}
         </Field>
       </div>
     </Sheet>
