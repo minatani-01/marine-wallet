@@ -214,92 +214,115 @@ export default function AutophagyCard({
       ) : null}
 
       {/* 決めるのは始まりと長さだけ。終わりは足して出す。
-          1行に収めるため、余白も文字も詰めてある。区切り線は引かない。
-          帯との間が空いていれば、別のものだと分かる */}
-      <div className="mt-5 flex flex-wrap items-center gap-x-1.5 gap-y-2">
-        <input
-          type="time"
-          value={fastStart}
-          aria-label="食べない時間の始まり"
-          onChange={(e) => {
-            setFastStart(e.target.value)
-            void save({ fast_start: e.target.value })
+          2行とも「名前・時刻・長さ」の同じ並びにする。読み方を2通り
+          覚えずに済み、縦の線も揃う */}
+      <div className="mt-5 flex flex-col gap-2">
+        <TimeRow
+          label="断食"
+          time={fastStart}
+          timeLabel="食べない時間の始まり"
+          onTime={(next) => {
+            setFastStart(next)
+            void save({ fast_start: next })
           }}
-          // 文字は 16px のまま。これより小さいと iOS が画面を拡大する
-          className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
-        />
-        {/* 「から」だけでは何が始まるのか書いていない。時刻の欄が
-            食べない時間の始まりだと、ここで言い切る。
-            1行に収まらない幅では「スタート」を落とす。意味は変わらない */}
-        <span className="shrink-0 text-[11px] text-fg-mute">
-          から断食<span className="max-[379px]:hidden">スタート</span>
-        </span>
-
-        {/* 時間数は右端へ。決めるものが2つだと分かり、押す的も端に寄って大きくなる */}
-        <div className="ml-auto flex shrink-0 items-center rounded-full border border-line p-0.5">
-          {FAST_HOURS_CHOICES.map((hours) => {
-            const on = hours === fastHours
-            return (
-              <button
-                key={hours}
-                type="button"
-                aria-pressed={on}
-                aria-label={`${hours}時間`}
-                onClick={() => {
-                  setFastHours(hours)
-                  void save({ fast_hours: hours })
-                }}
-                className={`tnum h-7 rounded-full px-1.5 text-[11px] transition-colors ${
-                  on ? 'bg-marine font-medium text-ink' : 'text-fg-mute hover:text-marine'
-                }`}
-              >
-                {hours}
-              </button>
-            )
-          })}
-          {/* 320px では「時間」まで入らない。数字の意味は左の「断食」で分かる */}
-          <span className="pr-1.5 pl-0.5 text-[10px] text-fg-mute max-[339px]:hidden">時間</span>
-        </div>
-      </div>
-
-      {/* 睡眠。断食の行と同じ作りにして、読み方を覚え直さずに済ませる */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-2">
-        <input
-          type="time"
-          value={sleepStart}
-          aria-label="寝る時刻"
-          onChange={(e) => {
-            setSleepStart(e.target.value)
-            void save({ sleep_start: e.target.value })
+          hours={fastHours}
+          hoursLabel="断食時間"
+          choices={FAST_HOURS_CHOICES}
+          onHours={(next) => {
+            setFastHours(next)
+            void save({ fast_hours: next })
           }}
-          className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
+          endAt={endAt}
         />
-        <span className="shrink-0 text-[11px] text-fg-mute">
-          から睡眠<span className="max-[379px]:hidden">。起床 </span>
-          <span className="tnum max-[379px]:hidden">{wake ?? '--:--'}</span>
-        </span>
 
-        {/* 6〜12の7つ。横に並べると押し分けられる幅にならないので、
-            一覧から選んでもらう */}
-        <div className="ml-auto w-[104px] shrink-0">
-          <PickList
-            compact
-            label="睡眠時間"
-            value={String(sleepHours)}
-            onChange={(next) => {
-              setSleepHours(Number(next))
-              void save({ sleep_hours: Number(next) })
-            }}
-            options={SLEEP_HOURS_CHOICES.map((hours) => ({
-              id: String(hours),
-              label: `${hours}時間`,
-            }))}
-          />
-        </div>
+        <TimeRow
+          label="睡眠"
+          time={sleepStart}
+          timeLabel="寝る時刻"
+          onTime={(next) => {
+            setSleepStart(next)
+            void save({ sleep_start: next })
+          }}
+          hours={sleepHours}
+          hoursLabel="睡眠時間"
+          choices={SLEEP_HOURS_CHOICES}
+          onHours={(next) => {
+            setSleepHours(next)
+            void save({ sleep_hours: next })
+          }}
+          endAt={wake}
+        />
       </div>
 
       {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
     </Card>
+  )
+}
+
+/**
+ * 「名前・時刻・長さ」の1行。
+ *
+ * 断食と睡眠で同じ並びにする。別々の作りにすると、どちらがどちらの
+ * 設定なのかを毎回読み直すことになる。
+ *
+ * 終わりの時刻は右端に小さく添える。足せば出るものを入れてもらうと
+ * 食い違うが、出さないと「で、何時までなのか」を自分で足すことになる。
+ */
+function TimeRow({
+  label,
+  time,
+  timeLabel,
+  onTime,
+  hours,
+  hoursLabel,
+  choices,
+  onHours,
+  endAt,
+}: {
+  label: string
+  time: string
+  /** 読み上げ用の名前。画面には出ない */
+  timeLabel: string
+  onTime: (next: string) => void
+  hours: number
+  hoursLabel: string
+  choices: readonly number[]
+  onHours: (next: number) => void
+  /** 足して出した終わりの時刻 */
+  endAt: string | null
+}) {
+  // 前に選んだ値が今の選択肢に無いことがある（選べる長さを変えたとき）。
+  // 混ぜて出す。消すと、何も選んでいないように見えて、実際の設定と食い違う
+  const options = choices.includes(hours) ? [...choices] : [...choices, hours].sort((a, b) => a - b)
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-7 shrink-0 text-[12px] font-medium text-fg-dim">{label}</span>
+
+      <input
+        type="time"
+        value={time}
+        aria-label={timeLabel}
+        onChange={(e) => onTime(e.target.value)}
+        // 文字は 16px のまま。これより小さいと iOS が画面を拡大する
+        className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
+      />
+
+      <div className="w-[108px] shrink-0">
+        <PickList
+          compact
+          label={hoursLabel}
+          value={String(hours)}
+          onChange={(next) => onHours(Number(next))}
+          options={options.map((item) => ({ id: String(item), label: `${item}時間` }))}
+        />
+      </div>
+
+      {/* 狭い画面では落とす。帯を見れば、どこで終わるかは分かる */}
+      <span className="tnum truncate text-[11px] text-fg-mute max-[379px]:hidden">
+        〜{endAt ?? '--:--'}
+      </span>
+    </div>
   )
 }
 
