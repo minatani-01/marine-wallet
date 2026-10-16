@@ -548,8 +548,8 @@ export type DrinkRecipe = {
   id: string
   user_id: string
   name: string
-  /** 分量。1行1つ。「プロテイン 30g」のように材料と量をまとめて書く */
-  ingredients: string
+  /** 分量。[{name, amount, unit}] の配列。読むときは lib/drinks の toItems を通す */
+  items: unknown
   sort_order: number
   created_at: string
   updated_at: string
