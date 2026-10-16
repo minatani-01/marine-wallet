@@ -548,12 +548,8 @@ export type DrinkRecipe = {
   id: string
   user_id: string
   name: string
-  /** いつ飲むか。断食明け・運動後 など */
-  timing: string
-  /** 材料。1行1つ */
+  /** 分量。1行1つ。「プロテイン 30g」のように材料と量をまとめて書く */
   ingredients: string
-  /** 作り方やメモ */
-  note: string
   sort_order: number
   created_at: string
   updated_at: string
