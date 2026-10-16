@@ -29,6 +29,20 @@ export type Plan = {
   fast_hours: number
 }
 
+/** 寝ている時間。持ち方は食べない時間と揃える（始まりと長さの2つ） */
+export type Sleep = {
+  /** 寝る時刻 'HH:MM' */
+  sleep_start: string
+  /** 寝ている長さ（時間）。1〜23 */
+  sleep_hours: number
+}
+
+/** 既定。23:00 から7時間（＝翌6:00 に起きる） */
+export const DEFAULT_SLEEP: Sleep = { sleep_start: '23:00', sleep_hours: 7 }
+
+/** 選べる長さ。細かく刻んでも押し分けられない */
+export const SLEEP_HOURS_CHOICES = [6, 7, 8] as const
+
 /**
  * 既定。2:00 から16時間食べない（＝18:00〜翌2:00 に食べる）。
  *
@@ -84,6 +98,49 @@ export function fastEndMinutes(plan: Plan): number | null {
 export function fastEnd(plan: Plan): string | null {
   const end = fastEndMinutes(plan)
   return end === null ? null : toHhmm(end)
+}
+
+/** 起きる時刻。0時からの分数。長さが使えない値なら null */
+export function wakeMinutes(sleep: Sleep): number | null {
+  const start = toMinutes(sleep.sleep_start)
+  if (start === null || !validHours(sleep.sleep_hours)) return null
+  return (start + Math.round(sleep.sleep_hours * 60)) % DAY_MINUTES
+}
+
+/** 起きる時刻 'HH:MM' */
+export function wakeAt(sleep: Sleep): string | null {
+  const end = wakeMinutes(sleep)
+  return end === null ? null : toHhmm(end)
+}
+
+/**
+ * 食べない時間のうち、寝ている時間はどれだけか（分）。
+ *
+ * 16時間のうち7時間が睡眠なら、起きて我慢するのは9時間しかない。
+ * 並べて出さないと、16時間がまるごと空腹に見える。
+ */
+export function sleepInsideFast(plan: Plan, sleep: Sleep): number | null {
+  const fastStart = toMinutes(plan.fast_start)
+  const fastEndAt = fastEndMinutes(plan)
+  const sleepStart = toMinutes(sleep.sleep_start)
+  const wake = wakeMinutes(sleep)
+  if (fastStart === null || fastEndAt === null || sleepStart === null || wake === null) return null
+
+  // 1分ずつ見る。日またぎが2本に分かれるので、重なりを式で出すより読みやすい
+  let overlap = 0
+  for (let i = 0; i < DAY_MINUTES; i += 1) {
+    if (isFasting(plan, i) && isAsleep(sleep, i)) overlap += 1
+  }
+  return overlap
+}
+
+/** いま寝ている時間か。判定の仕方は食べない時間と同じ */
+export function isAsleep(sleep: Sleep, minutes: number): boolean {
+  const start = toMinutes(sleep.sleep_start)
+  const end = wakeMinutes(sleep)
+  if (start === null || end === null) return false
+  if (start < end) return minutes >= start && minutes < end
+  return minutes >= start || minutes < end
 }
 
 /** 食べてよい時間の長さ（分） */

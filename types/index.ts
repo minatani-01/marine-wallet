@@ -550,6 +550,10 @@ export type AutophagySettings = {
   fast_start: string
   /** 食べない時間の長さ（時間）。終わりはこれを足して出す */
   fast_hours: number
+  /** 寝る時刻（日本時間） */
+  sleep_start: string
+  /** 寝ている長さ（時間）。起きる時刻はこれを足して出す */
+  sleep_hours: number
   notify_eat: boolean
   notify_fast: boolean
   last_notified_at: string | null
