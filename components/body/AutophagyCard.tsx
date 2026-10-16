@@ -7,13 +7,21 @@ import { Card, inputClassCompact } from '@/components/ui'
 import { IconFast, IconPlate } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
 import {
+  DAY_MINUTES,
   DEFAULT_PLAN,
+  DEFAULT_SLEEP,
   FAST_HOURS_CHOICES,
+  SLEEP_HOURS_CHOICES,
   fastEnd,
+  isAsleep,
   isFasting,
   jstMinutes,
+  sleepInsideFast,
+  spanText,
   toMinutes,
+  wakeAt,
   type Plan,
+  type Sleep,
 } from '@/lib/autophagy'
 import type { AutophagySettings } from '@/types'
 
@@ -83,14 +91,23 @@ export default function AutophagyCard({
     timeValue(settings?.fast_start ?? DEFAULT_PLAN.fast_start)
   )
   const [fastHours, setFastHours] = useState(settings?.fast_hours ?? DEFAULT_PLAN.fast_hours)
+  const [sleepStart, setSleepStart] = useState(
+    timeValue(settings?.sleep_start ?? DEFAULT_SLEEP.sleep_start)
+  )
+  const [sleepHours, setSleepHours] = useState(settings?.sleep_hours ?? DEFAULT_SLEEP.sleep_hours)
   const [enabled, setEnabled] = useState(settings?.enabled ?? true)
   const [error, setError] = useState<string | null>(null)
 
   const plan: Plan = { fast_start: fastStart, fast_hours: fastHours }
+  const sleep: Sleep = { sleep_start: sleepStart, sleep_hours: sleepHours }
   const minutes = jstMinutes(now)
   const fasting = isFasting(plan, minutes)
   const endAt = fastEnd(plan)
+  const wake = wakeAt(sleep)
   const valid = toMinutes(fastStart) !== null && endAt !== null
+  const sleepValid = toMinutes(sleepStart) !== null && wake !== null
+  /** 食べない時間のうち寝ているぶん。残りどれくらい起きて我慢するかが読める */
+  const asleepInFast = valid && sleepValid ? sleepInsideFast(plan, sleep) : null
 
   /**
    * 触ったらすぐ保存する。
@@ -98,13 +115,16 @@ export default function AutophagyCard({
    * 決めるものが2つしか無いので、保存ボタンを置くと画面のぶんだけ
    * 場所を取る。押し忘れて通知が来ない、ということも無くなる。
    */
-  const save = async (patch: Partial<Plan> & { enabled?: boolean }) => {
+  const save = async (patch: Partial<Plan & Sleep> & { enabled?: boolean }) => {
     const nextPlan = {
       fast_start: patch.fast_start ?? fastStart,
       fast_hours: patch.fast_hours ?? fastHours,
+      sleep_start: patch.sleep_start ?? sleepStart,
+      sleep_hours: patch.sleep_hours ?? sleepHours,
       enabled: patch.enabled ?? enabled,
     }
     if (toMinutes(nextPlan.fast_start) === null) return
+    if (toMinutes(nextPlan.sleep_start) === null) return
 
     setError(null)
     const supabase = createClient()
@@ -151,6 +171,11 @@ export default function AutophagyCard({
               <>
                 <span className="tnum text-fg-dim">{fasting ? endAt : fastStart}</span>
                 {fasting ? 'まで食べられません' : 'から食べられません'}
+                {/* そのうち何時間を寝て過ごすか。書かないと、まるごと
+                    空腹の時間に見える */}
+                {asleepInFast ? (
+                  <span className="ml-1.5">（うち睡眠{spanText(asleepInFast)}）</span>
+                ) : null}
               </>
             ) : (
               '時間を決めると通知します'
@@ -184,7 +209,7 @@ export default function AutophagyCard({
       {/* 1日の帯。食べない時間を落とし、いまの位置を線で出す */}
       {valid ? (
         <div className="mt-2.5">
-          <DayBar plan={plan} minutes={minutes} enabled={enabled} />
+          <DayBar plan={plan} sleep={sleepValid ? sleep : null} minutes={minutes} enabled={enabled} />
         </div>
       ) : null}
 
@@ -237,6 +262,48 @@ export default function AutophagyCard({
         </div>
       </div>
 
+      {/* 睡眠。断食の行と同じ作りにして、読み方を覚え直さずに済ませる */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-2">
+        <input
+          type="time"
+          value={sleepStart}
+          aria-label="寝る時刻"
+          onChange={(e) => {
+            setSleepStart(e.target.value)
+            void save({ sleep_start: e.target.value })
+          }}
+          className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
+        />
+        <span className="shrink-0 text-[11px] text-fg-mute">
+          から睡眠<span className="max-[379px]:hidden">。起床 </span>
+          <span className="tnum max-[379px]:hidden">{wake ?? '--:--'}</span>
+        </span>
+
+        <div className="ml-auto flex shrink-0 items-center rounded-full border border-line p-0.5">
+          {SLEEP_HOURS_CHOICES.map((hours) => {
+            const on = hours === sleepHours
+            return (
+              <button
+                key={hours}
+                type="button"
+                aria-pressed={on}
+                aria-label={`睡眠${hours}時間`}
+                onClick={() => {
+                  setSleepHours(hours)
+                  void save({ sleep_hours: hours })
+                }}
+                className={`tnum h-7 rounded-full px-1.5 text-[11px] transition-colors ${
+                  on ? 'bg-teal font-medium text-ink' : 'text-fg-mute hover:text-teal'
+                }`}
+              >
+                {hours}
+              </button>
+            )
+          })}
+          <span className="pr-1.5 pl-0.5 text-[10px] text-fg-mute max-[339px]:hidden">時間</span>
+        </div>
+      </div>
+
       {error ? <p className="mt-2 text-[12px] text-danger">{error}</p> : null}
     </Card>
   )
@@ -248,7 +315,18 @@ export default function AutophagyCard({
  * 0時から24時までを左から右に並べ、食べない時間を落とす。日をまたぐ設定では
  * 帯が両端に分かれる。数字だけ並べるより、どれくらい空くかが目で分かる。
  */
-function DayBar({ plan, minutes, enabled }: { plan: Plan; minutes: number; enabled: boolean }) {
+function DayBar({
+  plan,
+  sleep,
+  minutes,
+  enabled,
+}: {
+  plan: Plan
+  /** 読めない値のときは出さない */
+  sleep: Sleep | null
+  minutes: number
+  enabled: boolean
+}) {
   const start = toMinutes(plan.fast_start)
   const end = toMinutes(fastEnd(plan) ?? '')
   if (start === null || end === null) return null
@@ -278,6 +356,24 @@ function DayBar({ plan, minutes, enabled }: { plan: Plan; minutes: number; enabl
             style={{ left: pct(span.from), width: pct(span.to - span.from) }}
           />
         ))}
+        {/* 寝ている時間。食べない時間の上に薄く重ねる。16時間のうち
+            どこを寝て過ごすのかが、帯の見た目で分かる */}
+        {sleep
+          ? [...Array(DAY_MINUTES).keys()]
+              .filter((i) => isAsleep(sleep, i) && (i === 0 || !isAsleep(sleep, i - 1)))
+              .map((from) => {
+                let to = from
+                while (to < DAY_MINUTES && isAsleep(sleep, to)) to += 1
+                return (
+                  <span
+                    key={from}
+                    className={`absolute inset-y-0 ${enabled ? 'bg-teal/35' : 'bg-white/[0.06]'}`}
+                    style={{ left: pct(from), width: pct(to - from) }}
+                  />
+                )
+              })
+          : null}
+
         <span
           className="absolute inset-y-0 w-0.5 bg-fg"
           style={{ left: pct(minutes) }}

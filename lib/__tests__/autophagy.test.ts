@@ -3,16 +3,20 @@ import assert from 'node:assert/strict'
 
 import {
   DEFAULT_PLAN,
+  DEFAULT_SLEEP,
   dueBoundary,
   eatingMinutes,
   fastEnd,
   fastingMinutes,
   isFasting,
   jstMinutes,
+  isAsleep,
   nextBoundary,
+  sleepInsideFast,
   spanText,
   toHhmm,
   toMinutes,
+  wakeAt,
 } from '@/lib/autophagy'
 
 test('HH:MM と分を行き来できる', () => {
@@ -102,6 +106,38 @@ test('食べる時間と食べない時間の長さが出る', () => {
   assert.equal(eatingMinutes(half), 720)
 
   assert.equal(fastingMinutes({ fast_start: '02:00', fast_hours: 24 }), null)
+})
+
+test('寝ている時間も始まりと長さで持つ', () => {
+  assert.equal(wakeAt(DEFAULT_SLEEP), '06:00')
+  assert.equal(wakeAt({ sleep_start: '01:30', sleep_hours: 6 }), '07:30')
+  // 使えない長さなら出さない
+  assert.equal(wakeAt({ sleep_start: '23:00', sleep_hours: 0 }), null)
+  assert.equal(wakeAt({ sleep_start: 'なんとか', sleep_hours: 7 }), null)
+
+  // 日をまたぐ。23:00〜翌6:00
+  assert.equal(isAsleep(DEFAULT_SLEEP, toMinutes('23:30')!), true)
+  assert.equal(isAsleep(DEFAULT_SLEEP, toMinutes('03:00')!), true)
+  assert.equal(isAsleep(DEFAULT_SLEEP, toMinutes('06:00')!), false)
+  assert.equal(isAsleep(DEFAULT_SLEEP, toMinutes('12:00')!), false)
+})
+
+test('食べない時間のうち、寝ているぶんが出る', () => {
+  // 18:00から16時間（18:00〜翌10:00）と、23:00から7時間（23:00〜翌6:00）。
+  // 睡眠はまるごと断食の中に入る
+  assert.equal(sleepInsideFast({ fast_start: '18:00', fast_hours: 16 }, DEFAULT_SLEEP), 7 * 60)
+
+  // 2:00から16時間（2:00〜18:00）。睡眠 23:00〜6:00 のうち 2:00〜6:00 だけ重なる
+  assert.equal(sleepInsideFast(DEFAULT_PLAN, DEFAULT_SLEEP), 4 * 60)
+
+  // 重ならないこともある
+  assert.equal(
+    sleepInsideFast({ fast_start: '08:00', fast_hours: 8 }, DEFAULT_SLEEP),
+    0
+  )
+
+  // 読めない値なら出さない
+  assert.equal(sleepInsideFast({ fast_start: 'x', fast_hours: 16 }, DEFAULT_SLEEP), null)
 })
 
 test('残り時間の書き方', () => {
