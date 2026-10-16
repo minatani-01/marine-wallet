@@ -19,8 +19,11 @@ import type { DrinkRecipe } from '@/types'
  * オートファジーの下に置く。食べない時間と地続きの話なので、作るときに
  * 画面を移らずに済む。
  *
- * 材料は1行1つの文字列で持つ。「プロテイン 30g」のように量まで含めて
- * 書けるようにしたいので、名前と量に分けない。分けると、粉・液体・個数で
+ * 置くのは名前と分量だけ。いつ飲むかや作り方まで持たせると、書くことが
+ * 増えて残らなくなる。作り方が要るものは、そもそも思い出せる。
+ *
+ * 分量は1行1つの文字列で持つ。「プロテイン 30g」のように材料と量を
+ * まとめて書けるようにしたいので、分けない。分けると、粉・液体・個数で
  * 単位が割れて、どれにも当てはまらない書き方が出てくる。
  */
 export default function DrinkRecipes({
@@ -73,7 +76,7 @@ export default function DrinkRecipes({
 /**
  * 1件ぶん。
  *
- * 材料はたたまずに全部出す。作っている最中に開き直すことになるのでは、
+ * 分量はたたまずに全部出す。作っている最中に開き直すことになるのでは、
  * 置いておく意味が薄い。
  */
 function RecipeCard({ recipe, onEdit }: { recipe: DrinkRecipe; onEdit: () => void }) {
@@ -87,14 +90,7 @@ function RecipeCard({ recipe, onEdit }: { recipe: DrinkRecipe; onEdit: () => voi
         aria-label={`${recipe.name}を編集`}
         className="w-full p-3.5 text-left transition-colors hover:bg-white/[0.03]"
       >
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 truncate text-[14px] font-semibold">{recipe.name}</span>
-          {recipe.timing ? (
-            <span className="shrink-0 rounded-full border border-marine/40 bg-marine/10 px-2 py-0.5 text-[10px] text-marine">
-              {recipe.timing}
-            </span>
-          ) : null}
-        </div>
+        <span className="block truncate text-[14px] font-semibold">{recipe.name}</span>
 
         {lines.length > 0 ? (
           <ul className="mt-2 flex flex-col gap-1">
@@ -110,11 +106,6 @@ function RecipeCard({ recipe, onEdit }: { recipe: DrinkRecipe; onEdit: () => voi
           </ul>
         ) : null}
 
-        {recipe.note ? (
-          <p className="mt-2 border-t border-line-soft pt-2 text-[11px] leading-relaxed text-fg-mute">
-            {recipe.note}
-          </p>
-        ) : null}
       </button>
     </Card>
   )
@@ -123,7 +114,7 @@ function RecipeCard({ recipe, onEdit }: { recipe: DrinkRecipe; onEdit: () => voi
 /**
  * 足す・直す。
  *
- * 消すのもここに置く。一覧に消すボタンを並べると、材料を読みに来ただけの
+ * 消すのもここに置く。一覧に消すボタンを並べると、分量を読みに来ただけの
  * ときに押してしまう。
  */
 function RecipeSheet({
@@ -142,9 +133,7 @@ function RecipeSheet({
   const router = useRouter()
 
   const [name, setName] = useState(recipe?.name ?? '')
-  const [timing, setTiming] = useState(recipe?.timing ?? '')
   const [ingredients, setIngredients] = useState(recipe?.ingredients ?? '')
-  const [note, setNote] = useState(recipe?.note ?? '')
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -163,9 +152,7 @@ function RecipeSheet({
     const payload = {
       user_id: userId,
       name: name.trim(),
-      timing: timing.trim(),
       ingredients: ingredientLines(ingredients).join('\n'),
-      note: note.trim(),
     }
 
     const { error: failed } = recipe
@@ -241,37 +228,15 @@ function RecipeSheet({
           />
         </Field>
 
-        <Field label="いつ飲むか" hint="任意">
-          <input
-            type="text"
-            value={timing}
-            aria-label="いつ飲むか"
-            onChange={(e) => setTiming(e.target.value)}
-            placeholder="断食明け"
-            className={inputClass}
-          />
-        </Field>
-
         {/* 1行1つ。量まで書いてもらう。名前と量に分けると、粉・液体・個数で
             単位が割れて、どれにも当てはまらない書き方が出てくる */}
-        <Field label="材料" hint="1行に1つ。量も書く">
+        <Field label="分量" hint="1行に1つ">
           <textarea
             value={ingredients}
-            aria-label="材料"
+            aria-label="分量"
             onChange={(e) => setIngredients(e.target.value)}
-            rows={5}
+            rows={6}
             placeholder={'水 300ml\nプロテイン 30g\nレモン汁 小さじ1'}
-            className={`${inputClass} resize-none`}
-          />
-        </Field>
-
-        <Field label="作り方・メモ" hint="任意">
-          <textarea
-            value={note}
-            aria-label="作り方・メモ"
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            placeholder="シェイカーで30秒。氷は入れない"
             className={`${inputClass} resize-none`}
           />
         </Field>
