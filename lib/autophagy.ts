@@ -40,8 +40,13 @@ export type Sleep = {
 /** 既定。23:00 から7時間（＝翌6:00 に起きる） */
 export const DEFAULT_SLEEP: Sleep = { sleep_start: '23:00', sleep_hours: 7 }
 
-/** 選べる長さ。細かく刻んでも押し分けられない */
-export const SLEEP_HOURS_CHOICES = [6, 7, 8] as const
+/**
+ * 選べる長さ。6〜12時間。
+ *
+ * 食べない時間（14/16/18）と違って刻みが細かい。7つを横に並べると、
+ * 押し分けられる幅にならないので、画面側では一覧から選んでもらう。
+ */
+export const SLEEP_HOURS_CHOICES = [6, 7, 8, 9, 10, 11, 12] as const
 
 /**
  * 既定。2:00 から16時間食べない（＝18:00〜翌2:00 に食べる）。

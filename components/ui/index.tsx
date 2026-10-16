@@ -677,6 +677,7 @@ export function PickList({
   placeholder = '選ばない',
   onChange,
   onRemove,
+  compact = false,
 }: {
   value: string
   options: PickOption[]
@@ -685,6 +686,8 @@ export function PickList({
   onChange: (id: string) => void
   /** 行の「消す」を押したとき。渡さなければ消すボタンは出さない */
   onRemove?: (id: string) => void
+  /** 高さを詰める。他の入力と並べる行で使う（文字は 16px のまま） */
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
@@ -720,7 +723,7 @@ export function PickList({
           tapFeedback()
           setOpen((shown) => !shown)
         }}
-        className={`${inputClass} flex items-center gap-2 text-left`}
+        className={`${compact ? inputClassCompact : inputClass} flex items-center gap-2 text-left`}
       >
         <span className={`min-w-0 flex-1 truncate ${picked ? '' : 'text-fg-mute'}`}>
           {picked ? picked.label : (options.find((o) => o.id === value)?.label ?? placeholder)}
