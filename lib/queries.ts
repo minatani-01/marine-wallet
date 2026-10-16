@@ -16,6 +16,7 @@ import type {
   BodyCareLog,
   BodyProfile,
   BodyWeight,
+  DrinkRecipe,
   FavoriteItem,
   FavoriteItemRow,
   FreeWeightLog,
@@ -386,6 +387,24 @@ export async function getAutophagySettings(userId: string): Promise<AutophagySet
   return await read<AutophagySettings>('autophagy_settings', () =>
     supabase.from('autophagy_settings').select('*').eq('user_id', userId).maybeSingle()
   )
+}
+
+/**
+ * 特製ドリンクのレシピ（0069）。
+ *
+ * 並び順は自分で決めた順。同じ順番のものは作った順にする。
+ */
+export async function getDrinkRecipes(userId: string): Promise<DrinkRecipe[]> {
+  const supabase = await createClient()
+  const data = await read<DrinkRecipe[]>('drink_recipes', () =>
+    supabase
+      .from('drink_recipes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+  )
+  return data ?? []
 }
 
 /**
