@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { Card, inputClassCompact } from '@/components/ui'
+import { Card, PickList, inputClassCompact } from '@/components/ui'
 import { IconFast, IconPlate } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -279,28 +279,22 @@ export default function AutophagyCard({
           <span className="tnum max-[379px]:hidden">{wake ?? '--:--'}</span>
         </span>
 
-        <div className="ml-auto flex shrink-0 items-center rounded-full border border-line p-0.5">
-          {SLEEP_HOURS_CHOICES.map((hours) => {
-            const on = hours === sleepHours
-            return (
-              <button
-                key={hours}
-                type="button"
-                aria-pressed={on}
-                aria-label={`睡眠${hours}時間`}
-                onClick={() => {
-                  setSleepHours(hours)
-                  void save({ sleep_hours: hours })
-                }}
-                className={`tnum h-7 rounded-full px-1.5 text-[11px] transition-colors ${
-                  on ? 'bg-teal font-medium text-ink' : 'text-fg-mute hover:text-teal'
-                }`}
-              >
-                {hours}
-              </button>
-            )
-          })}
-          <span className="pr-1.5 pl-0.5 text-[10px] text-fg-mute max-[339px]:hidden">時間</span>
+        {/* 6〜12の7つ。横に並べると押し分けられる幅にならないので、
+            一覧から選んでもらう */}
+        <div className="ml-auto w-[104px] shrink-0">
+          <PickList
+            compact
+            label="睡眠時間"
+            value={String(sleepHours)}
+            onChange={(next) => {
+              setSleepHours(Number(next))
+              void save({ sleep_hours: Number(next) })
+            }}
+            options={SLEEP_HOURS_CHOICES.map((hours) => ({
+              id: String(hours),
+              label: `${hours}時間`,
+            }))}
+          />
         </div>
       </div>
 
