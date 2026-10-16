@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { Card, PickList, inputClassCompact } from '@/components/ui'
+import { Card, inputClassCompact } from '@/components/ui'
 import { IconFast, IconPlate } from '@/components/icons'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -273,7 +273,7 @@ function TimeRow({
   const options = choices.includes(hours) ? [...choices] : [...choices, hours].sort((a, b) => a - b)
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
       <span className="w-7 shrink-0 text-[12px] font-medium text-fg-dim">{label}</span>
 
       <input
@@ -281,19 +281,37 @@ function TimeRow({
         value={time}
         aria-label={timeLabel}
         onChange={(e) => onTime(e.target.value)}
-        // 文字は 16px のまま。これより小さいと iOS が画面を拡大する
-        className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5`}
+        // 文字は 16px のまま。これより小さいと iOS が画面を拡大する。
+        // 折り返す幅では、時刻の欄を伸ばして1行目の右を空けない
+        className={`${inputClassCompact} tnum !w-[100px] !min-w-0 shrink-0 px-2 py-1.5 max-[379px]:!w-auto max-[379px]:flex-1`}
       />
 
-      <div className="min-w-0 flex-1">
-        <PickList
-          compact
-          label={hoursLabel}
-          value={String(hours)}
-          onChange={(next) => onHours(Number(next))}
-          options={options.map((item) => ({ id: String(item), label: `${item}時間` }))}
-        />
+      {/* 選べるものを並べて幅を使い切る。一覧から選ぶ形だと、文字の右に
+          何も無い帯が残るうえ、押してから選ぶので2回かかる */}
+      {/* 狭い画面では折り返して1行を丸ごと使う。横に詰めると、1つあたりが
+          指で押せる幅にならない（320px で17px になっていた） */}
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 rounded-xl border border-line p-0.5 max-[379px]:order-last max-[379px]:basis-full">
+        {options.map((item) => {
+          const on = item === hours
+          return (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={on}
+              aria-label={`${hoursLabel}${item}時間`}
+              onClick={() => onHours(item)}
+              className={`tnum h-8 min-w-0 flex-1 rounded-lg text-[12px] transition-colors ${
+                on ? 'bg-marine font-medium text-ink' : 'text-fg-mute hover:text-marine'
+              }`}
+            >
+              {item}
+            </button>
+          )
+        })}
       </div>
+
+      {/* 320px では落とす。数が何を指すかは左の「断食」「睡眠」で分かる */}
+      <span className="shrink-0 text-[11px] text-fg-mute max-[379px]:hidden">時間</span>
 
     </div>
   )
