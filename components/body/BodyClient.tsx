@@ -10,6 +10,7 @@ import DrinkRecipes from '@/components/body/DrinkRecipes'
 import HomePanel from '@/components/body/HomePanel'
 import ProfilePanel from '@/components/body/ProfilePanel'
 import SaunaPanel from '@/components/body/SaunaPanel'
+import WalkPanel from '@/components/body/WalkPanel'
 import WorkoutPanel from '@/components/body/WorkoutPanel'
 import { PillTabs, SectionLabel } from '@/components/ui'
 import { generatePlan, lastResultsOf } from '@/lib/reform'
@@ -21,6 +22,7 @@ import type {
   DrinkRecipe,
   FreeWeightLog,
   SaunaLog,
+  WalkLog,
   WorkoutSessionView,
 } from '@/types'
 
@@ -45,6 +47,7 @@ const TABS = [
   { id: 'workout', label: 'ワークアウト' },
   { id: 'free', label: 'フリーウェイト' },
   { id: 'sauna', label: 'サウナ' },
+  { id: 'walk', label: '散歩' },
   { id: 'care', label: 'ケア' },
   { id: 'history', label: '履歴' },
   { id: 'settings', label: '設定' },
@@ -63,6 +66,7 @@ export default function BodyClient({
   freeWeights,
   saunaLogs,
   careLogs,
+  walkLogs,
   recipes,
 }: {
   userId: string
@@ -77,6 +81,8 @@ export default function BodyClient({
   freeWeights: FreeWeightLog[]
   saunaLogs: SaunaLog[]
   careLogs: BodyCareLog[]
+  /** 散歩の記録（0072） */
+  walkLogs: WalkLog[]
   /** 特製ドリンクのレシピ（0069） */
   recipes: DrinkRecipe[]
 }) {
@@ -119,6 +125,7 @@ export default function BodyClient({
             freeWeights={freeWeights}
             saunaLogs={saunaLogs}
             careLogs={careLogs}
+            walkLogs={walkLogs}
             plan={plan}
             onJump={setTab}
           />
@@ -139,6 +146,8 @@ export default function BodyClient({
       {tab === 'free' ? <FreeWeightPanel userId={userId} today={today} logs={freeWeights} /> : null}
 
       {tab === 'sauna' ? <SaunaPanel userId={userId} today={today} logs={saunaLogs} /> : null}
+
+      {tab === 'walk' ? <WalkPanel userId={userId} today={today} logs={walkLogs} /> : null}
 
       {tab === 'care' ? <CarePanel userId={userId} today={today} logs={careLogs} /> : null}
 

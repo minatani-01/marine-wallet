@@ -474,6 +474,18 @@ export function rejectSaunaReason(input: { sauna_minutes: string; sets: string }
   return null
 }
 
+/**
+ * 散歩。歩いた時間だけを必須にする。
+ *
+ * 距離も歩数も、測っていない日がある。全部そろうまで保存できないと、
+ * その日のぶんが残らない。上限は8時間。それ以上は散歩ではない。
+ */
+export function rejectWalkReason(input: { minutes: string }): string | null {
+  const minutes = Number(input.minutes)
+  if (!(minutes > 0 && minutes <= 480)) return '歩いた時間を正しく入れてください（1〜480分）'
+  return null
+}
+
 /** 空欄は null にする。0 と「入れていない」を区別する */
 export function numOrNull(value: string): number | null {
   const trimmed = value.trim()
