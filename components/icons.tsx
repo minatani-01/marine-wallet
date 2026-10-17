@@ -573,3 +573,14 @@ export function IconMedical(props: IconProps) {
     </Icon>
   )
 }
+
+export function IconWalk(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="13.6" cy="4.3" r="2" />
+      <path d="M9 21.5l2.7-5.8-2.3-2.7 1-4.6 3.7 1.5 1.5 2.7 2.7 1.1" />
+      <path d="M11.7 15.7 15.2 18l1.1 3.5" />
+      <path d="M9.4 8.4 6.4 9.8" />
+    </Icon>
+  )
+}

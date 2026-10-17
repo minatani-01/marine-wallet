@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import type { BodyTab } from '@/components/body/BodyClient'
 import { MiniStat, WeightSpark } from '@/components/body/parts'
-import { IconFlame, IconPlus, IconPulse, IconSpark } from '@/components/icons'
+import { IconFlame, IconPlus, IconPulse, IconSpark, IconWalk } from '@/components/icons'
 import { Button, Card, EmptyState, SectionLabel, inputClass } from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
 import {
@@ -23,6 +23,7 @@ import type {
   BodyWeight,
   FreeWeightLog,
   SaunaLog,
+  WalkLog,
   WorkoutSessionView,
 } from '@/types'
 
@@ -42,6 +43,7 @@ export default function HomePanel({
   freeWeights,
   saunaLogs,
   careLogs,
+  walkLogs,
   plan,
   onJump,
 }: {
@@ -54,6 +56,7 @@ export default function HomePanel({
   freeWeights: FreeWeightLog[]
   saunaLogs: SaunaLog[]
   careLogs: BodyCareLog[]
+  walkLogs: WalkLog[]
   plan: PlannedExercise[] | null
   onJump: (tab: BodyTab) => void
 }) {
@@ -72,6 +75,7 @@ export default function HomePanel({
       Icon: IconPulse,
     },
     { id: 'free', label: 'フリーウェイト', status: sinceText(freeWeights, today), Icon: IconFlame },
+    { id: 'walk', label: '散歩', status: sinceText(walkLogs, today), Icon: IconWalk },
     { id: 'sauna', label: 'サウナ', status: sinceText(saunaLogs, today), Icon: IconFlame },
     { id: 'care', label: '脱毛', status: sinceText(careOf('hair'), today), Icon: IconSpark },
     { id: 'care', label: 'エステ', status: sinceText(careOf('esthetic'), today), Icon: IconSpark },

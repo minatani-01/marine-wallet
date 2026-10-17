@@ -543,6 +543,21 @@ export type SharedGoalView = SharedGoalRow & {
  * 持たない。時刻は 'HH:MM:SS' で返る（Postgres の time）。判定は
  * lib/autophagy.ts にまとめてあり、'HH:MM' の先頭一致で読む。
  */
+/** 散歩の記録（0072） */
+export type WalkLog = {
+  id: string
+  user_id: string
+  date: string
+  /** 歩いた時間（分） */
+  minutes: number
+  /** 距離（km）。測っていない日は null */
+  distance_km: number | null
+  /** 歩数。測っていない日は null */
+  steps: number | null
+  note: string
+  created_at: string
+}
+
 /** 特製ドリンクのレシピ（0069） */
 export type DrinkRecipe = {
   id: string

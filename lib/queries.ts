@@ -32,6 +32,7 @@ import type {
   NotificationPreferences,
   Profile,
   SaunaLog,
+  WalkLog,
   SavingEntryRow,
   SavingCustomPreset,
   SavingRecordName,
@@ -387,6 +388,21 @@ export async function getAutophagySettings(userId: string): Promise<AutophagySet
   return await read<AutophagySettings>('autophagy_settings', () =>
     supabase.from('autophagy_settings').select('*').eq('user_id', userId).maybeSingle()
   )
+}
+
+/** 散歩の記録（0072）。新しいものから返す */
+export async function getWalkLogs(userId: string): Promise<WalkLog[]> {
+  const supabase = await createClient()
+  const data = await read<WalkLog[]>('walk_logs', () =>
+    supabase
+      .from('walk_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(BODY_LOG_LIMIT)
+  )
+  return data ?? []
 }
 
 /**

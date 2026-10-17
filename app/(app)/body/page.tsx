@@ -12,6 +12,7 @@ import {
   getProfile,
   getSaunaLogs,
   getSessionUser,
+  getWalkLogs,
   getWorkoutSessions,
 } from '@/lib/queries'
 
@@ -31,17 +32,27 @@ export default async function BodyPage() {
   const profile = await getProfile(user.id)
   if (!profile?.is_master) redirect('/')
 
-  const [settings, bodyProfile, weights, sessions, freeWeights, saunaLogs, careLogs, recipes] =
-    await Promise.all([
-      getAutophagySettings(user.id),
-      getBodyProfile(user.id),
-      getBodyWeights(user.id),
-      getWorkoutSessions(user.id),
-      getFreeWeightLogs(user.id),
-      getSaunaLogs(user.id),
-      getBodyCareLogs(user.id),
-      getDrinkRecipes(user.id),
-    ])
+  const [
+    settings,
+    bodyProfile,
+    weights,
+    sessions,
+    freeWeights,
+    saunaLogs,
+    careLogs,
+    walkLogs,
+    recipes,
+  ] = await Promise.all([
+    getAutophagySettings(user.id),
+    getBodyProfile(user.id),
+    getBodyWeights(user.id),
+    getWorkoutSessions(user.id),
+    getFreeWeightLogs(user.id),
+    getSaunaLogs(user.id),
+    getBodyCareLogs(user.id),
+    getWalkLogs(user.id),
+    getDrinkRecipes(user.id),
+  ])
 
   // 最初の描画をブラウザと揃えるため、サーバーの時刻と今日を渡す。
   // 日付は日本時間に直してから渡す（lib/jst）。ここは UTC で動いているので、
@@ -59,6 +70,7 @@ export default async function BodyPage() {
       freeWeights={freeWeights}
       saunaLogs={saunaLogs}
       careLogs={careLogs}
+      walkLogs={walkLogs}
       recipes={recipes}
     />
   )
