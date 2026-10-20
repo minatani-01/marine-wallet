@@ -444,11 +444,19 @@ function Row({
         className={`min-w-0 flex-1 text-left ${sub.active ? '' : 'opacity-55'}`}
       >
         <div className="flex min-w-0 items-baseline gap-2 overflow-hidden whitespace-nowrap">
-          <span className="min-w-0 shrink truncate text-[14px] font-semibold">{sub.name}</span>
-          {/* プラン名はサービス名に続けて小さく出す。同じサービスで
-              契約が分かれているとき、どちらの話か札だけで分かる */}
+          {/* サービス名を先に出し切る。縮むのはプラン名のほうだけにする。
+              どちらも縮めると「家賃＆…」のようにサービス名が読めなくなり、
+              どのサービスの話か分からなくなる。
+              名前は縮まない（shrink-0）が、1行を越えるときは max-w-full で
+              止めて三点リーダーにする。プラン名は余りを受け取る（basis-0）
+              ので、名前が長い日は0まで引き下がる */}
+          <span className="max-w-full min-w-0 shrink-0 truncate text-[14px] font-semibold">
+            {sub.name}
+          </span>
           {sub.plan ? (
-            <span className="min-w-0 shrink truncate text-[11px] text-fg-dim">{sub.plan}</span>
+            <span className="min-w-0 flex-1 basis-0 truncate text-[11px] text-fg-dim">
+              {sub.plan}
+            </span>
           ) : null}
         </div>
 
