@@ -753,8 +753,10 @@ export type Subscription = {
   plan: string
   /** 1回の請求額（円） */
   amount: number
-  /** 何か月ごとに落ちるか。毎月は1、3か月ごとは3、毎年は12 */
-  interval_months: number
+  /** 周期の単位。week / month / year（0073） */
+  interval_unit: 'week' | 'month' | 'year'
+  /** 周期の数。2 と week なら2週間ごと */
+  interval_count: number
   /** 契約日。ここを起点に周期ぶんずつ進めて支払日を出す */
   anchor_on: string
   category: string

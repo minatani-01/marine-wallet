@@ -32,6 +32,7 @@ import {
   dayText,
   daysUntil,
   intervalLabel,
+  isMonthly,
   monthlyCost,
   nextPayment,
   sortSubs,
@@ -464,14 +465,16 @@ function Row({
         <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px] whitespace-nowrap text-fg-mute">
           <span className="shrink-0 text-fg-dim">{sub.category}</span>
           <span className="shrink-0 text-line">|</span>
-          <span className="shrink-0">{intervalLabel(sub.interval_months)}</span>
-          {/* 毎月でないものは月あたりも添える。合計も金額順も月あたりで
-              出しているので、これが無いと年払いの並びが外れて見える */}
-          {sub.interval_months > 1 ? (
-            <span className="tnum shrink-0">月{yen(monthlyCost(sub))}</span>
-          ) : null}
+          <span className="shrink-0">{intervalLabel(sub)}</span>
+          {/* 次の支払日は周期のすぐ隣に置く。狭い画面では右から溢れて隠れるので、
+              いちばん見たいものを先に置いておく */}
           {due ? (
             <span className={`tnum shrink-0 ${near ? 'text-warn' : ''}`}>{dayText(due)}</span>
+          ) : null}
+          {/* 毎月でないものは月あたりも添える。合計も金額順も月あたりで
+              出しているので、これが無いと週払い・年払いの並びが外れて見える */}
+          {!isMonthly(sub) ? (
+            <span className="tnum shrink-0">月{yen(monthlyCost(sub))}</span>
           ) : null}
           {sub.method ? <span className="min-w-0 truncate">{sub.method}</span> : null}
         </div>
