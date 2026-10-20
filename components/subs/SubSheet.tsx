@@ -8,6 +8,7 @@ import { withTapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
   DEFAULT_SUB_CATEGORY,
+  INTERVAL_UNITS,
   SUB_CATEGORIES,
   daysUntil,
   fullDayText,
@@ -17,8 +18,7 @@ import {
   nextPayment,
   rejectReason,
   sortCategories,
-  splitInterval,
-  toMonths,
+  toIntervalUnit,
   untilText,
   type IntervalUnit,
 } from '@/lib/subscriptions'
@@ -28,7 +28,7 @@ import type { Subscription } from '@/types'
 const NEW_METHOD = '\u0000new'
 
 /**
- * サブスクを足す・直す（0065 / 0066）。
+ * サブスクを足す・直す（0065 / 0066 / 0073）。
  *
  * 必須はサービス名と金額と支払日だけ。思い出したときに名前と額だけ
  * 入れておけるほうが、全部そろうまで入れられないより残る。
@@ -63,11 +63,10 @@ export default function SubSheet({
   const [name, setName] = useState(sub?.name ?? '')
   const [plan, setPlan] = useState(sub?.plan ?? '')
   const [amount, setAmount] = useState(sub ? String(sub.amount) : '')
-  // 周期は「数」と「単位」に分けて持つ。1つの数で「24か月ごと」と書かれても
-  // 長さが掴めない。保存のときに月数へ直す
-  const start = splitInterval(sub?.interval_months ?? 1)
-  const [count, setCount] = useState(String(start.count))
-  const [unit, setUnit] = useState<IntervalUnit>(start.unit)
+  // 周期は「数」と「単位」に分けて持つ。週ぎめ・月ぎめ・年ぎめのどれもあるし、
+  // 1つの数で「24か月ごと」と書かれても長さが掴めない
+  const [count, setCount] = useState(String(sub?.interval_count ?? 1))
+  const [unit, setUnit] = useState<IntervalUnit>(toIntervalUnit(sub?.interval_unit))
   const [anchorOn, setAnchorOn] = useState(sub?.anchor_on ?? today)
   const [category, setCategory] = useState(sub?.category ?? DEFAULT_SUB_CATEGORY)
   const [method, setMethod] = useState(sub?.method ?? '')
@@ -81,8 +80,10 @@ export default function SubSheet({
   const [url, setUrl] = useState(sub?.url ?? '')
   const [note, setNote] = useState(sub?.note ?? '')
 
-  /** 入れてもらった数と単位から出した月数。保存も見出しもこれで決まる */
-  const months = toMonths(Number(count), unit)
+  /** 入れてもらった数。空欄や文字のあいだは 0 にして、見出しも支払日も出さない */
+  const steps = Number.isInteger(Number(count)) ? Number(count) : 0
+  const ok = steps >= 1 && steps <= maxIntervalCount(unit)
+  const interval = { interval_unit: unit, interval_count: steps }
 
   /**
    * 次の支払日。契約日と周期から出す。
@@ -91,8 +92,8 @@ export default function SubSheet({
    * 「3か月ごとなら次はいつか」を人に数えさせない。
    */
   const due =
-    months >= 1 && /^\d{4}-\d{2}-\d{2}$/.test(anchorOn)
-      ? nextPayment({ amount: 0, interval_months: months, anchor_on: anchorOn }, today)
+    ok && /^\d{4}-\d{2}-\d{2}$/.test(anchorOn)
+      ? nextPayment({ ...interval, amount: 0, anchor_on: anchorOn }, today)
       : null
 
   const [saving, setSaving] = useState(false)
@@ -132,7 +133,8 @@ export default function SubSheet({
     const reason = rejectReason({
       name,
       amount,
-      interval_months: String(months),
+      interval_unit: unit,
+      interval_count: count,
       anchor_on: anchorOn,
       url,
     })
@@ -150,7 +152,8 @@ export default function SubSheet({
       name: name.trim(),
       plan: plan.trim(),
       amount: Math.round(Number(amount)),
-      interval_months: months,
+      interval_unit: unit,
+      interval_count: steps,
       anchor_on: anchorOn,
       category: category.trim() || DEFAULT_SUB_CATEGORY,
       method: method.trim(),
@@ -258,12 +261,13 @@ export default function SubSheet({
         </Field>
 
         {/* 周期は数と単位で入れてもらう。単位を分けるのは、2年を
-            「24か月ごと」と書かれても長さが掴めないから */}
-        <Field label="支払い周期" hint={months >= 1 ? intervalLabel(months) : undefined}>
+            「24か月ごと」と書かれても長さが掴めないから。週を混ぜてあるのは、
+            週ぎめのものを月に直すと必ずずれるため */}
+        <Field label="支払い周期" hint={ok ? intervalLabel(interval) : undefined}>
           <div className="flex items-center gap-2">
             {/* inputClass が w-full を持つので、幅は外の箱で決める。
                 input に w-20 を足しても w-full に負ける */}
-            <div className="w-[88px] shrink-0">
+            <div className="w-[76px] shrink-0">
               <input
                 type="number"
                 inputMode="numeric"
@@ -278,11 +282,17 @@ export default function SubSheet({
             <div className="min-w-0 flex-1">
               <Segmented
                 value={unit}
-                options={[
-                  { id: 'month' as IntervalUnit, label: 'か月ごと' },
-                  { id: 'year' as IntervalUnit, label: '年ごと' },
-                ]}
-                onChange={(next) => setUnit(next)}
+                options={INTERVAL_UNITS.map((item) => ({
+                  id: item.id as IntervalUnit,
+                  label: item.label,
+                }))}
+                onChange={(next) => {
+                  setUnit(next)
+                  // 単位ごとに上限が違う。52週から年へ移したときに
+                  // 「52年ごと」が残ると、保存で止められる
+                  const max = maxIntervalCount(next)
+                  if (steps > max) setCount(String(max))
+                }}
               />
             </div>
           </div>

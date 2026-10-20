@@ -1,12 +1,14 @@
 /**
- * サブスクの管理（0065 / 0066）。
+ * サブスクの管理（0065 / 0066 / 0073）。
  *
  * 毎月いくら出ていくかと、次にいつ落ちるかを出す。止めたものも消さずに
  * 残すので、「前に解約したはず」を後から確かめられる。
  *
- * 周期は「何か月ごと」で持つ。毎月と毎年だけでは、3か月ごとや半年ごとの
- * ものが入らない。入れてもらうときは年でも月でも書けるようにして、
- * ここへ来る前に月数へ直す。「24か月ごと」では長さが掴めない。
+ * 周期は「数」と「単位（週・月・年）」で持つ。月数だけでは週ぎめのものが
+ * 入らない。1週間は月の長さで変わらないので、月数に直すと必ずずれる
+ * （2週間ごとを0.46か月として持っても、支払日は結局日で数え直す）。
+ * 単位ごとに数え方が違う（週は日で足す、月と年は月で足して無い日を末日に
+ * 寄せる）ので、入れてもらったまま持つ。
  *
  * 入れてもらうのは契約日（anchor_on）。支払日はそこから周期ぶんずつ
  * 進めて出す。契約した日なら調べずに書けるし、「毎月N日」の持ち方では
@@ -16,40 +18,39 @@
  * 日付は日本時間の 'YYYY-MM-DD' で受け渡す。
  */
 
-/** よく使う周期。これ以外は数で入れてもらう */
-export const INTERVALS = [
-  { months: 1, label: '毎月' },
-  { months: 3, label: '3か月ごと' },
-  { months: 6, label: '半年ごと' },
-  { months: 12, label: '毎年' },
-] as const
+/** 周期の単位。週ぎめ・月ぎめ・年ぎめのどれもある */
+export type IntervalUnit = 'week' | 'month' | 'year'
 
-/** 周期の上限（か月）。5年を超える間隔は、サブスクとしては考えにくい */
-export const MAX_INTERVAL_MONTHS = 60
-
-/** 周期の単位。「60か月ごと」と書かれても長さが掴めないので、年でも入れられるようにする */
-export type IntervalUnit = 'month' | 'year'
-
-/** 単位ごとの上限。年は5、月は60。どちらも 60 か月に当たる */
-export function maxIntervalCount(unit: IntervalUnit): number {
-  return unit === 'year' ? MAX_INTERVAL_MONTHS / 12 : MAX_INTERVAL_MONTHS
-}
-
-/** 「3」と「か月」から月数を出す */
-export function toMonths(count: number, unit: IntervalUnit): number {
-  return unit === 'year' ? count * 12 : count
-}
+/** 単位の見出し。画面の切り替えに使う */
+export const INTERVAL_UNITS = [
+  { id: 'week', label: '週' },
+  { id: 'month', label: '月' },
+  { id: 'year', label: '年' },
+] as const satisfies readonly { id: IntervalUnit; label: string }[]
 
 /**
- * 月数を「数と単位」に割る。画面に出すときに使う。
+ * 単位ごとの上限。
  *
- * 12の倍数なら年にする。24を「24か月ごと」と書かれても長さが掴めない。
- * 12で割り切れない18のようなものは、月のまま出すほかない。
+ * どれも5年ぶんに当たるところで止める。それを越える間隔は、サブスクとしては
+ * 考えにくい。週だけ52（1年ぶん）にしてあるのは、週ぎめで何年も先を
+ * 指すものが無いうえ、「104週間ごと」と書かれても長さが掴めないため。
  */
-export function splitInterval(months: number): { count: number; unit: IntervalUnit } {
-  const safe = Math.max(1, Math.round(months))
-  if (safe % 12 === 0) return { count: safe / 12, unit: 'year' }
-  return { count: safe, unit: 'month' }
+export const MAX_INTERVAL_COUNTS = { week: 52, month: 60, year: 5 } as const
+
+export function maxIntervalCount(unit: IntervalUnit): number {
+  return MAX_INTERVAL_COUNTS[unit]
+}
+
+/** 知らない値なら月ぎめに戻す。DB から来た文字をそのまま信じない */
+export function toIntervalUnit(value: string | null | undefined): IntervalUnit {
+  return value === 'week' || value === 'year' ? value : 'month'
+}
+
+/** 周期だけ。画面からは行をそのまま渡せる */
+export type Interval = {
+  interval_unit: IntervalUnit
+  /** 何周期ごとか。2 と week なら2週間ごと */
+  interval_count: number
 }
 
 /** ジャンル。決め打ちにせず、書いたものが増える */
@@ -93,10 +94,8 @@ export function sortCategories(items: string[]): string[] {
 }
 
 /** 計算に要るところだけ。画面からは行をそのまま渡せる */
-export type Billable = {
+export type Billable = Interval & {
   amount: number
-  /** 何か月ごとに落ちるか */
-  interval_months: number
   /** 契約日。ここを起点に周期ぶんずつ進めて支払日を出す */
   anchor_on: string
 }
@@ -115,6 +114,18 @@ function dateText(year: number, month: number, day: number): string {
 export function isMonthEnd(date: string): boolean {
   const [y, m, d] = date.split('-').map(Number)
   return d === daysInMonth(y, m)
+}
+
+/**
+ * 日を足す。週ぎめを数えるのに使う。
+ *
+ * 1週間は月の長さで変わらないので、週は日で足すのが正しい。月で足すと
+ * 2月のぶんだけ早まる。
+ */
+export function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const at = new Date(Date.UTC(y, m - 1, d + days))
+  return dateText(at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate())
 }
 
 /**
@@ -137,41 +148,85 @@ export function addMonths(date: string, months: number): string {
   return dateText(year, month, isMonthEnd(date) ? last : Math.min(d, last))
 }
 
-/** ひと月あたりの額。周期で割って、長さの違うものを並べて比べられるようにする */
-export function monthlyCost(sub: Billable): number {
-  return Math.round(sub.amount / Math.max(1, sub.interval_months))
+/** 1以上の整数に直す。画面から来た数をそのまま計算に入れない */
+function safeCount(count: number): number {
+  return Math.max(1, Math.round(count || 1))
 }
 
-/** 1年あたりの額 */
+/**
+ * 起点から n 周期ぶん進めた日。
+ *
+ * 単位で数え方を変える。週は日で足し、月と年は月で足して末日に寄せる。
+ * いつも起点から数えるので、寄せたぶんが積もらない。
+ */
+export function addIntervals(anchor: string, interval: Interval, steps: number): string {
+  const count = safeCount(interval.interval_count)
+  if (interval.interval_unit === 'week') return addDays(anchor, steps * count * 7)
+  const months = interval.interval_unit === 'year' ? count * 12 : count
+  return addMonths(anchor, steps * months)
+}
+
+/** 毎月ぴったりか。画面で「月あたり」を添えるかどうかに使う */
+export function isMonthly(interval: Interval): boolean {
+  return interval.interval_unit === 'month' && safeCount(interval.interval_count) === 1
+}
+
+/**
+ * 1年に何回落ちるか。
+ *
+ * 週ぎめは1年を52週として数える。実際は52.18週あるが、週あたりの額を
+ * 比べるのに小数2桁ぶんの差は効かない。
+ */
+function timesPerYear(interval: Interval): number {
+  const count = safeCount(interval.interval_count)
+  if (interval.interval_unit === 'week') return 52 / count
+  if (interval.interval_unit === 'year') return 1 / count
+  return 12 / count
+}
+
+/** 1年あたりの額。長さの違うものを並べて比べられるようにする */
 export function yearlyCost(sub: Billable): number {
-  return Math.round((sub.amount * 12) / Math.max(1, sub.interval_months))
+  return Math.round(sub.amount * timesPerYear(sub))
+}
+
+/** ひと月あたりの額。合計も金額順もこれで出すので、年払いが下に沈まない */
+export function monthlyCost(sub: Billable): number {
+  return Math.round((sub.amount * timesPerYear(sub)) / 12)
 }
 
 /**
  * 次に落ちる日。
  *
- * 支払日から周期ぶんずつ進めて、今日以降で最初に来るものを返す。
- * 今日がその日なら「今日」。支払日がこれから先なら、その日そのもの。
+ * 契約日から周期ぶんずつ進めて、今日以降で最初に来るものを返す。
+ * 今日がその日なら「今日」。契約日がこれから先なら、その日そのもの。
  */
 export function nextPayment(sub: Billable, today: string): string {
-  const interval = Math.max(1, Math.round(sub.interval_months))
   const anchor = sub.anchor_on
   if (!anchor) return today
   if (anchor >= today) return anchor
 
-  // 月数の差から当たりを付けてから、1周期ずつ合わせる。日の大小があるので
+  // 当たりを付けてから1周期ずつ合わせる。月ぎめは日の大小があるので、
   // 割り算だけでは1周期ぶんずれることがある
-  const [ay, am] = anchor.split('-').map(Number)
-  const [ty, tm] = today.split('-').map(Number)
-  const months = (ty * 12 + tm) - (ay * 12 + am)
-  let steps = Math.max(0, Math.floor(months / interval))
+  let steps = Math.max(0, Math.floor(guessSteps(sub, anchor, today)))
 
-  let date = addMonths(anchor, steps * interval)
+  let date = addIntervals(anchor, sub, steps)
   while (date < today) {
     steps += 1
-    date = addMonths(anchor, steps * interval)
+    date = addIntervals(anchor, sub, steps)
   }
   return date
+}
+
+/** 何周期ぶん過ぎているかの当たり。足りなければ nextPayment が足す */
+function guessSteps(interval: Interval, anchor: string, today: string): number {
+  const count = safeCount(interval.interval_count)
+  if (interval.interval_unit === 'week') {
+    return daysUntil(today, anchor) / (count * 7)
+  }
+  const months = interval.interval_unit === 'year' ? count * 12 : count
+  const [ay, am] = anchor.split('-').map(Number)
+  const [ty, tm] = today.split('-').map(Number)
+  return (ty * 12 + tm - (ay * 12 + am)) / months
 }
 
 /** 'YYYY-MM-DD' の間の日数。月をまたいでも時差でずれないよう UTC で引く */
@@ -204,12 +259,24 @@ export function fullDayText(date: string): string {
   return `${y}/${m}/${d}`
 }
 
-/** 周期の見出し。よく使うものには名前を付ける */
-export function intervalLabel(months: number): string {
-  const known = INTERVALS.find((i) => i.months === months)
-  if (known) return known.label
-  if (months % 12 === 0) return `${months / 12}年ごと`
-  return `${months}か月ごと`
+/**
+ * 周期の見出し。
+ *
+ * よく使うものには名前を付ける。「1か月ごと」より「毎月」、
+ * 「6か月ごと」より「半年ごと」のほうが、読んですぐ長さが掴める。
+ */
+export function intervalLabel(interval: Interval): string {
+  const count = safeCount(interval.interval_count)
+  if (interval.interval_unit === 'week') {
+    return count === 1 ? '毎週' : `${count}週間ごと`
+  }
+  if (interval.interval_unit === 'year') {
+    return count === 1 ? '毎年' : `${count}年ごと`
+  }
+  if (count === 1) return '毎月'
+  if (count === 6) return '半年ごと'
+  if (count === 12) return '毎年'
+  return `${count}か月ごと`
 }
 
 /**
@@ -247,8 +314,8 @@ export function toSubSort(value: string | null): SubSort {
  * 並べ替える。
  *
  * 支払日順: 次に落ちる日が近い順。「今月もう落ちたか」を追うとき。
- * 金額順: ひと月あたりが高い順。「何に一番payっているか」を見るとき。
- *         年払いも月額に直して比べるので、下に沈まない。
+ * 金額順: ひと月あたりが高い順。「何に一番払っているか」を見るとき。
+ *         週払いも年払いも月額に直して比べるので、並びが外れない。
  * ジャンル順: ジャンルの決まった並びでまとめ、中は金額順。
  *
  * どれも最後は名前で決める。並びが毎回変わると、同じ場所を探せない。
@@ -328,10 +395,7 @@ export type Share = { category: string; monthly: number; percent: number }
  * 割合も付ける。帯の長さだけでは、1位が8割なのか6割なのかが読めない。
  * 0%にはしない。出ているのに0と書くと、無いのかと思う。
  */
-export function topShares(
-  items: { category: string; monthly: number }[],
-  max = 5
-): Share[] {
+export function topShares(items: { category: string; monthly: number }[], max = 5): Share[] {
   const total = items.reduce((sum, item) => sum + item.monthly, 0)
   if (total <= 0) return []
 
@@ -345,11 +409,15 @@ export function topShares(
   }))
 }
 
+/** 単位の呼び名。入力を直してもらうときの文に使う */
+const UNIT_TEXT: Record<IntervalUnit, string> = { week: '週間', month: 'か月', year: '年' }
+
 /** 入力を確かめる。駄目なら理由を返す */
 export function rejectReason(input: {
   name: string
   amount: string
-  interval_months: string
+  interval_unit: string
+  interval_count: string
   anchor_on: string
   url: string
 }): string | null {
@@ -358,9 +426,13 @@ export function rejectReason(input: {
   const amount = Number(input.amount)
   if (!Number.isFinite(amount) || amount < 0) return '金額を正しく入れてください'
 
-  const interval = Number(input.interval_months)
-  if (!Number.isInteger(interval) || interval < 1 || interval > MAX_INTERVAL_MONTHS) {
-    return `周期は1か月〜${MAX_INTERVAL_MONTHS / 12}年で入れてください`
+  const unit = INTERVAL_UNITS.find((item) => item.id === input.interval_unit)?.id
+  if (!unit) return '支払い周期の単位を選んでください'
+
+  const max = maxIntervalCount(unit)
+  const count = Number(input.interval_count)
+  if (!Number.isInteger(count) || count < 1 || count > max) {
+    return `周期は1〜${max}${UNIT_TEXT[unit]}で入れてください`
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.anchor_on)) return '契約日を選んでください'
