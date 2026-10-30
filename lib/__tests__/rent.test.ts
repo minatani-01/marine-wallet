@@ -411,6 +411,11 @@ test('OSM のタグと名前から施設の種類を決める', () => {
   // 動物病院は人が診てもらえない
   assert.equal(facilityKind({ amenity: 'clinic', name: '〇〇動物病院' }), null)
 
+  // 美容院。shop=beauty はネイルやエステも入るので、髪を切るところだけ
+  assert.equal(facilityKind({ shop: 'hairdresser', name: '〇〇美容室' }), 'hairdresser')
+  assert.equal(facilityKind({ shop: 'beauty', name: 'ヘアサロン〇〇' }), 'hairdresser')
+  assert.equal(facilityKind({ shop: 'beauty', name: '〇〇ネイルサロン' }), null)
+
   // 住まいや関係ないものは施設にしない
   assert.equal(facilityKind({ building: 'apartments', name: '〇〇マンション' }), null)
   assert.equal(facilityKind({ shop: 'supermarket', name: '〇〇ストア' }), null)

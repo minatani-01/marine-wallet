@@ -135,7 +135,7 @@ function buildQuery(bounds: Bounds): string {
     // まわりの施設（0077）。建物より広い四角で聞く。範囲のふちに建つ建物は、
     // 外にある店がいちばん近いことがある
     '(',
-    `  nwr["shop"~"^(convenience|chemist)$"](${fbox});`,
+    `  nwr["shop"~"^(convenience|chemist|hairdresser|beauty)$"](${fbox});`,
     `  nwr["amenity"~"^(pharmacy|dentist|clinic|doctors)$"](${fbox});`,
     ');',
     `out tags center ${MAX_FACILITIES};`,
@@ -159,6 +159,10 @@ export function facilityKind(tags: Record<string, string>): FacilityKind | null 
 
   if (tags.shop === 'convenience') return 'convenience'
   if (tags.amenity === 'pharmacy' || tags.shop === 'chemist') return 'pharmacy'
+
+  // 美容院。shop=beauty はネイルやエステも入るので、髪を切るところだけ採る
+  if (tags.shop === 'hairdresser') return 'hairdresser'
+  if (tags.shop === 'beauty' && /美容室|美容院|ヘア|hair/i.test(name)) return 'hairdresser'
   if (tags.amenity === 'dentist' || /歯科|デンタル/.test(name)) return 'dentist'
 
   if (tags.amenity === 'clinic' || tags.amenity === 'doctors') {
