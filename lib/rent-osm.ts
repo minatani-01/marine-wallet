@@ -14,7 +14,15 @@
  * 用意して、駄目だった理由をそのまま持ち帰る（0076）。
  */
 
-import { straightWalk, type Bounds, type RentBuilding, type RentStation } from '@/lib/rent'
+import {
+  expandBounds,
+  straightWalk,
+  type Bounds,
+  type Facility,
+  type FacilityKind,
+  type RentBuilding,
+  type RentStation,
+} from '@/lib/rent'
 
 /**
  * 問い合わせ先。上から順に試す。
@@ -32,6 +40,17 @@ const ENDPOINTS = [
 
 /** 1回で受け取る建物の数。多すぎると地図も一覧も読めない */
 const MAX_ELEMENTS = 1500
+
+/** まわりの施設の数。コンビニは密なので、建物ほどは要らないが少なすぎても困る */
+const MAX_FACILITIES = 600
+
+/**
+ * 施設を探す範囲の広げ幅（m）。
+ *
+ * 範囲のふちに建つ建物にとっては、外にある店がいちばん近いことがある。
+ * 徒歩10分（800m）まで選べるので、そのぶんを見込む
+ */
+const FACILITY_MARGIN = 900
 
 /** 住まいとして使われている建物。building の値で見分ける */
 const KIND_LABELS: Record<string, string> = {
@@ -78,6 +97,8 @@ export function failReason(e: unknown): string {
 export type OsmResult = {
   /** 取れた建物。1か所も答えなければ null */
   buildings: RentBuilding[] | null
+  /** まわりの施設（0077）。建物と同じ1回の問い合わせで取る */
+  facilities: Facility[]
   /** どこに聞いて、どうだったか。画面に出して原因を追えるようにする */
   attempts: string[]
 }
@@ -99,6 +120,8 @@ function toLevels(value: string | undefined): number | null {
  */
 function buildQuery(bounds: Bounds): string {
   const box = `${bounds.south},${bounds.west},${bounds.north},${bounds.east}`
+  const wide = expandBounds(bounds, FACILITY_MARGIN)
+  const fbox = `${wide.south},${wide.west},${wide.north},${wide.east}`
   const homes = 'apartments|residential|dormitory|house|detached|semidetached_house|terrace'
   return [
     '[out:json][timeout:20];',
@@ -109,7 +132,43 @@ function buildQuery(bounds: Bounds): string {
     `  relation["building"]["name"](${box});`,
     ');',
     `out tags center ${MAX_ELEMENTS};`,
+    // まわりの施設（0077）。建物より広い四角で聞く。範囲のふちに建つ建物は、
+    // 外にある店がいちばん近いことがある
+    '(',
+    `  nwr["shop"~"^(convenience|chemist)$"](${fbox});`,
+    `  nwr["amenity"~"^(pharmacy|dentist|clinic|doctors)$"](${fbox});`,
+    ');',
+    `out tags center ${MAX_FACILITIES};`,
   ].join('\n')
+}
+
+/**
+ * 施設の種類を決める（0077）。
+ *
+ * タグだけでは決まらないので、名前も見る。日本のクリニックは
+ * healthcare:speciality が入っていないことが多く、代わりに名前に
+ * 「内科」「歯科」と書いてある。
+ *
+ * 風邪で行くところを探しているので、専門科だけの医院は外す。皮膚科や
+ * 眼科に風邪では行かない。
+ */
+export function facilityKind(tags: Record<string, string>): FacilityKind | null {
+  const name = tags['name:ja'] || tags.name || ''
+  // 動物病院は人が診てもらえない
+  if (/動物|ペット|獣医/.test(name)) return null
+
+  if (tags.shop === 'convenience') return 'convenience'
+  if (tags.amenity === 'pharmacy' || tags.shop === 'chemist') return 'pharmacy'
+  if (tags.amenity === 'dentist' || /歯科|デンタル/.test(name)) return 'dentist'
+
+  if (tags.amenity === 'clinic' || tags.amenity === 'doctors') {
+    const spec = tags['healthcare:speciality'] ?? ''
+    if (spec && !/internal|general|paediatrics|community/.test(spec)) return null
+    if (!spec && /科/.test(name) && !/内科|総合|一般|小児/.test(name)) return null
+    return 'clinic'
+  }
+
+  return null
 }
 
 /**
@@ -155,16 +214,44 @@ export async function fetchOsmBuildings(
       continue
     }
 
-    const buildings = (body.elements ?? [])
-      .filter((e) => isHome(e.tags ?? {}))
-      .map((e) => toBuilding(e, stations))
-      .filter((b): b is RentBuilding => b !== null)
+    const buildings: RentBuilding[] = []
+    const facilities: Facility[] = []
 
-    attempts.push(`OSM ${endpoint.host}: ${buildings.length}件`)
-    return { buildings, attempts }
+    for (const e of body.elements ?? []) {
+      const tags = e.tags ?? {}
+      // 施設かどうかを先に見る。薬局の入っている建物を住まいとして
+      // 並べても仕方がない
+      const kind = facilityKind(tags)
+      if (kind) {
+        const point = pointOf(e)
+        if (point) {
+          facilities.push({
+            id: `f-${e.type ?? 'node'}-${e.id ?? 0}`,
+            kind,
+            name: (tags['name:ja'] || tags.name || '').trim(),
+            ...point,
+          })
+        }
+        continue
+      }
+      if (!tags.building || !isHome(tags)) continue
+      const building = toBuilding(e, stations)
+      if (building) buildings.push(building)
+    }
+
+    attempts.push(`OSM ${endpoint.host}: 建物${buildings.length}件・施設${facilities.length}件`)
+    return { buildings, facilities, attempts }
   }
 
-  return { buildings: null, attempts }
+  return { buildings: null, facilities: [], attempts }
+}
+
+/** 点の位置。way と relation は center、node はそのまま */
+function pointOf(e: OverpassElement): { lat: number; lng: number } | null {
+  const lat = e.center?.lat ?? e.lat
+  const lng = e.center?.lon ?? e.lon
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+  return { lat: lat as number, lng: lng as number }
 }
 
 /** 住まいとして出してよいか。店や事務所は落とす */
