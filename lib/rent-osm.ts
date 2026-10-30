@@ -17,6 +17,7 @@
 import {
   expandBounds,
   straightWalk,
+  toBuiltYear,
   type Bounds,
   type Facility,
   type FacilityKind,
@@ -286,6 +287,8 @@ function toBuilding(e: OverpassElement, stations: RentStation[]): RentBuilding |
     address: addressOf(tags),
     ...point,
     levels: toLevels(tags['building:levels']),
+    // 竣工年（0082）。入っていることは少ないが、取るのに費用はかからない
+    builtYear: toBuiltYear(tags.start_date, new Date().getFullYear()),
     kind: KIND_LABELS[tags.building ?? ''] ?? '建物',
     walk: straightWalk(point, stations),
   }

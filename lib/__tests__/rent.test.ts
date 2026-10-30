@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   areaText,
   boundsOf,
+  buildingAge,
   expandBounds,
   hasFacility,
   hasSameStation,
@@ -25,6 +26,7 @@ import {
   searchArea,
   sortBuildings,
   straightMinutes,
+  toBuiltYear,
   straightWalk,
   walkRadius,
   worstWalk,
@@ -65,6 +67,7 @@ const building = (over: Partial<RentBuilding> & { lat: number; lng: number }): R
   lat: over.lat,
   lng: over.lng,
   levels: over.levels ?? null,
+  builtYear: over.builtYear ?? null,
   kind: over.kind ?? 'マンション・アパート',
   walk: over.walk ?? {},
 })
@@ -480,4 +483,26 @@ test('同じ駅は2つ入れない', () => {
   // 別の駅は入る（代官山は約640m離れている）
   assert.equal(hasSameStation(stations, { ...DAIKANYAMA, name: '代官山駅' }), false)
   assert.equal(hasSameStation([], { ...EBISU, name: '恵比寿駅' }), false)
+})
+
+
+test('竣工年を読んで、築何年かを出す', () => {
+  // OSM の start_date は書き方が揺れる
+  assert.equal(toBuiltYear('1998', 2026), 1998)
+  assert.equal(toBuiltYear('1998-04', 2026), 1998)
+  assert.equal(toBuiltYear('1998-04-01', 2026), 1998)
+  assert.equal(toBuiltYear('~1998', 2026), 1998)
+  // 年に直せないものは捨てる
+  assert.equal(toBuiltYear('C19', 2026), null)
+  assert.equal(toBuiltYear('', 2026), null)
+  assert.equal(toBuiltYear(undefined, 2026), null)
+  // 先の年や、古すぎるものは入力の間違い
+  assert.equal(toBuiltYear('2030', 2026), null)
+  assert.equal(toBuiltYear('1700', 2026), null)
+
+  assert.equal(buildingAge(1998, 2026), 28)
+  assert.equal(buildingAge(2026, 2026), 0)
+  // 分からないものを「築0年」と書くと新築だと思われる
+  assert.equal(buildingAge(null, 2026), null)
+  assert.equal(buildingAge(undefined, 2026), null)
 })
