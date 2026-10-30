@@ -13,6 +13,7 @@ import {
   IconCalendar,
   IconCopy,
   IconGoods,
+  IconHome,
   IconLogout,
   IconUsers,
 } from '@/components/icons'
@@ -308,6 +309,29 @@ export default function MeClient({
               <p className="text-[13px]">毎月のサブスク</p>
               <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
                 払っているものと、次に落ちる日をまとめます。ひと月あたりの合計も出ます。
+              </p>
+            </div>
+            <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
+          </Link>
+        </div>
+      ) : null}
+
+      {/* 賃貸さがし（0075）。引っ越しを考えていることは相手に見せたくない
+          ことがあるので、タブにも出さず master のマイページにだけ置く */}
+      {profile?.is_master ? (
+        <div>
+          <SectionLabel>住まい</SectionLabel>
+          <Link
+            href="/rent"
+            prefetch={false}
+            className="glass flex items-center gap-3 rounded-2xl p-4 transition-colors hover:border-marine/50"
+          >
+            <IconHome size={18} className="shrink-0 text-fg-mute" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px]">賃貸さがし</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+                指定した駅すべてから徒歩◯分以内にある建物を出します。空室かどうかでは
+                探しません。
               </p>
             </div>
             <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
