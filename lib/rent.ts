@@ -342,6 +342,18 @@ export function pairGaps(stations: RentStation[]): {
   return out
 }
 
+/**
+ * もう入っている駅か（0081）。
+ *
+ * 同じ駅を2つ入れても、重なりは1つぶんのまま変わらない。5駅までの枠を
+ * 無駄にするだけで、一覧にも同じ名前が並ぶ。
+ *
+ * 名前が同じものと、ごく近い点（別の出口を選んだときなど）を同じとみなす。
+ */
+export function hasSameStation(stations: RentStation[], point: RentPoint & { name: string }): boolean {
+  return stations.some((s) => s.name === point.name || haversine(s, point) < 120)
+}
+
 /** 入力を確かめる。駄目なら理由を返す */
 export function rejectRentReason(stations: RentStation[]): string | null {
   if (stations.length === 0) return '駅を追加してください'

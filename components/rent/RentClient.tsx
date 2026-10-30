@@ -39,6 +39,7 @@ import {
   distText,
   facilityLabel,
   hasFacility,
+  hasSameStation,
   pairGaps,
   ratingText,
   searchArea,
@@ -185,6 +186,12 @@ export default function RentClient({
     setError(null)
     if (stations.length >= MAX_RENT_STATIONS) {
       setError(`駅は最大${MAX_RENT_STATIONS}つまでです`)
+      return
+    }
+    // 同じ駅を2つ入れても、重なりは1つぶんのまま変わらない（0081）
+    if (hasSameStation(stations, p)) {
+      setError(`${p.name}はもう入っています`)
+      setHits(null)
       return
     }
     const id = `s-${Date.now()}-${Math.round(Math.random() * 1000)}`
@@ -446,7 +453,7 @@ export default function RentClient({
                 value={saveName}
                 aria-label="この組み合わせの名前"
                 onChange={(e) => setSaveName(e.target.value)}
-                placeholder={defaultName}
+                placeholder="例：職場の近く"
                 maxLength={60}
                 className={inputClass}
               />
@@ -459,6 +466,14 @@ export default function RentClient({
                 {savingSet ? '保存中' : '保存'}
               </Button>
             </div>
+          ) : null}
+
+          {/* 何を入れる欄なのかを書いておく。駅名を例に出すと、駅を入れる欄に
+              見えてしまう（0081） */}
+          {stations.length > 0 ? (
+            <p className="mt-1.5 text-[11px] leading-relaxed text-fg-mute">
+              あとで呼び出すときの名前です。空のままなら「{defaultName}」になります。
+            </p>
           ) : null}
 
           {searches.length > 0 ? (
