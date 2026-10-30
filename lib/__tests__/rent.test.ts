@@ -7,6 +7,9 @@ import {
   expandBounds,
   hasFacility,
   nearestFacilities,
+  nearestFood,
+  ratingText,
+  toFoodRating,
   toFacilityKinds,
   boundsSpan,
   coverCircles,
@@ -25,6 +28,7 @@ import {
   walkRadius,
   worstWalk,
   type Facility,
+  type FoodPlace,
   type RentBuilding,
   type RentStation,
 } from '@/lib/rent'
@@ -410,4 +414,47 @@ test('OSM のタグと名前から施設の種類を決める', () => {
   // 住まいや関係ないものは施設にしない
   assert.equal(facilityKind({ building: 'apartments', name: '〇〇マンション' }), null)
   assert.equal(facilityKind({ shop: 'supermarket', name: '〇〇ストア' }), null)
+})
+
+
+/* --------------------------------------------------------------- 飲食店 ---- */
+
+const food = (over: Partial<FoodPlace> & { lat: number; lng: number }): FoodPlace => ({
+  id: over.id ?? 'f',
+  name: over.name ?? '店',
+  rating: over.rating ?? 3.5,
+  lat: over.lat,
+  lng: over.lng,
+})
+
+test('いちばん近い飲食店を出す。星は Google に聞く時点で切ってある', () => {
+  const here = { lat: 35.646, lng: 139.71 }
+  const foods = [
+    // 約330m（徒歩5分）だが評価は高い
+    food({ id: 'a', name: '遠いけど高評価', rating: 4.5, lat: 35.649, lng: 139.71 }),
+    // 約160m（徒歩2分）
+    food({ id: 'b', name: '近い店', rating: 3.2, lat: 35.6474, lng: 139.71 }),
+  ]
+
+  const near = nearestFood(here, foods)
+  // 近いほうを採る。条件に合う店なら、あとは近さで決まる
+  assert.equal(near?.name, '近い店')
+  assert.equal(near?.minutes, 2)
+  assert.equal(near?.rating, 3.2)
+
+  assert.equal(nearestFood(here, []), null)
+})
+
+test('星の書き方と、覚えておいた条件の読み直し', () => {
+  // 3 と 3.5 が並ぶので桁をそろえる
+  assert.equal(ratingText(3), '★3.0')
+  assert.equal(ratingText(3.5), '★3.5')
+  assert.equal(ratingText(4), '★4.0')
+
+  assert.equal(toFoodRating(3.5), 3.5)
+  assert.equal(toFoodRating(4), 4)
+  // 知らない値は既定に戻す
+  assert.equal(toFoodRating(4.8), 3)
+  assert.equal(toFoodRating('3.5'), 3)
+  assert.equal(toFoodRating(undefined), 3)
 })

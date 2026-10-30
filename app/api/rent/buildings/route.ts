@@ -11,13 +11,16 @@ import {
   measureOrder,
   mergeBuildings,
   nearestFacilities,
+  nearestFood,
   rejectRentReason,
   searchArea,
+  toFoodRating,
   type Facility,
+  type FoodPlace,
   type RentBuilding,
   type RentStation,
 } from '@/lib/rent'
-import { searchHousing, walkMatrix } from '@/lib/rent-google'
+import { searchFood, searchHousing, walkMatrix } from '@/lib/rent-google'
 import { fetchOsmBuildings } from '@/lib/rent-osm'
 
 /**
@@ -67,6 +70,8 @@ export type BuildingsResponse = {
     truncated: boolean
     /** まわりの施設を何件拾えたか（0077）。0なら施設の条件は使えない */
     facilities: number
+    /** 星の条件で拾えた飲食店の数（0079）。聞いていなければ null */
+    food: number | null
   }
   notes: string[]
   /** どこに聞いて、どうだったか。0件のときに画面へ出す（0076） */
@@ -80,7 +85,11 @@ export async function POST(request: Request) {
   const profile = await getProfile(user.id)
   if (!profile?.is_master) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
-  const body = (await request.json().catch(() => ({}))) as { stations?: RentStation[] }
+  const body = (await request.json().catch(() => ({}))) as {
+    stations?: RentStation[]
+    /** 飲食店も調べるか（0079）。星いくつ以上か */
+    food?: { minRating?: number } | null
+  }
   const stations = (body.stations ?? []).map((s) => ({
     id: String(s.id ?? ''),
     name: String(s.name ?? ''),
@@ -97,7 +106,15 @@ export async function POST(request: Request) {
     return NextResponse.json({
       area: null,
       buildings: [],
-      stats: { candidates: 0, osm: 0, google: 0, measured: false, truncated: false, facilities: 0 },
+      stats: {
+        candidates: 0,
+        osm: 0,
+        google: 0,
+        measured: false,
+        truncated: false,
+        facilities: 0,
+        food: null,
+      },
       notes: [],
       debug: [],
     } satisfies BuildingsResponse)
@@ -178,7 +195,43 @@ export async function POST(request: Request) {
     }
   }
 
-  const [osmResult, google] = await Promise.all([osmTask(), googleTask()])
+  /**
+   * 飲食店（0079）。
+   *
+   * 頼まれたときだけ聞く。口コミまで受け取ると課金の区分が上がるので、
+   * 毎回聞いていると1日に数回しか探せなくなる。
+   */
+  const wantFood = Boolean(body.food)
+  const minRating = toFoodRating(body.food?.minRating)
+
+  const foodTask = async (): Promise<FoodPlace[] | null> => {
+    if (!wantFood) return null
+    if (!key || circles.length === 0) return []
+
+    const spend = await spendApiCalls('places_rating', circles.length)
+    if (!spend.allowed) {
+      notes.push('今日は飲食店を調べられる回数を使い切りました。')
+      debug.push(`飲食店: 今日は上限（${spend.used_today}/${spend.daily}）`)
+      return []
+    }
+
+    const found = await Promise.all(
+      circles.map((c) => searchFood(key, c, NEARBY_RADIUS, minRating))
+    )
+    let total = 0
+    for (const r of found) {
+      total += r.items.length
+      for (const a of r.attempts) if (!a.endsWith('件')) debug.push(a)
+    }
+    debug.push(`飲食店（★${minRating.toFixed(1)}以上）: ${total}件`)
+
+    const seen = new Set<string>()
+    return found
+      .flatMap((r) => r.items)
+      .filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)))
+  }
+
+  const [osmResult, google, foods] = await Promise.all([osmTask(), googleTask(), foodTask()])
   const osm = osmResult.buildings
   const facilities = osmResult.facilities
 
@@ -197,9 +250,15 @@ export async function POST(request: Request) {
   const truncated = ordered.length > MEASURE_MAX
   const targets = ordered.slice(0, MEASURE_MAX)
 
-  // まわりの施設まで何分か（0077）。絞るのは画面側でやるので、ここでは
-  // 全部の種類ぶん入れておく。チェックを変えるたびに聞き直さずに済む
-  for (const b of targets) b.near = nearestFacilities(b, facilities)
+  // まわりの施設まで何分か（0077 / 0079）。出し分けは画面側でやるので、
+  // ここでは全部の種類ぶん入れておく。チェックを変えるたびに聞き直さずに済む
+  for (const b of targets) {
+    b.near = nearestFacilities(b, facilities)
+    if (foods) {
+      const near = nearestFood(b, foods)
+      if (near) b.food = near
+    }
+  }
 
   let measured = false
   if (key && targets.length > 0) {
@@ -244,6 +303,7 @@ export async function POST(request: Request) {
       measured,
       truncated,
       facilities: facilities.length,
+      food: foods ? foods.length : null,
     },
     notes,
     debug,

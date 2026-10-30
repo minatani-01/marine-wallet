@@ -52,6 +52,8 @@ export type RentBuilding = RentPoint & {
   walk: Record<string, RentWalk>
   /** まわりの施設まで何分か（0077）。取れていなければ無い */
   near?: NearFacilities
+  /** いちばん近い飲食店（0079）。聞いていなければ無い */
+  food?: NearFood
 }
 
 /**
@@ -517,4 +519,55 @@ export function hasFacility(
 ): boolean {
   const found = near?.[kind]
   return found !== undefined && found <= minutes
+}
+
+/* ----------------------------------------------------------- 飲食店 ---- */
+
+/**
+ * 飲食店（0079）。
+ *
+ * ここだけ出どころが Google になる。口コミの評価は Google にしかなく、
+ * OSM は店の有無しか持っていない。「近くに店がある」ではなく「入りたい店が
+ * ある」かどうかを見たいので、評価で切れるようにする。
+ */
+export const FOOD_RATINGS = [3, 3.5, 4] as const
+
+export const DEFAULT_FOOD_RATING = 3
+
+/** Google から返ってきた店 */
+export type FoodPlace = RentPoint & { id: string; name: string; rating: number }
+
+/** 建物からいちばん近い店 */
+export type NearFood = { minutes: number; rating: number; name: string }
+
+/** 星の出し方。3 は「★3.0」と書く。3 と 3.5 が並ぶと桁が揃わない */
+export function ratingText(rating: number): string {
+  return `★${rating.toFixed(1)}`
+}
+
+/**
+ * いちばん近い店。
+ *
+ * 評価の高い店ではなく、近い店を採る。評価で切るのは Google に聞く時点で
+ * 済んでいるので、ここに来るのは条件を満たした店だけである。
+ */
+export function nearestFood(point: RentPoint, foods: FoodPlace[]): NearFood | null {
+  let best: FoodPlace | null = null
+  let bestMeters = Number.POSITIVE_INFINITY
+
+  for (const f of foods) {
+    const meters = haversine(point, f)
+    if (meters < bestMeters) {
+      best = f
+      bestMeters = meters
+    }
+  }
+
+  if (!best) return null
+  return { minutes: straightMinutes(bestMeters), rating: best.rating, name: best.name }
+}
+
+/** 覚えておいた星の条件を読み直す。知らない値なら既定に戻す */
+export function toFoodRating(value: unknown): number {
+  return FOOD_RATINGS.some((r) => r === value) ? (value as number) : DEFAULT_FOOD_RATING
 }

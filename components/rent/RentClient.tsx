@@ -23,10 +23,12 @@ import {
 import { withTapFeedback } from '@/lib/haptics'
 import {
   DEFAULT_FACILITY_WALK,
+  DEFAULT_FOOD_RATING,
   DEFAULT_RENT_SORT,
   DEFAULT_WALK,
   FACILITIES,
   FACILITY_WALKS,
+  FOOD_RATINGS,
   MAX_RENT_STATIONS,
   MAX_WALK,
   MIN_WALK,
@@ -36,9 +38,11 @@ import {
   facilityLabel,
   hasFacility,
   pairGaps,
+  ratingText,
   searchArea,
   sortBuildings,
   toFacilityKinds,
+  toFoodRating,
   type FacilityKind,
   type RentBuilding,
   type RentPoint,
@@ -87,6 +91,15 @@ export default function RentClient() {
   const [wanted, setWanted] = useState<FacilityKind[]>(() => FACILITIES.map((f) => f.id))
   const [facilityWalk, setFacilityWalk] = useState<number>(DEFAULT_FACILITY_WALK)
 
+  /**
+   * 飲食店（0079）。
+   *
+   * ここだけ Google に聞きに行くので、チェックしただけでは出ない。
+   * 探し直したときに調べる。毎回聞くと、1日に数回しか探せなくなる
+   */
+  const [wantFood, setWantFood] = useState(false)
+  const [foodRating, setFoodRating] = useState<number>(DEFAULT_FOOD_RATING)
+
   /** 前に入れた駅を出しておく。毎回入れ直すのでは続けて使えない */
   useEffect(() => {
     try {
@@ -110,11 +123,18 @@ export default function RentClient() {
     try {
       const saved = window.localStorage.getItem(FACILITY_KEY)
       if (!saved) return
-      const parsed = JSON.parse(saved) as { wanted?: unknown; minutes?: unknown }
+      const parsed = JSON.parse(saved) as {
+        wanted?: unknown
+        minutes?: unknown
+        food?: unknown
+        rating?: unknown
+      }
       if (Array.isArray(parsed.wanted)) setWanted(toFacilityKinds(parsed.wanted))
       if (FACILITY_WALKS.some((m) => m === parsed.minutes)) {
         setFacilityWalk(parsed.minutes as number)
       }
+      setWantFood(parsed.food === true)
+      setFoodRating(toFoodRating(parsed.rating))
     } catch {
       // 読めなければ既定のまま
     }
@@ -124,12 +144,12 @@ export default function RentClient() {
     try {
       window.localStorage.setItem(
         FACILITY_KEY,
-        JSON.stringify({ wanted, minutes: facilityWalk })
+        JSON.stringify({ wanted, minutes: facilityWalk, food: wantFood, rating: foodRating })
       )
     } catch {
       // 書けなくても探すことはできる
     }
-  }, [wanted, facilityWalk])
+  }, [wanted, facilityWalk, wantFood, foodRating])
 
   /**
    * 重なりの範囲。
@@ -196,7 +216,10 @@ export default function RentClient() {
     const res = await fetch('/api/rent/buildings', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ stations }),
+      body: JSON.stringify({
+        stations,
+        food: wantFood ? { minRating: foodRating } : null,
+      }),
     }).catch(() => null)
     setLoading(false)
 
@@ -420,6 +443,36 @@ export default function RentClient() {
             ))}
           </div>
 
+          {/* 飲食店だけは Google に聞きに行く（0079）。口コミは Google に
+              しかなく、聞くたびに費用がかかる。探し直したときに調べる */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-line pt-2.5">
+            <Checkbox
+              checked={wantFood}
+              onChange={setWantFood}
+              label={`飲食店（${ratingText(foodRating)}以上）`}
+            />
+            {wantFood ? (
+              <select
+                aria-label="飲食店の評価"
+                value={foodRating}
+                onChange={(e) => setFoodRating(Number(e.target.value))}
+                className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1.5 text-[12px] font-semibold text-fg"
+              >
+                {FOOD_RATINGS.map((r) => (
+                  <option key={r} value={r}>
+                    {ratingText(r)}以上
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+
+          {wantFood && result && result.stats.food === null ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-warn">
+              飲食店はまだ調べていません。「この範囲の建物を探す」をもう一度押してください。
+            </p>
+          ) : null}
+
           <div className="mt-3 flex items-center gap-2 text-[12px] text-fg-mute">
             <span>建物から徒歩</span>
             <select
@@ -439,7 +492,8 @@ export default function RentClient() {
 
           <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
             チェックしたものが、建物から徒歩{facilityWalk}分以内にあるかを一覧に出します。
-            建物は減りません。時間は直線距離からの概算です。
+            建物は減りません。時間は直線距離からの概算です。飲食店だけは Google の口コミを
+            見るため、探し直したときに調べます。
             {result && result.stats.facilities === 0
               ? 'いまはまわりの施設を取れていないため、「なし」と出ます。'
               : ''}
@@ -500,6 +554,8 @@ export default function RentClient() {
                   building={b}
                   stations={stations}
                   wanted={wanted}
+                  wantFood={wantFood}
+                  foodKnown={result.stats.food !== null}
                   facilityWalk={facilityWalk}
                   active={activeId === b.id}
                   onSelect={() => setActiveId(activeId === b.id ? null : b.id)}
@@ -542,6 +598,8 @@ function BuildingRow({
   building,
   stations,
   wanted,
+  wantFood,
+  foodKnown,
   facilityWalk,
   active,
   onSelect,
@@ -550,6 +608,10 @@ function BuildingRow({
   stations: RentStation[]
   /** 見たい施設。チェックしたものだけ出す */
   wanted: FacilityKind[]
+  /** 飲食店も出すか（0079） */
+  wantFood: boolean
+  /** その検索で飲食店を調べたか。調べていなければ「なし」とは言えない */
+  foodKnown: boolean
   /** 徒歩何分以内なら「ある」とするか */
   facilityWalk: number
   active: boolean
@@ -596,8 +658,32 @@ function BuildingRow({
             どれが店なのか読み取れない。
             無いものも「なし」と出す。行ごと消すと、調べたうえで無いのか、
             そもそも調べていないのかが分からない */}
-        {wanted.length > 0 ? (
+        {wanted.length > 0 || wantFood ? (
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+            {/* 飲食店は星まで出す（0079）。近いだけの店より、入りたい店が
+                あるかどうかで決まる */}
+            {wantFood ? (
+              <span
+                className={`whitespace-nowrap ${
+                  foodKnown && building.food && building.food.minutes <= facilityWalk
+                    ? 'text-fg-dim'
+                    : 'text-fg-mute'
+                }`}
+              >
+                飲食店
+                {/* 調べていないうちに「なし」と書くと、無いと思ってしまう */}
+                {!foodKnown ? (
+                  <span className="ml-1">未調査</span>
+                ) : building.food && building.food.minutes <= facilityWalk ? (
+                  <span className="tnum ml-1 font-semibold text-teal">
+                    {building.food.minutes}分 {ratingText(building.food.rating)}
+                  </span>
+                ) : (
+                  <span className="ml-1">なし</span>
+                )}
+              </span>
+            ) : null}
+
             {FACILITIES.filter((f) => wanted.includes(f.id)).map((f) => {
               const minutes = building.near?.[f.id]
               const found = hasFacility(building.near, f.id, facilityWalk)
