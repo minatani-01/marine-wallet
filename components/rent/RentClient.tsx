@@ -34,7 +34,7 @@ import {
   areaText,
   distText,
   facilityLabel,
-  meetsFacilities,
+  hasFacility,
   pairGaps,
   searchArea,
   sortBuildings,
@@ -78,8 +78,13 @@ export default function RentClient() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [pointSeq, setPointSeq] = useState(0)
 
-  /** まわりに欲しい施設と、そこまでの徒歩時間（0077） */
-  const [wanted, setWanted] = useState<FacilityKind[]>([])
+  /**
+   * 見たい施設と、そこまでの徒歩時間（0077 / 0078）。
+   *
+   * 絞り込みではない。あるか無いかを一覧に出すだけなので、はじめは全部
+   * 見る側にしておく。チェックを外すと、その行が一覧から消える
+   */
+  const [wanted, setWanted] = useState<FacilityKind[]>(() => FACILITIES.map((f) => f.id))
   const [facilityWalk, setFacilityWalk] = useState<number>(DEFAULT_FACILITY_WALK)
 
   /** 前に入れた駅を出しておく。毎回入れ直すのでは続けて使えない */
@@ -106,7 +111,7 @@ export default function RentClient() {
       const saved = window.localStorage.getItem(FACILITY_KEY)
       if (!saved) return
       const parsed = JSON.parse(saved) as { wanted?: unknown; minutes?: unknown }
-      setWanted(toFacilityKinds(parsed.wanted))
+      if (Array.isArray(parsed.wanted)) setWanted(toFacilityKinds(parsed.wanted))
       if (FACILITY_WALKS.some((m) => m === parsed.minutes)) {
         setFacilityWalk(parsed.minutes as number)
       }
@@ -135,25 +140,10 @@ export default function RentClient() {
   const area = useMemo(() => searchArea(stations), [stations])
   const gaps = useMemo(() => (area ? [] : pairGaps(stations)), [area, stations])
 
-  /**
-   * 出す建物。
-   *
-   * 施設の条件は画面の中だけで効かせる。チェックを変えるたびに外へ聞きに
-   * 行くと、1日の上限がすぐ尽きる。施設までの分数は検索のときに全部の種類
-   * ぶん持ち帰ってあるので、ここで絞れる。
-   */
-  const buildings = useMemo(() => {
-    if (!result) return []
-    const usable = result.stats.facilities > 0
-    const kept = usable
-      ? result.buildings.filter((b) => meetsFacilities(b.near, wanted, facilityWalk))
-      : result.buildings
-    return sortBuildings(kept, stations, sort)
-  }, [result, stations, sort, wanted, facilityWalk])
-
-  /** 施設の条件で何件落としたか。0件になった理由が分かるようにする */
-  const droppedByFacility =
-    result && result.stats.facilities > 0 ? result.buildings.length - buildings.length : 0
+  const buildings = useMemo(
+    () => (result ? sortBuildings(result.buildings, stations, sort) : []),
+    [result, stations, sort]
+  )
 
   const addStation = (p: { name: string; lat: number; lng: number }) => {
     setError(null)
@@ -412,10 +402,10 @@ export default function RentClient() {
         </Card>
       </div>
 
-      {/* まわりの施設（0077）。検索し直さずに効く。チェックを変えるたびに
-          外へ聞きに行くと、1日の上限がすぐ尽きる */}
+      {/* まわりの施設（0077 / 0078）。建物は落とさない。あるか無いかを
+          一覧に出すだけ。歯科が無いからといって住めないわけではない */}
       <div>
-        <SectionLabel>まわりの施設で絞る</SectionLabel>
+        <SectionLabel>まわりの施設を見る</SectionLabel>
         <Card>
           <div className="flex flex-wrap gap-2">
             {FACILITIES.map((f) => (
@@ -448,13 +438,11 @@ export default function RentClient() {
           </div>
 
           <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
-            チェックしたものが全部そろう建物だけを残します。施設までの時間は直線距離からの
-            概算です。
+            チェックしたものが、建物から徒歩{facilityWalk}分以内にあるかを一覧に出します。
+            建物は減りません。時間は直線距離からの概算です。
             {result && result.stats.facilities === 0
-              ? 'いまはまわりの施設を取れていないため、この条件は効きません。'
-              : droppedByFacility > 0
-                ? `この条件で${droppedByFacility}件を外しています。`
-                : ''}
+              ? 'いまはまわりの施設を取れていないため、「なし」と出ます。'
+              : ''}
           </p>
         </Card>
       </div>
@@ -511,6 +499,8 @@ export default function RentClient() {
                   key={b.id}
                   building={b}
                   stations={stations}
+                  wanted={wanted}
+                  facilityWalk={facilityWalk}
                   active={activeId === b.id}
                   onSelect={() => setActiveId(activeId === b.id ? null : b.id)}
                 />
@@ -551,11 +541,17 @@ export default function RentClient() {
 function BuildingRow({
   building,
   stations,
+  wanted,
+  facilityWalk,
   active,
   onSelect,
 }: {
   building: RentBuilding
   stations: RentStation[]
+  /** 見たい施設。チェックしたものだけ出す */
+  wanted: FacilityKind[]
+  /** 徒歩何分以内なら「ある」とするか */
+  facilityWalk: number
   active: boolean
   onSelect: () => void
 }) {
@@ -596,17 +592,26 @@ function BuildingRow({
           </div>
         </div>
 
-        {/* まわりの施設まで何分か（0077）。駅の行とは分けて出す。
-            混ぜると、どれが駅でどれが店なのか読み取れない */}
-        {building.near && Object.keys(building.near).length > 0 ? (
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-mute">
-            {FACILITIES.map((f) => {
+        {/* まわりの施設（0078）。駅の行とは分けて出す。混ぜると、どれが駅で
+            どれが店なのか読み取れない。
+            無いものも「なし」と出す。行ごと消すと、調べたうえで無いのか、
+            そもそも調べていないのかが分からない */}
+        {wanted.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+            {FACILITIES.filter((f) => wanted.includes(f.id)).map((f) => {
               const minutes = building.near?.[f.id]
-              if (minutes == null) return null
+              const found = hasFacility(building.near, f.id, facilityWalk)
               return (
-                <span key={f.id} className="whitespace-nowrap">
+                <span
+                  key={f.id}
+                  className={`whitespace-nowrap ${found ? 'text-fg-dim' : 'text-fg-mute'}`}
+                >
                   {facilityLabel(f.id)}
-                  <span className="tnum ml-1 text-fg-dim">{minutes}分</span>
+                  {found ? (
+                    <span className="tnum ml-1 font-semibold text-teal">{minutes}分</span>
+                  ) : (
+                    <span className="ml-1">なし</span>
+                  )}
                 </span>
               )
             })}
