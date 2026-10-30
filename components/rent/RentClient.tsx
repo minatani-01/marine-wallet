@@ -36,6 +36,7 @@ import {
   MIN_WALK,
   RENT_SORTS,
   areaText,
+  buildingAge,
   distText,
   facilityLabel,
   hasFacility,
@@ -77,10 +78,13 @@ const FACILITY_KEY = 'marine-wallet:rent-facilities'
 export default function RentClient({
   userId,
   searches,
+  thisYear,
 }: {
   userId: string
   /** 名前を付けて残した駅の組み合わせ（0080） */
   searches: RentSearch[]
+  /** 日本時間での今年。築年数を出すのに使う（0082） */
+  thisYear: number
 }) {
   const router = useRouter()
   const [stations, setStations] = useState<RentStation[]>([])
@@ -692,6 +696,7 @@ export default function RentClient({
                   stations={stations}
                   wanted={wanted}
                   wantFood={wantFood}
+                  thisYear={thisYear}
                   foodKnown={result.stats.food !== null}
                   facilityWalk={facilityWalk}
                   active={activeId === b.id}
@@ -738,6 +743,7 @@ function BuildingRow({
   wantFood,
   foodKnown,
   facilityWalk,
+  thisYear,
   active,
   onSelect,
 }: {
@@ -751,12 +757,28 @@ function BuildingRow({
   foodKnown: boolean
   /** 徒歩何分以内なら「ある」とするか */
   facilityWalk: number
+  /** 日本時間での今年。築年数を出すのに使う */
+  thisYear: number
   active: boolean
   onSelect: () => void
 }) {
   const name = building.name || '名前の分からない建物'
+  const age = buildingAge(building.builtYear, thisYear)
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${building.lat},${building.lng}`
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${building.name} 賃貸`)}`
+
+  /**
+   * 物件名で探しに行く先（0082）。
+   *
+   * 築年数・構造・戸数は、無料で引ける公的なデータに入っていない。掲載が
+   * あれば各サイトに載っているので、名前で開けるようにしておく。1回押せば
+   * 済むぶん、自分で名前を打ち直すより早い。
+   *
+   * サイトの中の検索URLは作りが変わると壊れるので、サイトを指定した
+   * 検索で開く。向こうの作りが変わっても動く。
+   */
+  const siteSearch = (site: string) =>
+    `https://www.google.com/search?q=${encodeURIComponent(`site:${site} "${building.name}"`)}`
+  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${building.name}" 賃貸`)}`
 
   return (
     <li
@@ -784,7 +806,14 @@ function BuildingRow({
               {name}
             </span>
             <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
-              {[building.kind, building.levels ? `${building.levels}階建て` : '', building.address]
+              {[
+                building.kind,
+                building.levels ? `${building.levels}階建て` : '',
+                // 竣工年が入っていれば築年数も出す（0082）。入っていない
+                // ことのほうが多いので、無ければ何も出さない
+                age != null ? `築${age}年` : '',
+                building.address,
+              ]
                 .filter(Boolean)
                 .join('｜')}
             </span>
@@ -862,7 +891,7 @@ function BuildingRow({
       </button>
 
       {active ? (
-        <div className="flex gap-2 border-t border-line px-3.5 py-2.5">
+        <div className="flex flex-wrap gap-2 border-t border-line px-3.5 py-2.5">
           <a
             href={mapUrl}
             target="_blank"
@@ -873,15 +902,35 @@ function BuildingRow({
             地図で開く
           </a>
           {building.name ? (
-            <a
-              href={searchUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[12px] text-fg-dim transition-colors hover:border-marine/60 hover:text-marine"
-            >
-              <IconExternal size={14} />
-              募集を調べる
-            </a>
+            <>
+              <a
+                href={siteSearch('suumo.jp')}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[12px] text-fg-dim transition-colors hover:border-marine/60 hover:text-marine"
+              >
+                <IconExternal size={14} />
+                SUUMO
+              </a>
+              <a
+                href={siteSearch('homes.co.jp')}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[12px] text-fg-dim transition-colors hover:border-marine/60 hover:text-marine"
+              >
+                <IconExternal size={14} />
+                HOME&apos;S
+              </a>
+              <a
+                href={searchUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-1.5 text-[12px] text-fg-dim transition-colors hover:border-marine/60 hover:text-marine"
+              >
+                <IconSearch size={14} />
+                検索
+              </a>
+            </>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-fg-mute">
               <IconWalk size={14} />

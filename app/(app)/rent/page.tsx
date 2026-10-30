@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 
 import RentClient from '@/components/rent/RentClient'
+import { jstDate } from '@/lib/jst'
 import { getProfile, getRentSearches, getSessionUser } from '@/lib/queries'
 
 /**
@@ -11,6 +12,9 @@ import { getProfile, getRentSearches, getSessionUser } from '@/lib/queries'
  *
  * いま入れている駅は端末の中（localStorage）に置く。名前を付けて残した組だけを
  * DB に持つ（0080）。どちらも自分の行しか読めないので、相手の画面には出ない。
+ *
+ * 今年は日本時間で切って渡す（0082）。ここは UTC で動いているので、
+ * 大晦日の夜に築年数が1年ずれる。
  */
 export default async function RentPage() {
   const user = await getSessionUser()
@@ -21,5 +25,11 @@ export default async function RentPage() {
 
   const searches = await getRentSearches(user.id)
 
-  return <RentClient userId={user.id} searches={searches} />
+  return (
+    <RentClient
+      userId={user.id}
+      searches={searches}
+      thisYear={Number(jstDate(new Date()).slice(0, 4))}
+    />
+  )
 }

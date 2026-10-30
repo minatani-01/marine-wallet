@@ -46,6 +46,8 @@ export type RentBuilding = RentPoint & {
   address: string
   /** 階数。OSM の building:levels が入っていれば */
   levels: number | null
+  /** 竣工年。OSM の start_date が入っていれば（0082）。日本では稀 */
+  builtYear: number | null
   /** 'マンション' など。元のタグから決める */
   kind: string
   /** 駅ID → 徒歩分 */
@@ -583,4 +585,30 @@ export function nearestFood(point: RentPoint, foods: FoodPlace[]): NearFood | nu
 /** 覚えておいた星の条件を読み直す。知らない値なら既定に戻す */
 export function toFoodRating(value: unknown): number {
   return FOOD_RATINGS.some((r) => r === value) ? (value as number) : DEFAULT_FOOD_RATING
+}
+
+/**
+ * 築何年か（0082）。
+ *
+ * OSM の start_date が入っていれば出せる。日本では稀にしか入っていないので、
+ * 出ない建物のほうが多い。分からないものを「築0年」と書くと、新築だと
+ * 思われてしまうので、分からないときは null を返して何も出さない。
+ */
+export function buildingAge(builtYear: number | null | undefined, thisYear: number): number | null {
+  if (builtYear == null) return null
+  const age = thisYear - builtYear
+  return age >= 0 && age < 200 ? age : null
+}
+
+/**
+ * 竣工年を読む。
+ *
+ * OSM の start_date は「1998」「1998-04」「1998-04-01」「~1998」のように
+ * 揺れる。年として読めるところだけ採る。世紀での書き方（C19）は年に
+ * 直せないので捨てる。
+ */
+export function toBuiltYear(value: string | undefined, thisYear: number): number | null {
+  if (!value) return null
+  const year = Number(String(value).match(/\d{4}/)?.[0])
+  return Number.isInteger(year) && year >= 1850 && year <= thisYear ? year : null
 }

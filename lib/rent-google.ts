@@ -116,6 +116,8 @@ function toBuildings(places: RawPlace[], stations: RentStation[]): RentBuilding[
         address: (p.formattedAddress ?? '').replace(/^〒\d{3}-?\d{4}\s*/, ''),
         ...point,
         levels: null,
+        // Google は建物の諸元を持たない。竣工年は OSM 側にしか入らない
+        builtYear: null,
         kind: p.primaryTypeDisplayName?.text ?? 'マンション・アパート',
         walk: straightWalk(point, stations),
       }
