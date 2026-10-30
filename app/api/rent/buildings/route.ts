@@ -10,8 +10,10 @@ import {
   meetsAll,
   measureOrder,
   mergeBuildings,
+  nearestFacilities,
   rejectRentReason,
   searchArea,
+  type Facility,
   type RentBuilding,
   type RentStation,
 } from '@/lib/rent'
@@ -63,6 +65,8 @@ export type BuildingsResponse = {
     measured: boolean
     /** 候補が多すぎて、一部しか測れなかったか */
     truncated: boolean
+    /** まわりの施設を何件拾えたか（0077）。0なら施設の条件は使えない */
+    facilities: number
   }
   notes: string[]
   /** どこに聞いて、どうだったか。0件のときに画面へ出す（0076） */
@@ -93,7 +97,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       area: null,
       buildings: [],
-      stats: { candidates: 0, osm: 0, google: 0, measured: false, truncated: false },
+      stats: { candidates: 0, osm: 0, google: 0, measured: false, truncated: false, facilities: 0 },
       notes: [],
       debug: [],
     } satisfies BuildingsResponse)
@@ -161,17 +165,26 @@ export async function POST(request: Request) {
       .filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)))
   }
 
-  const osmTask = async (): Promise<RentBuilding[]> => {
+  const osmTask = async (): Promise<{ buildings: RentBuilding[]; facilities: Facility[] }> => {
     const result = await fetchOsmBuildings(bounds, stations)
     debug.push(...result.attempts)
     if (result.buildings === null) {
       notes.push('OpenStreetMap から建物を取れませんでした。')
-      return []
+      return { buildings: [], facilities: [] }
     }
-    return result.buildings.filter((b) => insideAll(b, stations))
+    return {
+      buildings: result.buildings.filter((b) => insideAll(b, stations)),
+      facilities: result.facilities,
+    }
   }
 
-  const [osm, google] = await Promise.all([osmTask(), googleTask()])
+  const [osmResult, google] = await Promise.all([osmTask(), googleTask()])
+  const osm = osmResult.buildings
+  const facilities = osmResult.facilities
+
+  if (facilities.length === 0) {
+    notes.push('まわりの施設を取れなかったので、施設の条件は使えません。')
+  }
 
   const candidates = mergeBuildings(osm, google)
 
@@ -183,6 +196,10 @@ export async function POST(request: Request) {
   )
   const truncated = ordered.length > MEASURE_MAX
   const targets = ordered.slice(0, MEASURE_MAX)
+
+  // まわりの施設まで何分か（0077）。絞るのは画面側でやるので、ここでは
+  // 全部の種類ぶん入れておく。チェックを変えるたびに聞き直さずに済む
+  for (const b of targets) b.near = nearestFacilities(b, facilities)
 
   let measured = false
   if (key && targets.length > 0) {
@@ -226,6 +243,7 @@ export async function POST(request: Request) {
       google: google.length,
       measured,
       truncated,
+      facilities: facilities.length,
     },
     notes,
     debug,

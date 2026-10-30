@@ -11,20 +11,35 @@ import {
   IconSearch,
   IconWalk,
 } from '@/components/icons'
-import { Button, Card, EmptyState, PillTabs, SectionLabel, inputClass } from '@/components/ui'
+import {
+  Button,
+  Card,
+  Checkbox,
+  EmptyState,
+  PillTabs,
+  SectionLabel,
+  inputClass,
+} from '@/components/ui'
 import { withTapFeedback } from '@/lib/haptics'
 import {
+  DEFAULT_FACILITY_WALK,
   DEFAULT_RENT_SORT,
   DEFAULT_WALK,
+  FACILITIES,
+  FACILITY_WALKS,
   MAX_RENT_STATIONS,
   MAX_WALK,
   MIN_WALK,
   RENT_SORTS,
   areaText,
   distText,
+  facilityLabel,
+  meetsFacilities,
   pairGaps,
   searchArea,
   sortBuildings,
+  toFacilityKinds,
+  type FacilityKind,
   type RentBuilding,
   type RentPoint,
   type RentSort,
@@ -35,6 +50,7 @@ import type { StationHit } from '@/app/api/rent/stations/route'
 
 /** 条件を覚えておく場所。端末ごとで、相手には移らない */
 const SAVE_KEY = 'marine-wallet:rent-stations'
+const FACILITY_KEY = 'marine-wallet:rent-facilities'
 
 /**
  * 賃貸さがし（0075）。master だけの画面。
@@ -62,6 +78,10 @@ export default function RentClient() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [pointSeq, setPointSeq] = useState(0)
 
+  /** まわりに欲しい施設と、そこまでの徒歩時間（0077） */
+  const [wanted, setWanted] = useState<FacilityKind[]>([])
+  const [facilityWalk, setFacilityWalk] = useState<number>(DEFAULT_FACILITY_WALK)
+
   /** 前に入れた駅を出しておく。毎回入れ直すのでは続けて使えない */
   useEffect(() => {
     try {
@@ -80,6 +100,32 @@ export default function RentClient() {
     }
   }, [stations])
 
+  /** 施設の条件も覚えておく。毎回チェックし直すのでは続けて使えない */
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(FACILITY_KEY)
+      if (!saved) return
+      const parsed = JSON.parse(saved) as { wanted?: unknown; minutes?: unknown }
+      setWanted(toFacilityKinds(parsed.wanted))
+      if (FACILITY_WALKS.some((m) => m === parsed.minutes)) {
+        setFacilityWalk(parsed.minutes as number)
+      }
+    } catch {
+      // 読めなければ既定のまま
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        FACILITY_KEY,
+        JSON.stringify({ wanted, minutes: facilityWalk })
+      )
+    } catch {
+      // 書けなくても探すことはできる
+    }
+  }, [wanted, facilityWalk])
+
   /**
    * 重なりの範囲。
    *
@@ -89,10 +135,25 @@ export default function RentClient() {
   const area = useMemo(() => searchArea(stations), [stations])
   const gaps = useMemo(() => (area ? [] : pairGaps(stations)), [area, stations])
 
-  const buildings = useMemo(
-    () => (result ? sortBuildings(result.buildings, stations, sort) : []),
-    [result, stations, sort]
-  )
+  /**
+   * 出す建物。
+   *
+   * 施設の条件は画面の中だけで効かせる。チェックを変えるたびに外へ聞きに
+   * 行くと、1日の上限がすぐ尽きる。施設までの分数は検索のときに全部の種類
+   * ぶん持ち帰ってあるので、ここで絞れる。
+   */
+  const buildings = useMemo(() => {
+    if (!result) return []
+    const usable = result.stats.facilities > 0
+    const kept = usable
+      ? result.buildings.filter((b) => meetsFacilities(b.near, wanted, facilityWalk))
+      : result.buildings
+    return sortBuildings(kept, stations, sort)
+  }, [result, stations, sort, wanted, facilityWalk])
+
+  /** 施設の条件で何件落としたか。0件になった理由が分かるようにする */
+  const droppedByFacility =
+    result && result.stats.facilities > 0 ? result.buildings.length - buildings.length : 0
 
   const addStation = (p: { name: string; lat: number; lng: number }) => {
     setError(null)
@@ -351,6 +412,53 @@ export default function RentClient() {
         </Card>
       </div>
 
+      {/* まわりの施設（0077）。検索し直さずに効く。チェックを変えるたびに
+          外へ聞きに行くと、1日の上限がすぐ尽きる */}
+      <div>
+        <SectionLabel>まわりの施設で絞る</SectionLabel>
+        <Card>
+          <div className="flex flex-wrap gap-2">
+            {FACILITIES.map((f) => (
+              <Checkbox
+                key={f.id}
+                checked={wanted.includes(f.id)}
+                onChange={(on) =>
+                  setWanted((all) => (on ? [...all, f.id] : all.filter((x) => x !== f.id)))
+                }
+                label={f.label}
+              />
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 text-[12px] text-fg-mute">
+            <span>建物から徒歩</span>
+            <select
+              aria-label="施設までの徒歩時間"
+              value={facilityWalk}
+              onChange={(e) => setFacilityWalk(Number(e.target.value))}
+              className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1 text-[12px] font-semibold text-fg"
+            >
+              {FACILITY_WALKS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <span>分以内にあること</span>
+          </div>
+
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
+            チェックしたものが全部そろう建物だけを残します。施設までの時間は直線距離からの
+            概算です。
+            {result && result.stats.facilities === 0
+              ? 'いまはまわりの施設を取れていないため、この条件は効きません。'
+              : droppedByFacility > 0
+                ? `この条件で${droppedByFacility}件を外しています。`
+                : ''}
+          </p>
+        </Card>
+      </div>
+
       {result ? (
         <div>
           <SectionLabel>見つかった建物 {buildings.length}件</SectionLabel>
@@ -487,6 +595,23 @@ function BuildingRow({
             </span>
           </div>
         </div>
+
+        {/* まわりの施設まで何分か（0077）。駅の行とは分けて出す。
+            混ぜると、どれが駅でどれが店なのか読み取れない */}
+        {building.near && Object.keys(building.near).length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-fg-mute">
+            {FACILITIES.map((f) => {
+              const minutes = building.near?.[f.id]
+              if (minutes == null) return null
+              return (
+                <span key={f.id} className="whitespace-nowrap">
+                  {facilityLabel(f.id)}
+                  <span className="tnum ml-1 text-fg-dim">{minutes}分</span>
+                </span>
+              )
+            })}
+          </div>
+        ) : null}
 
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
           {stations.map((s, index) => {

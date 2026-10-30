@@ -4,6 +4,10 @@ import assert from 'node:assert/strict'
 import {
   areaText,
   boundsOf,
+  expandBounds,
+  meetsFacilities,
+  nearestFacilities,
+  toFacilityKinds,
   boundsSpan,
   coverCircles,
   haversine,
@@ -20,9 +24,11 @@ import {
   straightWalk,
   walkRadius,
   worstWalk,
+  type Facility,
   type RentBuilding,
   type RentStation,
 } from '@/lib/rent'
+import { facilityKind } from '@/lib/rent-osm'
 
 /**
  * 賃貸さがしの計算（0075）。
@@ -309,4 +315,101 @@ test('入力を確かめる', () => {
     ),
     /最大/
   )
+})
+
+
+/* --------------------------------------------------------- まわりの施設 ---- */
+
+const facility = (over: Partial<Facility> & { lat: number; lng: number }): Facility => ({
+  id: over.id ?? 'f',
+  kind: over.kind ?? 'convenience',
+  name: over.name ?? '店',
+  lat: over.lat,
+  lng: over.lng,
+})
+
+test('施設を探す四角は、建物の四角より広く取る', () => {
+  // 範囲のふちに建つ建物は、外にある店がいちばん近いことがある
+  const b = { south: 35.64, west: 139.7, north: 35.65, east: 139.71 }
+  const wide = expandBounds(b, 900)
+  assert.ok(wide.south < b.south && wide.north > b.north)
+  assert.ok(wide.west < b.west && wide.east > b.east)
+  // 900m ぶん広がっている（緯度は1度=約110.6km）
+  assert.ok(Math.abs((b.south - wide.south) * 110574 - 900) < 5)
+})
+
+test('種類ごとに、いちばん近い1軒までの分を出す', () => {
+  const here = { lat: 35.646, lng: 139.71 }
+  const facilities = [
+    // 約160m（徒歩2分）
+    facility({ id: 'c1', kind: 'convenience', lat: 35.6474, lng: 139.71 }),
+    // 約330m（徒歩5分）。近いほうが採られる
+    facility({ id: 'c2', kind: 'convenience', lat: 35.649, lng: 139.71 }),
+    facility({ id: 'p1', kind: 'pharmacy', lat: 35.649, lng: 139.71 }),
+  ]
+
+  const near = nearestFacilities(here, facilities)
+  assert.equal(near.convenience, 2)
+  assert.equal(near.pharmacy, 5)
+  // 無い種類は入れない。「0分」と書くと、すぐそこにあるように見える
+  assert.equal(near.dentist, undefined)
+  assert.equal(near.clinic, undefined)
+  assert.deepEqual(nearestFacilities(here, []), {})
+})
+
+test('チェックしたものは全部そろっていること', () => {
+  const near = { convenience: 2, pharmacy: 6 }
+
+  // 何も選んでいなければ素通し
+  assert.equal(meetsFacilities(near, [], 5), true)
+  assert.equal(meetsFacilities(near, ['convenience'], 5), true)
+  // 薬局は6分なので、5分以内では落ちる
+  assert.equal(meetsFacilities(near, ['pharmacy'], 5), false)
+  assert.equal(meetsFacilities(near, ['pharmacy'], 7), true)
+  // AND。片方でも届かなければ落とす
+  assert.equal(meetsFacilities(near, ['convenience', 'pharmacy'], 5), false)
+  // そもそも無い種類も落とす
+  assert.equal(meetsFacilities(near, ['dentist'], 10), false)
+  // 施設を取れていない建物は、条件があるなら残せない
+  assert.equal(meetsFacilities(undefined, ['convenience'], 5), false)
+  assert.equal(meetsFacilities(undefined, [], 5), true)
+})
+
+test('覚えておいた施設の条件を読み直す', () => {
+  assert.deepEqual(toFacilityKinds(['convenience', 'clinic']), ['convenience', 'clinic'])
+  // 並びは決まった順に直す。保存した順で出すと、開くたびに位置が変わる
+  assert.deepEqual(toFacilityKinds(['clinic', 'convenience']), ['convenience', 'clinic'])
+  // 知らない値は捨てる
+  assert.deepEqual(toFacilityKinds(['convenience', 'カフェ']), ['convenience'])
+  assert.deepEqual(toFacilityKinds('convenience'), [])
+  assert.deepEqual(toFacilityKinds(null), [])
+})
+
+test('OSM のタグと名前から施設の種類を決める', () => {
+  assert.equal(facilityKind({ shop: 'convenience', name: 'セブン-イレブン' }), 'convenience')
+  assert.equal(facilityKind({ amenity: 'pharmacy', name: '〇〇薬局' }), 'pharmacy')
+  assert.equal(facilityKind({ shop: 'chemist', name: 'マツモトキヨシ' }), 'pharmacy')
+  assert.equal(facilityKind({ amenity: 'dentist', name: '〇〇デンタルクリニック' }), 'dentist')
+
+  // 歯科は名前からも拾う。clinic として入っていることがある
+  assert.equal(facilityKind({ amenity: 'clinic', name: '〇〇歯科' }), 'dentist')
+
+  // 内科。日本のクリニックは speciality が入っていないことが多い
+  assert.equal(facilityKind({ amenity: 'clinic', name: '〇〇内科クリニック' }), 'clinic')
+  assert.equal(facilityKind({ amenity: 'doctors', name: '〇〇医院' }), 'clinic')
+  assert.equal(
+    facilityKind({ amenity: 'clinic', 'healthcare:speciality': 'internal_medicine' }),
+    'clinic'
+  )
+
+  // 風邪では行かないところは外す
+  assert.equal(facilityKind({ amenity: 'clinic', 'healthcare:speciality': 'dermatology' }), null)
+  assert.equal(facilityKind({ amenity: 'clinic', name: '〇〇眼科' }), null)
+  assert.equal(facilityKind({ amenity: 'clinic', name: '〇〇整形外科' }), null)
+  // 動物病院は人が診てもらえない
+  assert.equal(facilityKind({ amenity: 'clinic', name: '〇〇動物病院' }), null)
+
+  // 住まいや関係ないものは施設にしない
+  assert.equal(facilityKind({ building: 'apartments', name: '〇〇マンション' }), null)
+  assert.equal(facilityKind({ shop: 'supermarket', name: '〇〇ストア' }), null)
 })

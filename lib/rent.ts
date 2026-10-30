@@ -50,6 +50,44 @@ export type RentBuilding = RentPoint & {
   kind: string
   /** 駅ID → 徒歩分 */
   walk: Record<string, RentWalk>
+  /** まわりの施設まで何分か（0077）。取れていなければ無い */
+  near?: NearFacilities
+}
+
+/**
+ * まわりにあってほしいもの（0077）。
+ *
+ * 住むと決める前に見るのは、駅からの距離だけではない。夜に何か要ったとき、
+ * 風邪をひいたとき、歯が痛くなったときに、歩いて行けるかどうかで暮らしが
+ * 変わる。駅が同じでも、ここが違えば別の場所である。
+ */
+export const FACILITIES = [
+  { id: 'convenience', label: 'コンビニ' },
+  { id: 'pharmacy', label: '薬局' },
+  { id: 'dentist', label: '歯科' },
+  { id: 'clinic', label: '内科' },
+] as const
+
+export type FacilityKind = (typeof FACILITIES)[number]['id']
+
+export type Facility = RentPoint & { id: string; kind: FacilityKind; name: string }
+
+/** 施設の種類 → いちばん近いものまでの徒歩分（直線距離から） */
+export type NearFacilities = Partial<Record<FacilityKind, number>>
+
+/** 施設までの徒歩時間として選べるもの */
+export const FACILITY_WALKS = [3, 5, 7, 10] as const
+
+export const DEFAULT_FACILITY_WALK = 5
+
+export function facilityLabel(kind: FacilityKind): string {
+  return FACILITIES.find((f) => f.id === kind)?.label ?? kind
+}
+
+/** 知らない値を捨てる。覚えておいた条件を読み直すときに使う */
+export function toFacilityKinds(values: unknown): FacilityKind[] {
+  if (!Array.isArray(values)) return []
+  return FACILITIES.map((f) => f.id).filter((id) => values.includes(id))
 }
 
 export type Bounds = { south: number; west: number; north: number; east: number }
@@ -430,4 +468,53 @@ export function mergeBuildings(
   }
 
   return [...merged, ...google.filter((g) => !used.has(g.id))]
+}
+
+/**
+ * 四角を広げる。
+ *
+ * 施設は範囲の外にあっても構わない。範囲のふちに建つ建物にとっては、
+ * 道を挟んだ向かいのコンビニが「いちばん近い店」になる。建物を探す四角の
+ * ままで聞くと、そういう店が1軒も入らない。
+ */
+export function expandBounds(bounds: Bounds, meters: number): Bounds {
+  const dLat = meters / 110574
+  const mid = (bounds.south + bounds.north) / 2
+  const dLng = meters / (111320 * Math.cos(mid * RAD))
+  return {
+    south: bounds.south - dLat,
+    west: bounds.west - dLng,
+    north: bounds.north + dLat,
+    east: bounds.east + dLng,
+  }
+}
+
+/** 建物から、種類ごとに「いちばん近い1軒」までの徒歩分を出す */
+export function nearestFacilities(point: RentPoint, facilities: Facility[]): NearFacilities {
+  const best = new Map<FacilityKind, number>()
+  for (const f of facilities) {
+    const meters = haversine(point, f)
+    const now = best.get(f.kind)
+    if (now === undefined || meters < now) best.set(f.kind, meters)
+  }
+
+  const near: NearFacilities = {}
+  for (const [kind, meters] of best) near[kind] = straightMinutes(meters)
+  return near
+}
+
+/**
+ * チェックした施設が、ぜんぶ徒歩◯分以内にあるか。
+ *
+ * AND で見る。「コンビニか薬局のどちらか」ではなく、チェックしたものは
+ * 全部ほしい、という条件にする。駅の扱いと揃える。
+ */
+export function meetsFacilities(
+  near: NearFacilities | undefined,
+  wanted: FacilityKind[],
+  minutes: number
+): boolean {
+  if (wanted.length === 0) return true
+  if (!near) return false
+  return wanted.every((kind) => (near[kind] ?? Number.POSITIVE_INFINITY) <= minutes)
 }
