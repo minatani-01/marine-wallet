@@ -16,7 +16,13 @@
  * 仕事にしてある。ここは1回ぶんの呼び出しだけを受け持つ。
  */
 
-import { straightWalk, type RentBuilding, type RentPoint, type RentStation } from '@/lib/rent'
+import {
+  straightWalk,
+  type FoodPlace,
+  type RentBuilding,
+  type RentPoint,
+  type RentStation,
+} from '@/lib/rent'
 import { failReason } from '@/lib/rent-osm'
 
 const NEARBY = 'https://places.googleapis.com/v1/places:searchNearby'
@@ -39,6 +45,34 @@ const PLACE_FIELDS = [
   'places.primaryTypeDisplayName',
   'places.types',
 ].join(',')
+
+/**
+ * 飲食店を聞くときの項目（0079）。
+ *
+ * 評価と件数は、名前や住所より上の課金区分になる。ここでだけ足す。
+ */
+const FOOD_FIELDS = [
+  'places.id',
+  'places.displayName',
+  'places.location',
+  'places.types',
+  'places.rating',
+  'places.userRatingCount',
+].join(',')
+
+/** 飲食店として数えるもの。言葉で聞くので、店でないものが混ざることがある */
+const FOOD_TYPES = [
+  'restaurant',
+  'cafe',
+  'bakery',
+  'bar',
+  'meal_takeaway',
+  'meal_delivery',
+  'food',
+  'coffee_shop',
+  'japanese_restaurant',
+  'ramen_restaurant',
+]
 
 /** 1回で返る上限。Google 側の決まり */
 export const NEARBY_MAX = 20
@@ -171,6 +205,80 @@ export async function searchHousing(
   const body = (await text.json().catch(() => null)) as { places?: RawPlace[] } | null
   const items = toBuildings(body?.places ?? [], stations)
   attempts.push(`Google 言葉: ${items.length}件`)
+  return { items, attempts }
+}
+
+/**
+ * 円の中の飲食店を、星の数で切って聞く（0079）。
+ *
+ * Google の検索には最低評価（minRating）を渡せる。こちらで受け取ってから
+ * 捨てるのではなく、向こうで切ってもらう。20件しか返らないので、評価の
+ * 低い店で埋まると、条件に合う店が入らない。
+ */
+export async function searchFood(
+  key: string,
+  center: RentPoint,
+  radius: number,
+  minRating: number
+): Promise<{ items: FoodPlace[]; attempts: string[] }> {
+  const attempts: string[] = []
+
+  const res = await fetch(TEXT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': FOOD_FIELDS,
+    },
+    body: JSON.stringify({
+      textQuery: '飲食店',
+      minRating,
+      maxResultCount: NEARBY_MAX,
+      languageCode: 'ja',
+      regionCode: 'JP',
+      locationBias: {
+        circle: {
+          center: { latitude: center.lat, longitude: center.lng },
+          radius: Math.max(1, Math.min(50_000, radius)),
+        },
+      },
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12_000),
+  }).catch((e: unknown) => {
+    attempts.push(`飲食店: ${failReason(e)}`)
+    return null
+  })
+
+  if (!res) return { items: [], attempts }
+  if (!res.ok) {
+    attempts.push(`飲食店: ${await failText(res)}`)
+    return { items: [], attempts }
+  }
+
+  const body = (await res.json().catch(() => null)) as
+    | { places?: (RawPlace & { rating?: number })[] }
+    | null
+
+  const items = (body?.places ?? [])
+    .map((p): FoodPlace | null => {
+      const lat = p.location?.latitude
+      const lng = p.location?.longitude
+      const rating = p.rating
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(rating)) return null
+      // 言葉で聞いているので、店でないものが混ざることがある
+      if (p.types && p.types.length > 0 && !p.types.some((t) => FOOD_TYPES.includes(t))) return null
+      return {
+        id: `food-${p.id ?? `${lat},${lng}`}`,
+        name: (p.displayName?.text ?? '').trim(),
+        rating: rating as number,
+        lat: lat as number,
+        lng: lng as number,
+      }
+    })
+    .filter((f): f is FoodPlace => f !== null && Boolean(f.name))
+
+  attempts.push(`飲食店: ${items.length}件`)
   return { items, attempts }
 }
 

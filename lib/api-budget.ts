@@ -13,7 +13,13 @@ import { createClient } from '@/lib/supabase/server'
  * リストと「地図で開く」は使える。
  */
 
-export type ApiName = 'maps_js' | 'geocoding' | 'places_search' | 'places_nearby' | 'routes_walk'
+export type ApiName =
+  | 'maps_js'
+  | 'geocoding'
+  | 'places_search'
+  | 'places_nearby'
+  | 'places_rating'
+  | 'routes_walk'
 
 /** 1日と1か月の上限。月10,000回の無料枠に対して十分低く取る */
 export const API_BUDGET: Record<ApiName, { daily: number; monthly: number }> = {
@@ -26,6 +32,9 @@ export const API_BUDGET: Record<ApiName, { daily: number; monthly: number }> = {
   places_search: { daily: 50, monthly: 1000 },
   // 賃貸さがしの建物名（0075）。1回の検索で、範囲の広さに応じて数回呼ぶ
   places_nearby: { daily: 60, monthly: 1200 },
+  // 賃貸さがしの飲食店（0079）。口コミの評価まで受け取るので、名前や住所
+  // だけのものより課金の区分が一段上になる。別に数えて、別に止める
+  places_rating: { daily: 40, monthly: 800 },
   // 賃貸さがしの徒歩時間（0075）。数えるのは呼び出し回数ではなく、
   // 課金の単位である element 数（駅数 × 建物数）。回数で数えると、
   // 1回の検索で200件ぶん使っても1と数えてしまい、止める意味が無くなる
