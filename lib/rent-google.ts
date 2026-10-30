@@ -1,20 +1,26 @@
 /**
- * Google から、建物の名前と徒歩時間をもらう（0075）。
+ * Google から、建物の名前と徒歩時間をもらう（0075 / 0076）。
  *
  * ふたつ使う。
  *
- * - Places（Nearby Search）: 名前と住所。OSM の輪郭には名前が無いことが
- *   多く、名前が無ければ調べようがない。
+ * - Places: 名前と住所。OSM の輪郭には名前が無いことが多く、名前が無ければ
+ *   調べようがない。
  * - Routes（Compute Route Matrix）: 駅から建物までの徒歩時間。直線距離の
  *   換算だと、川・線路・大通りで回り道になる場所が「徒歩8分」に見える。
+ *
+ * Places は2通りで聞く。まず種別（住まい）で近い順に聞き、断られたら
+ * 「マンション」という言葉で聞き直す。種別の指定は新しいもので、鍵や地域に
+ * よっては通らないことがある。そこで止まると、名前が1つも入らない（0076）。
  *
  * どちらも呼んだ回数で課金される。数えて止めるのは呼ぶ側（API ルート）の
  * 仕事にしてある。ここは1回ぶんの呼び出しだけを受け持つ。
  */
 
 import { straightWalk, type RentBuilding, type RentPoint, type RentStation } from '@/lib/rent'
+import { failReason } from '@/lib/rent-osm'
 
 const NEARBY = 'https://places.googleapis.com/v1/places:searchNearby'
+const TEXT = 'https://places.googleapis.com/v1/places:searchText'
 const MATRIX = 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix'
 
 /** 住まいの種別（Places の Table A）。賃貸マンションはここに入る */
@@ -25,15 +31,16 @@ export const HOUSING_TYPES = [
   'housing_complex',
 ]
 
-const NEARBY_FIELDS = [
+const PLACE_FIELDS = [
   'places.id',
   'places.displayName',
   'places.formattedAddress',
   'places.location',
   'places.primaryTypeDisplayName',
+  'places.types',
 ].join(',')
 
-/** 1回の Nearby Search で返る上限。Google 側の決まり */
+/** 1回で返る上限。Google 側の決まり */
 export const NEARBY_MAX = 20
 
 type RawPlace = {
@@ -42,50 +49,26 @@ type RawPlace = {
   formattedAddress?: string
   location?: { latitude?: number; longitude?: number }
   primaryTypeDisplayName?: { text?: string }
+  types?: string[]
 }
 
-/**
- * 円の中の集合住宅を聞く。1回ぶん。
- *
- * 近い順に並べてもらう。人気順だと、円の端にある有名な建物が先に来て、
- * 真ん中のありふれたマンションが20件からあふれる。
- */
-export async function searchHousing(
-  key: string,
-  center: RentPoint,
-  radius: number,
-  stations: RentStation[]
-): Promise<RentBuilding[] | null> {
-  const res = await fetch(NEARBY, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'X-Goog-Api-Key': key,
-      'X-Goog-FieldMask': NEARBY_FIELDS,
-    },
-    body: JSON.stringify({
-      includedTypes: HOUSING_TYPES,
-      maxResultCount: NEARBY_MAX,
-      rankPreference: 'DISTANCE',
-      languageCode: 'ja',
-      regionCode: 'JP',
-      locationRestriction: {
-        circle: {
-          center: { latitude: center.lat, longitude: center.lng },
-          radius: Math.max(1, Math.min(50_000, radius)),
-        },
-      },
-    }),
-    cache: 'no-store',
-    signal: AbortSignal.timeout(12_000),
-  }).catch(() => null)
+export type HousingResult = {
+  items: RentBuilding[]
+  /** どう聞いて、どうだったか。画面に出して原因を追えるようにする */
+  attempts: string[]
+}
 
-  if (!res || !res.ok) return null
+/** 失敗の中身を短くまとめる。Google は error.message に理由を入れてくる */
+async function failText(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as
+    | { error?: { status?: string; message?: string } }
+    | null
+  const detail = body?.error?.message ?? body?.error?.status ?? ''
+  return `HTTP ${res.status}${detail ? ` ${detail.slice(0, 120)}` : ''}`
+}
 
-  const body = (await res.json().catch(() => null)) as { places?: RawPlace[] } | null
-  if (!body) return null
-
-  return (body.places ?? [])
+function toBuildings(places: RawPlace[], stations: RentStation[]): RentBuilding[] {
+  return places
     .map((p): RentBuilding | null => {
       const lat = p.location?.latitude
       const lng = p.location?.longitude
@@ -106,7 +89,94 @@ export async function searchHousing(
     .filter((b): b is RentBuilding => b !== null && Boolean(b.name))
 }
 
+/**
+ * 円の中の集合住宅を聞く。1回ぶん。
+ *
+ * 近い順に並べてもらう。人気順だと、円の端にある有名な建物が先に来て、
+ * 真ん中のありふれたマンションが20件からあふれる。
+ */
+export async function searchHousing(
+  key: string,
+  center: RentPoint,
+  radius: number,
+  stations: RentStation[]
+): Promise<HousingResult> {
+  const attempts: string[] = []
+  const circle = {
+    center: { latitude: center.lat, longitude: center.lng },
+    radius: Math.max(1, Math.min(50_000, radius)),
+  }
+
+  // 1. 種別で聞く。これが通れば、住まいだけが近い順に返ってくる
+  const near = await fetch(NEARBY, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': PLACE_FIELDS,
+    },
+    body: JSON.stringify({
+      includedTypes: HOUSING_TYPES,
+      maxResultCount: NEARBY_MAX,
+      rankPreference: 'DISTANCE',
+      languageCode: 'ja',
+      regionCode: 'JP',
+      locationRestriction: { circle },
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12_000),
+  }).catch((e: unknown) => {
+    attempts.push(`Google 種別: ${failReason(e)}`)
+    return null
+  })
+
+  if (near?.ok) {
+    const body = (await near.json().catch(() => null)) as { places?: RawPlace[] } | null
+    const items = toBuildings(body?.places ?? [], stations)
+    attempts.push(`Google 種別: ${items.length}件`)
+    if (items.length > 0) return { items, attempts }
+  } else if (near) {
+    attempts.push(`Google 種別: ${await failText(near)}`)
+  }
+
+  // 2. 言葉で聞き直す。種別が通らない鍵でも、こちらなら返る。
+  //    範囲の外に散らばることがあるので、呼ぶ側で円の中だけに絞ること
+  const text = await fetch(TEXT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': PLACE_FIELDS,
+    },
+    body: JSON.stringify({
+      textQuery: 'マンション',
+      maxResultCount: NEARBY_MAX,
+      languageCode: 'ja',
+      regionCode: 'JP',
+      locationBias: { circle },
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12_000),
+  }).catch((e: unknown) => {
+    attempts.push(`Google 言葉: ${failReason(e)}`)
+    return null
+  })
+
+  if (!text) return { items: [], attempts }
+  if (!text.ok) {
+    attempts.push(`Google 言葉: ${await failText(text)}`)
+    return { items: [], attempts }
+  }
+
+  const body = (await text.json().catch(() => null)) as { places?: RawPlace[] } | null
+  const items = toBuildings(body?.places ?? [], stations)
+  attempts.push(`Google 言葉: ${items.length}件`)
+  return { items, attempts }
+}
+
 export type MatrixCell = { originIndex: number; destinationIndex: number; minutes: number }
+
+export type MatrixResult = { cells: MatrixCell[] | null; attempt: string }
 
 /**
  * 駅 × 建物の徒歩時間を測る。
@@ -121,8 +191,10 @@ export async function walkMatrix(
   key: string,
   origins: RentPoint[],
   destinations: RentPoint[]
-): Promise<MatrixCell[] | null> {
-  if (origins.length === 0 || destinations.length === 0) return []
+): Promise<MatrixResult> {
+  if (origins.length === 0 || destinations.length === 0) {
+    return { cells: [], attempt: '徒歩ルート: 測るものなし' }
+  }
 
   const waypoint = (p: RentPoint) => ({
     waypoint: { location: { latLng: { latitude: p.lat, longitude: p.lng } } },
@@ -147,12 +219,13 @@ export async function walkMatrix(
     signal: AbortSignal.timeout(20_000),
   }).catch(() => null)
 
-  if (!res || !res.ok) return null
+  if (!res) return { cells: null, attempt: '徒歩ルート: 接続できず' }
+  if (!res.ok) return { cells: null, attempt: `徒歩ルート: ${await failText(res)}` }
 
   const body = (await res.json().catch(() => null)) as
     | { originIndex?: number; destinationIndex?: number; duration?: string; condition?: string }[]
     | null
-  if (!Array.isArray(body)) return null
+  if (!Array.isArray(body)) return { cells: null, attempt: '徒歩ルート: 返事を読めず' }
 
   const cells: MatrixCell[] = []
   for (const row of body) {
@@ -166,5 +239,5 @@ export async function walkMatrix(
       minutes: Math.max(1, Math.ceil(seconds / 60)),
     })
   }
-  return cells
+  return { cells, attempt: `徒歩ルート: ${cells.length}組` }
 }
