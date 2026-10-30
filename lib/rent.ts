@@ -504,17 +504,17 @@ export function nearestFacilities(point: RentPoint, facilities: Facility[]): Nea
 }
 
 /**
- * チェックした施設が、ぜんぶ徒歩◯分以内にあるか。
+ * その施設が徒歩◯分以内にあるか（0078）。
  *
- * AND で見る。「コンビニか薬局のどちらか」ではなく、チェックしたものは
- * 全部ほしい、という条件にする。駅の扱いと揃える。
+ * 建物を落とすためではなく、一覧に「ある・ない」を出すために使う。
+ * 歯科が無いからといって、その建物が住めないわけではない。何があって
+ * 何が無いかが並んでいれば、見るほうが決められる。
  */
-export function meetsFacilities(
+export function hasFacility(
   near: NearFacilities | undefined,
-  wanted: FacilityKind[],
+  kind: FacilityKind,
   minutes: number
 ): boolean {
-  if (wanted.length === 0) return true
-  if (!near) return false
-  return wanted.every((kind) => (near[kind] ?? Number.POSITIVE_INFINITY) <= minutes)
+  const found = near?.[kind]
+  return found !== undefined && found <= minutes
 }

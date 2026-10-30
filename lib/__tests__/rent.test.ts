@@ -5,7 +5,7 @@ import {
   areaText,
   boundsOf,
   expandBounds,
-  meetsFacilities,
+  hasFacility,
   nearestFacilities,
   toFacilityKinds,
   boundsSpan,
@@ -357,22 +357,20 @@ test('種類ごとに、いちばん近い1軒までの分を出す', () => {
   assert.deepEqual(nearestFacilities(here, []), {})
 })
 
-test('チェックしたものは全部そろっていること', () => {
+test('徒歩◯分以内に「ある」かどうか', () => {
+  // 建物は落とさない。あるか無いかを一覧に出すための判定
   const near = { convenience: 2, pharmacy: 6 }
 
-  // 何も選んでいなければ素通し
-  assert.equal(meetsFacilities(near, [], 5), true)
-  assert.equal(meetsFacilities(near, ['convenience'], 5), true)
-  // 薬局は6分なので、5分以内では落ちる
-  assert.equal(meetsFacilities(near, ['pharmacy'], 5), false)
-  assert.equal(meetsFacilities(near, ['pharmacy'], 7), true)
-  // AND。片方でも届かなければ落とす
-  assert.equal(meetsFacilities(near, ['convenience', 'pharmacy'], 5), false)
-  // そもそも無い種類も落とす
-  assert.equal(meetsFacilities(near, ['dentist'], 10), false)
-  // 施設を取れていない建物は、条件があるなら残せない
-  assert.equal(meetsFacilities(undefined, ['convenience'], 5), false)
-  assert.equal(meetsFacilities(undefined, [], 5), true)
+  assert.equal(hasFacility(near, 'convenience', 5), true)
+  // 薬局は6分なので、5分以内では「なし」
+  assert.equal(hasFacility(near, 'pharmacy', 5), false)
+  assert.equal(hasFacility(near, 'pharmacy', 7), true)
+  // ちょうどの分は「ある」
+  assert.equal(hasFacility(near, 'pharmacy', 6), true)
+  // 1軒も無い種類
+  assert.equal(hasFacility(near, 'dentist', 10), false)
+  // 施設そのものを取れていないとき
+  assert.equal(hasFacility(undefined, 'convenience', 5), false)
 })
 
 test('覚えておいた施設の条件を読み直す', () => {
