@@ -56,6 +56,7 @@ import type {
   CircleMember,
   Place,
   PlaceGenre,
+  RentSearch,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -586,6 +587,25 @@ export async function getSubscriptions(userId: string): Promise<Subscription[]> 
       .eq('user_id', userId)
       .order('active', { ascending: false })
       .order('amount', { ascending: false })
+  )
+  return data ?? []
+}
+
+/**
+ * 賃貸さがしで保存した駅の組み合わせ（0080）。master だけの画面に出す。
+ *
+ * 新しく使ったものから並べる。候補を見比べているあいだは、直前に見た組を
+ * もう一度開くことが多い。
+ */
+export async function getRentSearches(userId: string): Promise<RentSearch[]> {
+  const supabase = await createClient()
+  const data = await read<RentSearch[]>('rent_searches', () =>
+    supabase
+      .from('rent_searches')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(30)
   )
   return data ?? []
 }

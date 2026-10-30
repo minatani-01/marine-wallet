@@ -767,3 +767,15 @@ export type Subscription = {
   created_at: string
   updated_at: string
 }
+
+/** 賃貸さがしで保存した、駅の組み合わせ（0080） */
+export type RentSearch = {
+  id: string
+  user_id: string
+  /** 組の名前。既定は駅名をつないだもの */
+  name: string
+  /** 駅と徒歩時間。lib/rent.ts の RentStation と同じ形 */
+  stations: { id: string; name: string; lat: number; lng: number; minutes: number }[]
+  created_at: string
+  updated_at: string
+}

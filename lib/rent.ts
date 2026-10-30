@@ -68,6 +68,7 @@ export const FACILITIES = [
   { id: 'pharmacy', label: '薬局' },
   { id: 'dentist', label: '歯科' },
   { id: 'clinic', label: '内科' },
+  { id: 'hairdresser', label: '美容院' },
 ] as const
 
 export type FacilityKind = (typeof FACILITIES)[number]['id']

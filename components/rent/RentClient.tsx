@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import RentMap, { STATION_COLORS } from '@/components/rent/RentMap'
 import {
@@ -8,6 +9,7 @@ import {
   IconExternal,
   IconHome,
   IconMap,
+  IconPlus,
   IconSearch,
   IconWalk,
 } from '@/components/icons'
@@ -49,8 +51,10 @@ import {
   type RentSort,
   type RentStation,
 } from '@/lib/rent'
+import { createClient } from '@/lib/supabase/client'
 import type { BuildingsResponse } from '@/app/api/rent/buildings/route'
 import type { StationHit } from '@/app/api/rent/stations/route'
+import type { RentSearch } from '@/types'
 
 /** 条件を覚えておく場所。端末ごとで、相手には移らない */
 const SAVE_KEY = 'marine-wallet:rent-stations'
@@ -69,7 +73,15 @@ const FACILITY_KEY = 'marine-wallet:rent-facilities'
  * 建物を探すのは押したときだけにする。駅を足すたびに探しに行くと、外の
  * サービスを何度も呼ぶことになり、1日の上限がすぐ尽きる。
  */
-export default function RentClient() {
+export default function RentClient({
+  userId,
+  searches,
+}: {
+  userId: string
+  /** 名前を付けて残した駅の組み合わせ（0080） */
+  searches: RentSearch[]
+}) {
+  const router = useRouter()
   const [stations, setStations] = useState<RentStation[]>([])
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<StationHit[] | null>(null)
@@ -99,6 +111,10 @@ export default function RentClient() {
    */
   const [wantFood, setWantFood] = useState(false)
   const [foodRating, setFoodRating] = useState<number>(DEFAULT_FOOD_RATING)
+
+  /** 保存するときの名前。空のままなら駅名をつないだものにする（0080） */
+  const [saveName, setSaveName] = useState('')
+  const [savingSet, setSavingSet] = useState(false)
 
   /** 前に入れた駅を出しておく。毎回入れ直すのでは続けて使えない */
   useEffect(() => {
@@ -177,6 +193,59 @@ export default function RentClient() {
     setQuery('')
     // 条件が変わったら前の結果は消す。古い一覧が新しい条件のものに見える
     setResult(null)
+  }
+
+  /** 既定の名前。駅名をつなぐ。長くなりすぎたら切る */
+  const defaultName = stations.map((s) => s.name).join('・').slice(0, 60)
+
+  /**
+   * いまの駅を残す。
+   *
+   * 同じ名前なら上書きする（0080 の一意制約）。押し間違えて同じ組が並ぶと、
+   * どれが新しいのか分からなくなる。
+   */
+  const saveSet = async () => {
+    if (stations.length === 0) return
+    const name = (saveName.trim() || defaultName).slice(0, 60)
+    if (!name) return
+
+    setSavingSet(true)
+    setError(null)
+    const supabase = createClient()
+    const { error: failed } = await supabase
+      .from('rent_searches')
+      .upsert(
+        { user_id: userId, name, stations, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,name' }
+      )
+
+    setSavingSet(false)
+    if (failed) {
+      setError('保存できませんでした')
+      return
+    }
+    setSaveName('')
+    router.refresh()
+  }
+
+  /** 残しておいた組を開く。前の結果は条件が変わるので捨てる */
+  const loadSet = (set: RentSearch) => {
+    setStations(set.stations)
+    setResult(null)
+    setError(null)
+    setHits(null)
+  }
+
+  const removeSet = async (set: RentSearch) => {
+    if (!window.confirm(`「${set.name}」を消しますか？`)) return
+
+    const supabase = createClient()
+    const { error: failed } = await supabase.from('rent_searches').delete().eq('id', set.id)
+    if (failed) {
+      setError('消せませんでした')
+      return
+    }
+    router.refresh()
   }
 
   const searchStations = async () => {
@@ -367,6 +436,59 @@ export default function RentClient() {
               ))}
             </ul>
           )}
+
+          {/* 駅の組み合わせを残す（0080）。候補を見比べているあいだ、
+              1駅ずつ入れ直すのでは続かない */}
+          {stations.length > 0 ? (
+            <div className="mt-3 flex gap-2 border-t border-line pt-3">
+              <input
+                type="text"
+                value={saveName}
+                aria-label="この組み合わせの名前"
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder={defaultName}
+                maxLength={60}
+                className={inputClass}
+              />
+              <Button
+                className="shrink-0"
+                onClick={withTapFeedback(() => void saveSet())}
+                disabled={savingSet}
+              >
+                <IconPlus size={15} />
+                {savingSet ? '保存中' : '保存'}
+              </Button>
+            </div>
+          ) : null}
+
+          {searches.length > 0 ? (
+            <ul className="mt-2.5 flex flex-col gap-1.5">
+              {searches.map((set) => (
+                <li key={set.id} className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={withTapFeedback(() => loadSet(set))}
+                    className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-marine/60"
+                  >
+                    <span className="block truncate text-[13px]">{set.name}</span>
+                    <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
+                      {set.stations
+                        .map((s) => `${s.name} 徒歩${s.minutes}分`)
+                        .join('｜')}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${set.name}を消す`}
+                    onClick={withTapFeedback(() => void removeSet(set))}
+                    className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-lg text-fg-mute transition-colors hover:text-danger"
+                  >
+                    <IconClose size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {error ? <p className="mt-2.5 text-[12px] text-danger">{error}</p> : null}
 
