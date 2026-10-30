@@ -65,6 +65,8 @@ export type BuildingsResponse = {
     truncated: boolean
   }
   notes: string[]
+  /** どこに聞いて、どうだったか。0件のときに画面へ出す（0076） */
+  debug: string[]
 }
 
 export async function POST(request: Request) {
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
       buildings: [],
       stats: { candidates: 0, osm: 0, google: 0, measured: false, truncated: false },
       notes: [],
+      debug: [],
     } satisfies BuildingsResponse)
   }
 
@@ -106,41 +109,69 @@ export async function POST(request: Request) {
   }
 
   const notes: string[] = []
-
-  // ------------------------------------------------------------------
-  // 1. OSM。範囲の中の建物をまとめて取る
-  // ------------------------------------------------------------------
-  const osmAll = await fetchOsmBuildings(bounds, stations)
-  if (osmAll === null) notes.push('OpenStreetMap から建物を取れませんでした。')
-  const osm = (osmAll ?? []).filter((b) => insideAll(b, stations))
-
-  // ------------------------------------------------------------------
-  // 2. Google。名前を補う
-  // ------------------------------------------------------------------
-  let google: RentBuilding[] = []
+  const debug: string[] = []
   const key = process.env.GOOGLE_MAPS_SERVER_KEY
+
+  // ------------------------------------------------------------------
+  // 1. OSM と Google を同時に聞く
+  //
+  // 順に聞くと、片方が重い日に60秒へ届いてしまう。どちらも相手の答えを
+  // 必要としないので、並べて待つ
+  // ------------------------------------------------------------------
   const circles = key ? coverCircles(area.path, stations, NEARBY_RADIUS, NEARBY_MAX_CALLS) : []
 
-  if (key && circles.length > 0) {
+  const googleTask = async (): Promise<RentBuilding[]> => {
+    if (!key) {
+      notes.push('Google の鍵が設定されていないため、建物名と徒歩時間の実測は使えません。')
+      return []
+    }
+    if (circles.length === 0) return []
+
     const spend = await spendApiCalls('places_nearby', circles.length)
     if (!spend.allowed) {
       notes.push('今日は Google に建物名を聞ける回数を使い切りました。名前は OSM のぶんだけです。')
-    } else {
-      const found = await Promise.all(
-        circles.map((c) => searchHousing(key, c, NEARBY_RADIUS, stations))
-      )
-      if (found.some((list) => list === null)) {
-        notes.push('Google から建物名を取れなかった範囲があります。')
-      }
-      const seen = new Set<string>()
-      google = found
-        .flatMap((list) => list ?? [])
-        .filter((b) => insideAll(b, stations))
-        .filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)))
+      debug.push(`Google: 今日は上限（${spend.used_today}/${spend.daily}）`)
+      return []
     }
-  } else if (!key) {
-    notes.push('Google の鍵が設定されていないため、建物名と徒歩時間の実測は使えません。')
+
+    const found = await Promise.all(
+      circles.map((c) => searchHousing(key, c, NEARBY_RADIUS, stations))
+    )
+    // 同じ聞き方の結果はまとめて1行にする。円の数だけ並べても読めない
+    const lines = new Map<string, number>()
+    for (const r of found) {
+      for (const a of r.attempts) {
+        const [head, tail] = [a.replace(/: \d+件$/, ''), /: (\d+)件$/.exec(a)?.[1]]
+        const label = tail ? `${head}: 合計` : a
+        lines.set(label, (lines.get(label) ?? 0) + Number(tail ?? 0))
+      }
+    }
+    for (const [label, count] of lines) {
+      debug.push(label.endsWith(': 合計') ? `${label.replace(': 合計', '')}: ${count}件` : label)
+    }
+
+    if (found.every((r) => r.items.length === 0)) {
+      notes.push('Google から建物名を取れませんでした。')
+    }
+
+    const seen = new Set<string>()
+    return found
+      .flatMap((r) => r.items)
+      .filter((b) => insideAll(b, stations))
+      .filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)))
   }
+
+  const osmTask = async (): Promise<RentBuilding[]> => {
+    const result = await fetchOsmBuildings(bounds, stations)
+    debug.push(...result.attempts)
+    if (result.buildings === null) {
+      notes.push('OpenStreetMap から建物を取れませんでした。')
+      return []
+    }
+    return result.buildings.filter((b) => insideAll(b, stations))
+  }
+
+  const [osm, google] = await Promise.all([osmTask(), googleTask()])
 
   const candidates = mergeBuildings(osm, google)
 
@@ -160,7 +191,8 @@ export async function POST(request: Request) {
     if (!spend.allowed) {
       notes.push('今日は徒歩時間を実測できる回数を使い切りました。直線距離からの概算です。')
     } else {
-      const cells = await walkMatrix(key, stations, targets)
+      const { cells, attempt } = await walkMatrix(key, stations, targets)
+      debug.push(attempt)
       if (cells === null) {
         notes.push('徒歩ルートを取れませんでした。直線距離からの概算です。')
       } else {
@@ -196,5 +228,6 @@ export async function POST(request: Request) {
       truncated,
     },
     notes,
+    debug,
   } satisfies BuildingsResponse)
 }
