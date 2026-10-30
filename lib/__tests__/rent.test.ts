@@ -6,6 +6,7 @@ import {
   boundsOf,
   expandBounds,
   hasFacility,
+  hasSameStation,
   nearestFacilities,
   nearestFood,
   ratingText,
@@ -462,4 +463,21 @@ test('星の書き方と、覚えておいた条件の読み直し', () => {
   assert.equal(toFoodRating(4.8), 3)
   assert.equal(toFoodRating('3.5'), 3)
   assert.equal(toFoodRating(undefined), 3)
+})
+
+
+test('同じ駅は2つ入れない', () => {
+  // 同じ駅を重ねても、重なりは1つぶんのまま変わらない
+  const stations = [station({ ...EBISU, id: 'e', name: '恵比寿駅', minutes: 10 })]
+
+  // 名前が同じ
+  assert.equal(hasSameStation(stations, { ...EBISU, name: '恵比寿駅' }), true)
+  // 名前が違っても、ごく近い点（別の出口を選んだとき）は同じ駅とみなす
+  assert.equal(
+    hasSameStation(stations, { lat: EBISU.lat + 0.0005, lng: EBISU.lng, name: '恵比寿駅 西口' }),
+    true
+  )
+  // 別の駅は入る（代官山は約640m離れている）
+  assert.equal(hasSameStation(stations, { ...DAIKANYAMA, name: '代官山駅' }), false)
+  assert.equal(hasSameStation([], { ...EBISU, name: '恵比寿駅' }), false)
 })
