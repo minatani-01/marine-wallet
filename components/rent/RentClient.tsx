@@ -399,9 +399,20 @@ export default function RentClient() {
         </div>
       ) : null}
 
+      {/* 建物の輪郭は OpenStreetMap のデータ（ODbL）。無料で使える代わりに、
+          出典を出すことが条件になっている。リンクも付けておく */}
       <p className="px-1 text-[11px] leading-relaxed text-fg-mute">
-        建物は OpenStreetMap と Google マップから集めています。空室かどうかは見ていないので、
-        住めるかどうかは管理会社や募集情報で確かめてください。
+        建物は{' '}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="underline underline-offset-2 hover:text-marine"
+        >
+          © OpenStreetMap contributors
+        </a>{' '}
+        と Google マップから集めています。空室かどうかは見ていないので、 住めるかどうかは
+        管理会社や募集情報で確かめてください。
         {result?.stats.measured
           ? '徒歩時間は Google の徒歩ルートでの実測です。'
           : '徒歩時間は直線距離を80m＝1分で割った概算です。'}
