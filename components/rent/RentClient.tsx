@@ -121,6 +121,9 @@ export default function RentClient({
   const [wantFood, setWantFood] = useState(false)
   const [foodRating, setFoodRating] = useState<number>(DEFAULT_FOOD_RATING)
 
+  /** 路線名を取れなかったときの知らせ（0086） */
+  const [lineNote, setLineNote] = useState<string | null>(null)
+
   /** 建物の階数の下限（0084）。0 なら指定なし */
   const [minFloors, setMinFloors] = useState(0)
 
@@ -186,6 +189,53 @@ export default function RentClient({
       // 書けなくても探すことはできる
     }
   }, [wanted, facilityWalk, wantFood, foodRating, minFloors])
+
+  /**
+   * 路線名の足りない駅を埋める（0086）。
+   *
+   * 路線名が付く前に入れた駅は、名前だけのまま端末に残っている。開いた
+   * ときに一度だけ取り直す。OSM に聞くだけなので費用はかからない。
+   */
+  // 地図で選んだ地点は駅ではないので、路線名は付けない
+  const missing = stations.filter((s) => !s.line && !s.name.startsWith('指定した地点'))
+  const missingKey = missing.map((s) => s.id).join(',')
+
+  useEffect(() => {
+    if (missingKey === '') return
+    let alive = true
+
+    const fill = async () => {
+      const targets = missing.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng }))
+      const res = await fetch('/api/rent/lines', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ points: targets.map((t) => ({ lat: t.lat, lng: t.lng })) }),
+      }).catch(() => null)
+      if (!alive || !res || !res.ok) return
+
+      const body = (await res.json()) as { lines?: (string | null)[]; lineNote?: string | null }
+      if (!alive) return
+      if (body.lineNote) setLineNote(body.lineNote)
+
+      const found = body.lines ?? []
+      if (found.every((line) => !line)) return
+
+      setStations((all) =>
+        all.map((station) => {
+          const at = targets.findIndex((t) => t.id === station.id)
+          const line = at >= 0 ? found[at] : null
+          return line ? { ...station, line } : station
+        })
+      )
+    }
+
+    void fill()
+    return () => {
+      alive = false
+    }
+    // 足りない駅の組が変わったときだけ走らせる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingKey])
 
   /**
    * 重なりの範囲。
@@ -310,8 +360,9 @@ export default function RentClient({
       return
     }
 
-    const body = (await res.json()) as { hits?: StationHit[] }
+    const body = (await res.json()) as { hits?: StationHit[]; lineNote?: string | null }
     setHits(body.hits ?? [])
+    setLineNote(body.lineNote ?? null)
   }
 
   const searchBuildings = async () => {
@@ -393,14 +444,17 @@ export default function RentClient({
             ) : (
               <ul className="mt-3 flex flex-col gap-1.5">
                 {hits.map((hit) => (
-                  <li key={`${hit.name}-${hit.lat}-${hit.lng}`}>
+                  <li key={`${hit.line ?? ''}-${hit.name}-${hit.lat}-${hit.lng}`}>
                     <button
                       type="button"
                       onClick={withTapFeedback(() => addStation(hit))}
                       className="w-full rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-marine/60"
                     >
                       <span className="block truncate text-[13px] font-semibold">
-                        {stationLabel(hit)}
+                        {hit.line ? (
+                          <span className="mr-1.5 font-normal text-fg-mute">{hit.line}</span>
+                        ) : null}
+                        {hit.name}
                       </span>
                       {hit.address ? (
                         <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
@@ -412,6 +466,12 @@ export default function RentClient({
                 ))}
               </ul>
             )
+          ) : null}
+
+          {lineNote ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
+              {lineNote}（OpenStreetMap に届きませんでした）。駅名だけで探せます。
+            </p>
           ) : null}
 
           {stations.length === 0 ? (
@@ -435,11 +495,20 @@ export default function RentClient({
                   >
                     {index + 1}
                   </span>
+                  {/* 路線名は弱く、駅名を立てる（0087）。探しているのは駅で、
+                      路線はどの駅かを見分けるための手がかりである */}
                   <span
                     title={stationLabel(s)}
                     className="min-w-0 flex-1 truncate text-[13px] font-semibold"
                   >
-                    {stationLabel(s)}
+                    {/* 狭い画面では路線名を上の行に送る。横に並べたままだと
+                        駅名のほうが切れる（0087） */}
+                    {s.line ? (
+                      <span className="mr-1 block text-[11px] font-normal text-fg-mute min-[360px]:inline">
+                        {s.line}
+                      </span>
+                    ) : null}
+                    {s.name}
                   </span>
 
                   {/* 「徒歩」の字は落とす（0085）。路線名が付いて駅名が長く
@@ -455,7 +524,7 @@ export default function RentClient({
                         )
                         setResult(null)
                       }}
-                      className="tnum rounded-lg border border-line bg-white/[0.04] px-1.5 py-1 text-[12px] font-semibold text-fg"
+                      className="tnum rounded-lg border border-line bg-white/[0.04] px-1 py-1 text-[12px] font-semibold text-fg"
                     >
                       {Array.from({ length: MAX_WALK - MIN_WALK + 1 }, (_, i) => MIN_WALK + i).map(
                         (m) => (
@@ -475,7 +544,7 @@ export default function RentClient({
                       setStations((all) => all.filter((x) => x.id !== s.id))
                       setResult(null)
                     })}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-mute transition-colors hover:text-danger"
+                    className="inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-lg text-fg-mute transition-colors hover:text-danger"
                   >
                     <IconClose size={13} />
                   </button>
