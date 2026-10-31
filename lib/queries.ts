@@ -58,6 +58,9 @@ import type {
   PlaceGenre,
   RentSearch,
   RentStationRow,
+  Task,
+  TaskCalendar,
+  TaskTag,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -1058,4 +1061,48 @@ export async function getGamesByIds(ids: string[]): Promise<Game[]> {
     supabase.from('games').select('*').in('id', ids)
   )
   return data ?? []
+}
+
+/**
+ * タスク（0099）。全部読む。
+ *
+ * 済んだものも含める。画面では畳んで出すだけで、消すのは本人が
+ * 「済みを消す」を押したとき。数百件を越えることは考えにくい。
+ */
+export async function getTasks(userId: string): Promise<Task[]> {
+  const supabase = await createClient()
+  const data = await read<Task[]>('tasks', () =>
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1000)
+  )
+  return data ?? []
+}
+
+export async function getTaskTags(userId: string): Promise<TaskTag[]> {
+  const supabase = await createClient()
+  const data = await read<TaskTag[]>('task_tags', () =>
+    supabase
+      .from('task_tags')
+      .select('id, user_id, name, sort_order')
+      .eq('user_id', userId)
+      .order('sort_order')
+      .order('created_at')
+  )
+  return data ?? []
+}
+
+export async function getTaskCalendar(userId: string): Promise<TaskCalendar | null> {
+  const supabase = await createClient()
+  const data = await read<TaskCalendar | null>('task_calendars', () =>
+    supabase
+      .from('task_calendars')
+      .select('user_id, calendar_id, enabled, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle()
+  )
+  return data ?? null
 }

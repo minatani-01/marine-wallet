@@ -28,5 +28,21 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
+    /**
+     * ショートカット（0099）。
+     *
+     * Android では、ホーム画面のアプリアイコンを長押しすると出る。そこから
+     * 「タスク」をホーム画面に置けば、1タップで一覧が開く。一覧そのものを
+     * ホーム画面に出すウィジェットは Web アプリでは作れないので、ここまで。
+     */
+    shortcuts: [
+      {
+        name: 'タスク',
+        short_name: 'タスク',
+        description: 'やることの一覧を開く',
+        url: '/tasks',
+        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+      },
+    ],
   }
 }
