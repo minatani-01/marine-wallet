@@ -57,6 +57,7 @@ import type {
   Place,
   PlaceGenre,
   RentSearch,
+  RentStationRow,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -597,6 +598,23 @@ export async function getSubscriptions(userId: string): Promise<Subscription[]> 
  * 新しく使ったものから並べる。候補を見比べているあいだは、直前に見た組を
  * もう一度開くことが多い。
  */
+/**
+ * 選べる駅の一覧（0092）。賃貸さがしの画面に渡す。
+ *
+ * 600 行ほどで 40KB 程度。開くたびに読むが、外に聞くより速くて確かである。
+ */
+export async function getRentStations(): Promise<RentStationRow[]> {
+  const supabase = await createClient()
+  const data = await read<RentStationRow[]>('rent_stations', () =>
+    supabase
+      .from('rent_stations')
+      .select('id, line, name, lat, lng')
+      .order('sort_order', { ascending: true })
+      .limit(2000)
+  )
+  return data ?? []
+}
+
 export async function getRentSearches(userId: string): Promise<RentSearch[]> {
   const supabase = await createClient()
   const data = await read<RentSearch[]>('rent_searches', () =>

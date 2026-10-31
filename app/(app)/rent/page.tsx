@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 
 import RentClient from '@/components/rent/RentClient'
 import { jstDate } from '@/lib/jst'
-import { getProfile, getRentSearches, getSessionUser } from '@/lib/queries'
+import { getProfile, getRentSearches, getRentStations, getSessionUser } from '@/lib/queries'
 
 /**
  * 賃貸さがし（0075）。
@@ -23,12 +23,13 @@ export default async function RentPage() {
   const profile = await getProfile(user.id)
   if (!profile?.is_master) redirect('/')
 
-  const searches = await getRentSearches(user.id)
+  const [searches, registry] = await Promise.all([getRentSearches(user.id), getRentStations()])
 
   return (
     <RentClient
       userId={user.id}
       searches={searches}
+      registry={registry}
       thisYear={Number(jstDate(new Date()).slice(0, 4))}
     />
   )

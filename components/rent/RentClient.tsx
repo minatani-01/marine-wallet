@@ -60,8 +60,7 @@ import {
 } from '@/lib/rent'
 import { createClient } from '@/lib/supabase/client'
 import type { BuildingsResponse } from '@/app/api/rent/buildings/route'
-import type { StationHit } from '@/app/api/rent/stations/route'
-import type { RentSearch } from '@/types'
+import type { RentSearch, RentStationRow } from '@/types'
 
 /** 条件を覚えておく場所。端末ごとで、相手には移らない */
 const SAVE_KEY = 'marine-wallet:rent-stations'
@@ -83,19 +82,23 @@ const FACILITY_KEY = 'marine-wallet:rent-facilities'
 export default function RentClient({
   userId,
   searches,
+  registry,
   thisYear,
 }: {
   userId: string
   /** 名前を付けて残した駅の組み合わせ（0080） */
   searches: RentSearch[]
+  /** 選べる駅（0092）。外に聞かず、ここから選ぶ */
+  registry: RentStationRow[]
   /** 日本時間での今年。築年数を出すのに使う（0082） */
   thisYear: number
 }) {
   const router = useRouter()
   const [stations, setStations] = useState<RentStation[]>([])
-  const [query, setQuery] = useState('')
-  const [hits, setHits] = useState<StationHit[] | null>(null)
-  const [searching, setSearching] = useState(false)
+  /** 駅を絞り込む文字（0092）。登録してある駅の中から選ぶ */
+  const [filter, setFilter] = useState('')
+  /** 座標を引いている最中の駅。二度押しを止める */
+  const [resolving, setResolving] = useState<string | null>(null)
 
   const [result, setResult] = useState<BuildingsResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -121,9 +124,6 @@ export default function RentClient({
    */
   const [wantFood, setWantFood] = useState(false)
   const [foodRating, setFoodRating] = useState<number>(DEFAULT_FOOD_RATING)
-
-  /** 路線名を取れなかったときの知らせ（0086） */
-  const [lineNote, setLineNote] = useState<string | null>(null)
 
   /** 建物の階数の下限（0084）。0 なら指定なし */
   const [minFloors, setMinFloors] = useState(0)
@@ -201,55 +201,6 @@ export default function RentClient({
   }, [wanted, facilityWalk, wantFood, foodRating, minFloors])
 
   /**
-   * 路線名の足りない駅を埋める（0086）。
-   *
-   * 路線名が付く前に入れた駅は、名前だけのまま端末に残っている。開いた
-   * ときに一度だけ取り直す。OSM に聞くだけなので費用はかからない。
-   */
-  // 地図で選んだ地点は駅ではないので、路線名は付けない
-  const missing = stations.filter((s) => !s.line && !s.name.startsWith('指定した地点'))
-  const missingKey = missing.map((s) => s.id).join(',')
-
-  useEffect(() => {
-    if (missingKey === '') return
-    let alive = true
-
-    const fill = async () => {
-      const targets = missing.map((s) => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng }))
-      const res = await fetch('/api/rent/lines', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          points: targets.map((t) => ({ name: t.name, lat: t.lat, lng: t.lng })),
-        }),
-      }).catch(() => null)
-      if (!alive || !res || !res.ok) return
-
-      const body = (await res.json()) as { lines?: (string | null)[]; lineNote?: string | null }
-      if (!alive) return
-      if (body.lineNote) setLineNote(body.lineNote)
-
-      const found = body.lines ?? []
-      if (found.every((line) => !line)) return
-
-      setStations((all) =>
-        all.map((station) => {
-          const at = targets.findIndex((t) => t.id === station.id)
-          const line = at >= 0 ? found[at] : null
-          return line ? { ...station, line } : station
-        })
-      )
-    }
-
-    void fill()
-    return () => {
-      alive = false
-    }
-    // 足りない駅の組が変わったときだけ走らせる
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [missingKey])
-
-  /**
    * 重なりの範囲。
    *
    * 建物を探す前に出す。分数を変えるたびに塗りが縮むのが見えるので、
@@ -282,7 +233,6 @@ export default function RentClient({
     // 同じ駅を2つ入れても、重なりは1つぶんのまま変わらない（0081）
     if (hasSameStation(stations, p)) {
       setError(`${p.name}はもう入っています`)
-      setHits(null)
       return
     }
     const id = `s-${Date.now()}-${Math.round(Math.random() * 1000)}`
@@ -290,8 +240,7 @@ export default function RentClient({
       ...all,
       { id, name: p.name, line: p.line, lat: p.lat, lng: p.lng, minutes: DEFAULT_WALK },
     ])
-    setHits(null)
-    setQuery('')
+    setFilter('')
     // 条件が変わったら前の結果は消す。古い一覧が新しい条件のものに見える
     setResult(null)
   }
@@ -350,7 +299,6 @@ export default function RentClient({
     setSaveName('')
     setResult(null)
     setError(null)
-    setHits(null)
   }
 
   const removeSet = async (set: RentSearch) => {
@@ -366,32 +314,57 @@ export default function RentClient({
     router.refresh()
   }
 
-  const searchStations = async () => {
-    const text = query.trim()
-    if (!text) return
+  /**
+   * 候補。登録してある駅を、打った文字で絞る（0092）。
+   *
+   * 外に聞かない。駅名でも路線名でも引っかかる。「駅」を付けても付けなくても
+   * 同じになるように外して見る。
+   */
+  const needle = filter.trim().replace(/駅$/, '')
+  const candidates = useMemo(() => {
+    if (!needle) return []
+    const key = needle.replace(/\s+/g, '')
+    return registry
+      .filter((row) => (row.name + row.line).replace(/\s+/g, '').includes(key))
+      .slice(0, 12)
+  }, [registry, needle])
 
-    setSearching(true)
+  /**
+   * 登録してある駅を足す。
+   *
+   * 座標が入っていなければ、ここで1回だけ引いてもらう（0092）。引いた
+   * 座標は向こうで書き戻されるので、次からは聞きに行かない。
+   */
+  const pickStation = async (row: RentStationRow) => {
     setError(null)
-    const res = await fetch('/api/rent/stations', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ query: text }),
-    }).catch(() => null)
-    setSearching(false)
+    let lat = row.lat
+    let lng = row.lng
 
-    if (!res || !res.ok) {
-      setHits(null)
-      setError(
-        res?.status === 429
-          ? '今日は駅を探せる回数を使い切りました'
-          : '駅を探せませんでした。入れ方を変えてもう一度お試しください'
-      )
-      return
+    if (lat == null || lng == null) {
+      setResolving(row.id)
+      const res = await fetch('/api/rent/stations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: row.id }),
+      }).catch(() => null)
+      setResolving(null)
+
+      if (!res || !res.ok) {
+        setError(
+          res?.status === 429
+            ? '今日は駅の場所を引ける回数を使い切りました'
+            : '駅の場所を引けませんでした。しばらく置いてからお試しください'
+        )
+        return
+      }
+      const body = (await res.json()) as { lat: number; lng: number }
+      lat = body.lat
+      lng = body.lng
+      // 書き戻した座標を、次に開いたときに持ってこられるようにする
+      router.refresh()
     }
 
-    const body = (await res.json()) as { hits?: StationHit[]; lineNote?: string | null }
-    setHits(body.hits ?? [])
-    setLineNote(body.lineNote ?? null)
+    addStation({ name: row.name, line: row.line, lat, lng })
   }
 
   const searchBuildings = async () => {
@@ -441,53 +414,41 @@ export default function RentClient({
       <div>
         <SectionLabel>駅を足す</SectionLabel>
         <Card>
-          <div className="flex gap-2">
-            <input
-              type="search"
-              value={query}
-              aria-label="駅名"
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void searchStations()
-              }}
-              placeholder="恵比寿、中目黒…"
-              className={inputClass}
-            />
-            <Button
-              className="shrink-0"
-              onClick={withTapFeedback(() => void searchStations())}
-              disabled={searching || !query.trim()}
-            >
-              <IconSearch size={15} />
-              {searching ? '探し中' : '探す'}
-            </Button>
-          </div>
+          {/* 登録してある駅から選ぶ（0092）。外に聞かないので、すぐ出るし
+              止まらない。無い駅は足してもらう */}
+          <input
+            type="search"
+            value={filter}
+            aria-label="駅名で絞り込む"
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="例：御徒町、中野坂上、山手線"
+            className={inputClass}
+          />
 
-          {hits ? (
-            hits.length === 0 ? (
-              <p className="mt-3 text-[12px] text-fg-mute">
-                駅が見つかりませんでした。地図の
+          {needle ? (
+            candidates.length === 0 ? (
+              <p className="mt-3 text-[12px] leading-relaxed text-fg-mute">
+                登録されていない駅です。地図の
                 <IconMap size={12} className="mx-1 inline align-[-1px]" />
-                から、場所を直に指定することもできます。
+                から場所を直に指定するか、駅の追加を頼んでください。
               </p>
             ) : (
               <ul className="mt-3 flex flex-col gap-1.5">
-                {hits.map((hit) => (
-                  <li key={`${hit.line ?? ''}-${hit.name}-${hit.lat}-${hit.lng}`}>
+                {candidates.map((row) => (
+                  <li key={row.id}>
                     <button
                       type="button"
-                      onClick={withTapFeedback(() => addStation(hit))}
-                      className="w-full rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-marine/60"
+                      disabled={resolving !== null}
+                      onClick={withTapFeedback(() => void pickStation(row))}
+                      className="w-full rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-marine/60 disabled:opacity-60"
                     >
                       <span className="block truncate text-[13px] font-semibold">
-                        {hit.line ? (
-                          <span className="mr-1.5 font-normal text-fg-mute">{hit.line}</span>
-                        ) : null}
-                        {hit.name}
+                        <span className="mr-1.5 font-normal text-fg-mute">{row.line}</span>
+                        {row.name}
                       </span>
-                      {hit.address ? (
-                        <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
-                          {hit.address}
+                      {resolving === row.id ? (
+                        <span className="mt-0.5 block text-[11px] text-fg-mute">
+                          場所を引いています…
                         </span>
                       ) : null}
                     </button>
@@ -495,12 +456,6 @@ export default function RentClient({
                 ))}
               </ul>
             )
-          ) : null}
-
-          {lineNote ? (
-            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
-              {lineNote}（OpenStreetMap に届きませんでした）。駅名だけで探せます。
-            </p>
           ) : null}
 
           {stations.length === 0 ? (

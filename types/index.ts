@@ -787,3 +787,12 @@ export type RentSearch = {
   created_at: string
   updated_at: string
 }
+
+/** 賃貸さがしで選べる駅（0092）。路線ごとに1行。座標は初回に引いて書き戻す */
+export type RentStationRow = {
+  id: string
+  line: string
+  name: string
+  lat: number | null
+  lng: number | null
+}
