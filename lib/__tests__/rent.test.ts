@@ -8,6 +8,8 @@ import {
   expandBounds,
   hasFacility,
   hasSameStation,
+  meetsFloors,
+  toFloorStep,
   nearestFacilities,
   nearestFood,
   ratingText,
@@ -25,6 +27,7 @@ import {
   rejectRentReason,
   searchArea,
   sortBuildings,
+  stationLabel,
   straightMinutes,
   toBuiltYear,
   straightWalk,
@@ -475,13 +478,19 @@ test('同じ駅は2つ入れない', () => {
 
   // 名前が同じ
   assert.equal(hasSameStation(stations, { ...EBISU, name: '恵比寿駅' }), true)
-  // 名前が違っても、ごく近い点（別の出口を選んだとき）は同じ駅とみなす
+  // 名前が違っても、ほぼ同じ点（別の出口を選んだとき）は同じ駅とみなす
   assert.equal(
-    hasSameStation(stations, { lat: EBISU.lat + 0.0005, lng: EBISU.lng, name: '恵比寿駅 西口' }),
+    hasSameStation(stations, { lat: EBISU.lat + 0.0002, lng: EBISU.lng, name: '恵比寿駅 西口' }),
     true
   )
   // 別の駅は入る（代官山は約640m離れている）
   assert.equal(hasSameStation(stations, { ...DAIKANYAMA, name: '代官山駅' }), false)
+  // 隣り合った別路線の駅も入る。上野広小路と上野御徒町は150mほどしか
+  // 離れていないが、別の駅である（0084）
+  assert.equal(
+    hasSameStation(stations, { lat: EBISU.lat + 0.0013, lng: EBISU.lng, name: '恵比寿一丁目駅' }),
+    false
+  )
   assert.equal(hasSameStation([], { ...EBISU, name: '恵比寿駅' }), false)
 })
 
@@ -505,4 +514,33 @@ test('竣工年を読んで、築何年かを出す', () => {
   // 分からないものを「築0年」と書くと新築だと思われる
   assert.equal(buildingAge(null, 2026), null)
   assert.equal(buildingAge(undefined, 2026), null)
+})
+
+
+test('階数で絞る。分からない建物も落ちる', () => {
+  // 指定なしなら素通し
+  assert.equal(meetsFloors(3, 0), true)
+  assert.equal(meetsFloors(null, 0), true)
+
+  assert.equal(meetsFloors(10, 5), true)
+  assert.equal(meetsFloors(5, 5), true)
+  assert.equal(meetsFloors(4, 5), false)
+  // 階数が入っていない建物は、条件があるなら残せない。
+  // 「5階以上」で探しているのに平屋が混ざっては意味が無い
+  assert.equal(meetsFloors(null, 5), false)
+  assert.equal(meetsFloors(undefined, 5), false)
+
+  assert.equal(toFloorStep(10), 10)
+  assert.equal(toFloorStep(0), 0)
+  assert.equal(toFloorStep(7), 0)
+  assert.equal(toFloorStep('10'), 0)
+})
+
+
+test('駅は「〇〇線の〇〇駅」と書く', () => {
+  // 名前の似た駅が隣り合っていると、駅名だけでは見分けが付かない
+  assert.equal(stationLabel({ name: '上野広小路駅', line: '銀座線' }), '銀座線の上野広小路駅')
+  // 路線が取れなければ駅名だけ
+  assert.equal(stationLabel({ name: '御徒町駅' }), '御徒町駅')
+  assert.equal(stationLabel({ name: '御徒町駅', line: '' }), '御徒町駅')
 })

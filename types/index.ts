@@ -775,7 +775,15 @@ export type RentSearch = {
   /** 組の名前。既定は駅名をつないだもの */
   name: string
   /** 駅と徒歩時間。lib/rent.ts の RentStation と同じ形 */
-  stations: { id: string; name: string; lat: number; lng: number; minutes: number }[]
+  stations: {
+    id: string
+    name: string
+    /** 路線名（0085）。取れたときだけ */
+    line?: string
+    lat: number
+    lng: number
+    minutes: number
+  }[]
   created_at: string
   updated_at: string
 }

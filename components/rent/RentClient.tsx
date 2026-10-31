@@ -30,6 +30,7 @@ import {
   DEFAULT_WALK,
   FACILITIES,
   FACILITY_WALKS,
+  FLOOR_STEPS,
   FOOD_RATINGS,
   MAX_RENT_STATIONS,
   MAX_WALK,
@@ -41,11 +42,14 @@ import {
   facilityLabel,
   hasFacility,
   hasSameStation,
+  meetsFloors,
   pairGaps,
   ratingText,
   searchArea,
   sortBuildings,
+  stationLabel,
   toFacilityKinds,
+  toFloorStep,
   toFoodRating,
   type FacilityKind,
   type RentBuilding,
@@ -117,6 +121,9 @@ export default function RentClient({
   const [wantFood, setWantFood] = useState(false)
   const [foodRating, setFoodRating] = useState<number>(DEFAULT_FOOD_RATING)
 
+  /** 建物の階数の下限（0084）。0 なら指定なし */
+  const [minFloors, setMinFloors] = useState(0)
+
   /** 保存するときの名前。空のままなら駅名をつないだものにする（0080） */
   const [saveName, setSaveName] = useState('')
   const [savingSet, setSavingSet] = useState(false)
@@ -149,6 +156,7 @@ export default function RentClient({
         minutes?: unknown
         food?: unknown
         rating?: unknown
+        floors?: unknown
       }
       if (Array.isArray(parsed.wanted)) setWanted(toFacilityKinds(parsed.wanted))
       if (FACILITY_WALKS.some((m) => m === parsed.minutes)) {
@@ -156,6 +164,7 @@ export default function RentClient({
       }
       setWantFood(parsed.food === true)
       setFoodRating(toFoodRating(parsed.rating))
+      setMinFloors(toFloorStep(parsed.floors))
     } catch {
       // 読めなければ既定のまま
     }
@@ -165,12 +174,18 @@ export default function RentClient({
     try {
       window.localStorage.setItem(
         FACILITY_KEY,
-        JSON.stringify({ wanted, minutes: facilityWalk, food: wantFood, rating: foodRating })
+        JSON.stringify({
+          wanted,
+          minutes: facilityWalk,
+          food: wantFood,
+          rating: foodRating,
+          floors: minFloors,
+        })
       )
     } catch {
       // 書けなくても探すことはできる
     }
-  }, [wanted, facilityWalk, wantFood, foodRating])
+  }, [wanted, facilityWalk, wantFood, foodRating, minFloors])
 
   /**
    * 重なりの範囲。
@@ -181,12 +196,22 @@ export default function RentClient({
   const area = useMemo(() => searchArea(stations), [stations])
   const gaps = useMemo(() => (area ? [] : pairGaps(stations)), [area, stations])
 
-  const buildings = useMemo(
-    () => (result ? sortBuildings(result.buildings, stations, sort) : []),
-    [result, stations, sort]
-  )
+  /**
+   * 出す建物。
+   *
+   * 階数の条件は画面の中だけで効かせる（0084）。階数は検索のときに受け取って
+   * あるので、変えるたびに外へ聞き直さずに済む。
+   */
+  const buildings = useMemo(() => {
+    if (!result) return []
+    const kept = result.buildings.filter((b) => meetsFloors(b.levels, minFloors))
+    return sortBuildings(kept, stations, sort)
+  }, [result, stations, sort, minFloors])
 
-  const addStation = (p: { name: string; lat: number; lng: number }) => {
+  /** 階数の条件で外した数。階数が入っていない建物もここで落ちる */
+  const droppedByFloors = result ? result.buildings.length - buildings.length : 0
+
+  const addStation = (p: { name: string; lat: number; lng: number; line?: string }) => {
     setError(null)
     if (stations.length >= MAX_RENT_STATIONS) {
       setError(`駅は最大${MAX_RENT_STATIONS}つまでです`)
@@ -199,7 +224,10 @@ export default function RentClient({
       return
     }
     const id = `s-${Date.now()}-${Math.round(Math.random() * 1000)}`
-    setStations((all) => [...all, { id, name: p.name, lat: p.lat, lng: p.lng, minutes: DEFAULT_WALK }])
+    setStations((all) => [
+      ...all,
+      { id, name: p.name, line: p.line, lat: p.lat, lng: p.lng, minutes: DEFAULT_WALK },
+    ])
     setHits(null)
     setQuery('')
     // 条件が変わったら前の結果は消す。古い一覧が新しい条件のものに見える
@@ -207,7 +235,7 @@ export default function RentClient({
   }
 
   /** 既定の名前。駅名をつなぐ。長くなりすぎたら切る */
-  const defaultName = stations.map((s) => s.name).join('・').slice(0, 60)
+  const defaultName = stations.map((s) => stationLabel(s)).join('・').slice(0, 60)
 
   /**
    * いまの駅を残す。
@@ -371,7 +399,9 @@ export default function RentClient({
                       onClick={withTapFeedback(() => addStation(hit))}
                       className="w-full rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-marine/60"
                     >
-                      <span className="block truncate text-[13px] font-semibold">{hit.name}</span>
+                      <span className="block truncate text-[13px] font-semibold">
+                        {stationLabel(hit)}
+                      </span>
                       {hit.address ? (
                         <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
                           {hit.address}
@@ -405,10 +435,16 @@ export default function RentClient({
                   >
                     {index + 1}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{s.name}</span>
+                  <span
+                    title={stationLabel(s)}
+                    className="min-w-0 flex-1 truncate text-[13px] font-semibold"
+                  >
+                    {stationLabel(s)}
+                  </span>
 
+                  {/* 「徒歩」の字は落とす（0085）。路線名が付いて駅名が長く
+                      なったので、名前に幅を回す。分数と「分」で意味は通る */}
                   <label className="flex shrink-0 items-center gap-1 text-[11px] text-fg-mute">
-                    徒歩
                     <select
                       aria-label={`${s.name}からの徒歩時間`}
                       value={s.minutes}
@@ -492,7 +528,7 @@ export default function RentClient({
                     <span className="block truncate text-[13px]">{set.name}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
                       {set.stations
-                        .map((s) => `${s.name} 徒歩${s.minutes}分`)
+                        .map((s) => `${stationLabel(s)} 徒歩${s.minutes}分`)
                         .join('｜')}
                     </span>
                   </button>
@@ -563,6 +599,38 @@ export default function RentClient({
               )}
             </>
           )}
+        </Card>
+      </div>
+
+      {/* 建物の条件（0084）。階数は OSM に入っている建物にしか無いので、
+          指定すると「分からないもの」も落ちる。何件落としたかは出す */}
+      <div>
+        <SectionLabel>建物の条件</SectionLabel>
+        <Card>
+          <div className="flex items-center gap-2 text-[12px] text-fg-mute">
+            <span>階数</span>
+            <select
+              aria-label="階数の下限"
+              value={minFloors}
+              onChange={(e) => setMinFloors(Number(e.target.value))}
+              className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1.5 text-[12px] font-semibold text-fg"
+            >
+              <option value={0}>指定なし</option>
+              {FLOOR_STEPS.map((f) => (
+                <option key={f} value={f}>
+                  {f}階建て以上
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
+            階数は分かっている建物にしか入っていません。指定すると、階数が分からない建物も
+            一覧から外れます。
+            {minFloors > 0 && droppedByFloors > 0
+              ? `いまは${droppedByFloors}件を外しています。`
+              : ''}
+          </p>
         </Card>
       </div>
 
