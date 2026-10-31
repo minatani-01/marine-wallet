@@ -657,7 +657,7 @@ export default function RentClient({
             </div>
           ) : null}
 
-          {result.notes.length > 0 || (buildings.length === 0 && result.debug.length > 0) ? (
+          {result.notes.length > 0 || result.debug.length > 0 ? (
             <Card className="mb-2.5 !p-3">
               <ul className="flex flex-col gap-1">
                 {result.notes.map((note) => (
@@ -667,10 +667,10 @@ export default function RentClient({
                 ))}
               </ul>
 
-              {/* 0件のときは、どこに聞いて何が返ったかまで出す。
-                  「取れませんでした」だけでは、こちらの作りが悪いのか、
-                  相手が混んでいるのかが分からない */}
-              {buildings.length === 0 && result.debug.length > 0 ? (
+              {/* どこに聞いて何が返ったかを出す。「取れませんでした」だけでは、
+                  こちらの作りが悪いのか、相手が混んでいるのかが分からない。
+                  件数が少ないときも同じなので、0件に限らず出す（0083） */}
+              {result.debug.length > 0 ? (
                 <ul className="mt-2 flex flex-col gap-0.5 border-t border-line pt-2">
                   {result.debug.map((line) => (
                     <li key={line} className="tnum text-[10px] leading-relaxed text-fg-mute">

@@ -20,7 +20,7 @@ import {
   type RentBuilding,
   type RentStation,
 } from '@/lib/rent'
-import { searchFood, searchHousing, walkMatrix } from '@/lib/rent-google'
+import { searchFacilities, searchFood, searchHousing, walkMatrix } from '@/lib/rent-google'
 import { fetchOsmBuildings } from '@/lib/rent-osm'
 
 /**
@@ -233,10 +233,38 @@ export async function POST(request: Request) {
 
   const [osmResult, google, foods] = await Promise.all([osmTask(), googleTask(), foodTask()])
   const osm = osmResult.buildings
-  const facilities = osmResult.facilities
+  let facilities = osmResult.facilities
+
+  /**
+   * まわりの施設が1つも取れなかったとき（0083）。
+   *
+   * OSM が落ちていると、一覧が全部「なし」で埋まる。調べたうえで無いのか、
+   * 取れていないだけなのかが見分けられないので、Google に聞き直す。
+   * ふだんは通らない道なので、費用はかさまない。
+   */
+  if (facilities.length === 0 && key && circles.length > 0) {
+    const spend = await spendApiCalls('places_nearby', circles.length)
+    if (!spend.allowed) {
+      notes.push('まわりの施設を取れませんでした（今日の上限に達しています）。')
+      debug.push(`Google 施設: 今日は上限（${spend.used_today}/${spend.daily}）`)
+    } else {
+      const found = await Promise.all(circles.map((c) => searchFacilities(key, c, NEARBY_RADIUS)))
+      let total = 0
+      for (const r of found) {
+        total += r.items.length
+        for (const a of r.attempts) if (!a.endsWith('件')) debug.push(a)
+      }
+      debug.push(`Google 施設: ${total}件`)
+
+      const seen = new Set<string>()
+      facilities = found
+        .flatMap((r) => r.items)
+        .filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)))
+    }
+  }
 
   if (facilities.length === 0) {
-    notes.push('まわりの施設を取れなかったので、施設の条件は使えません。')
+    notes.push('まわりの施設を取れませんでした。一覧の「なし」は、無いという意味ではありません。')
   }
 
   const candidates = mergeBuildings(osm, google)
