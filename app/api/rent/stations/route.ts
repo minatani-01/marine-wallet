@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { spendApiCall } from '@/lib/api-budget'
 import { getProfile, getSessionUser } from '@/lib/queries'
-import { findStation } from '@/lib/rent-google'
+import { findStation, geocodeStation } from '@/lib/rent-google'
 import { createClient } from '@/lib/supabase/server'
 import type { RentStationRow } from '@/types'
 
@@ -52,17 +52,42 @@ export async function POST(request: Request) {
   const key = process.env.GOOGLE_MAPS_SERVER_KEY
   if (!key) return NextResponse.json({ error: 'not_configured' }, { status: 503 })
 
-  const spend = await spendApiCall('places_search')
-  if (!spend.allowed) return NextResponse.json({ error: 'over_budget' }, { status: 429 })
+  /**
+   * 引く順（0094）。
+   *   1. Geocoding … 別の割り当てで単価も安い。駅名 → 座標ならこれで足りる
+   *   2. Places（都内優先） … Geocoding が駅として返さなかったとき
+   *   3. Places（優先なし） … 優先の付け方で断られたとき
+   * どこで止まったかを reason に残し、駄目なら画面に出す。
+   */
+  const reasons: string[] = []
+  let hit: { lat: number; lng: number } | null = null
 
-  // 都内優先で引き、駄目なら素で引き直す。優先の付け方で断られることが
-  // あっても、駅そのものは引ける
-  let found = await findStation(key, row.name, TOKYO)
-  if (!found.hit) found = await findStation(key, row.name)
-  if (!found.hit) {
-    return NextResponse.json({ error: 'not_found', reason: found.reason }, { status: 502 })
+  const geo = await spendApiCall('geocoding')
+  if (geo.allowed) {
+    const found = await geocodeStation(key, row.name)
+    reasons.push(found.reason)
+    hit = found.hit
+  } else {
+    reasons.push(`Geocoding: 今日は上限（${geo.used_today}/${geo.daily}）`)
   }
-  const hit = found.hit
+
+  if (!hit) {
+    const spend = await spendApiCall('places_search')
+    if (!spend.allowed) {
+      return NextResponse.json(
+        { error: 'over_budget', reason: [...reasons, 'Places: 今日は上限'].join(' / ') },
+        { status: 429 }
+      )
+    }
+    let found = await findStation(key, row.name, TOKYO)
+    if (!found.hit) found = await findStation(key, row.name)
+    reasons.push(found.reason)
+    hit = found.hit
+  }
+
+  if (!hit) {
+    return NextResponse.json({ error: 'not_found', reason: reasons.join(' / ') }, { status: 502 })
+  }
 
   // 書き戻す。失敗しても今回の座標は返す（次回また引けばよい）
   await supabase

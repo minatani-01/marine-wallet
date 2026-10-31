@@ -441,6 +441,67 @@ export async function findStation(
   }
 }
 
+/**
+ * 駅の場所を Geocoding で引く（0094）。
+ *
+ * Places の Text Search は Google Cloud 側の1日の割り当てに当たりやすく、
+ * 当たると駅が1つも足せなくなった。Geocoding は別の割り当てで、単価も
+ * 1/6 ほど。「駅名 → 座標」ならこちらで足りるので、先にこちらを使う。
+ *
+ * 都内の枠（bounds）を添えて、同じ名前の別の町の駅を避ける。
+ */
+const TOKYO_BOUNDS = '35.50,139.50|35.90,139.95'
+
+export async function geocodeStation(
+  key: string,
+  name: string
+): Promise<{ hit: RentPoint | null; reason: string }> {
+  const url = new URL('https://maps.googleapis.com/maps/api/geocode/json')
+  url.searchParams.set('address', name)
+  url.searchParams.set('language', 'ja')
+  url.searchParams.set('region', 'jp')
+  url.searchParams.set('components', 'country:JP')
+  url.searchParams.set('bounds', TOKYO_BOUNDS)
+  url.searchParams.set('key', key)
+
+  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(10_000) }).catch(
+    (e: unknown) => ({ failed: failReason(e) }) as const
+  )
+  if ('failed' in res) return { hit: null, reason: `Geocoding: ${res.failed}` }
+  if (!res.ok) return { hit: null, reason: `Geocoding: HTTP ${res.status}` }
+
+  const body = (await res.json().catch(() => null)) as {
+    status?: string
+    error_message?: string
+    results?: {
+      types?: string[]
+      formatted_address?: string
+      geometry?: { location?: { lat?: number; lng?: number } }
+    }[]
+  } | null
+  if (!body) return { hit: null, reason: 'Geocoding: 返事を読めず' }
+  if (body.status !== 'OK') {
+    return {
+      hit: null,
+      reason: `Geocoding: ${body.status ?? '?'}${body.error_message ? ` ${body.error_message.slice(0, 80)}` : ''}`,
+    }
+  }
+
+  const stationTypes = ['train_station', 'subway_station', 'light_rail_station', 'transit_station']
+  const results = body.results ?? []
+  // 駅として返ったものを採る。住所や町名に丸められた結果は使わない
+  const pick =
+    results.find((r) => (r.types ?? []).some((t) => stationTypes.includes(t))) ?? null
+  const point = pick?.geometry?.location
+  if (!pick || typeof point?.lat !== 'number' || typeof point?.lng !== 'number') {
+    return { hit: null, reason: `Geocoding: 駅として返らず（${results.length}件）` }
+  }
+  return {
+    hit: { lat: point.lat, lng: point.lng },
+    reason: `Geocoding: ${pick.formatted_address ?? ''}`.slice(0, 80),
+  }
+}
+
 export type MatrixCell = { originIndex: number; destinationIndex: number; minutes: number }
 
 export type MatrixResult = { cells: MatrixCell[] | null; attempt: string }
