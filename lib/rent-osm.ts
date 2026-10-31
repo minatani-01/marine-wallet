@@ -349,12 +349,17 @@ function addressOf(tags: Record<string, string>): string {
  * 小さな問い合わせなので速い。取れなくても駅名だけで使えるので、
  * 1か所試して駄目なら諦める。待たせるほうが困る。
  */
-export async function fetchStationLine(point: { lat: number; lng: number }): Promise<string | null> {
+export async function fetchStationLine(point: {
+  lat: number
+  lng: number
+}): Promise<{ line: string | null; reached: boolean }> {
   const query = [
     '[out:json][timeout:8];',
     `rel(around:250,${point.lat},${point.lng})["route"~"^(subway|train|light_rail|monorail)$"]["name"];`,
     'out tags 12;',
   ].join('\n')
+
+  let reached = false
 
   for (const endpoint of ENDPOINTS.slice(0, 2)) {
     const res = await fetch(endpoint.url, {
@@ -369,6 +374,7 @@ export async function fetchStationLine(point: { lat: number; lng: number }): Pro
     }).catch(() => null)
 
     if (!res || !res.ok) continue
+    reached = true
 
     const body = (await res.json().catch(() => null)) as { elements?: OverpassElement[] } | null
     if (!body) continue
@@ -379,12 +385,16 @@ export async function fetchStationLine(point: { lat: number; lng: number }): Pro
       .map((n) => n.replace(/\s*[:：].*$/, '').trim())
       .filter((n) => n.length > 0 && n.length <= 20)
 
-    if (names.length === 0) return null
+    if (names.length === 0) return { line: null, reached }
 
-    // いちばん短い名前を採る。「東京メトロ銀座線」より「銀座線」のほうが
-    // 画面に収まるし、どの駅かは分かる
-    return names.sort((a, b) => a.length - b.length)[0]
+    // 「線」の付いたものを先に採る。会社名だけの route が混ざることがある
+    const lines = names.filter((n) => n.includes('線'))
+    const pick = (lines.length > 0 ? lines : names).sort((a, b) => a.length - b.length)[0]
+
+    // 短いものから採る。「東京メトロ銀座線」より「銀座線」のほうが画面に
+    // 収まるし、どの駅かは分かる
+    return { line: pick, reached }
   }
 
-  return null
+  return { line: null, reached }
 }

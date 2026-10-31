@@ -36,17 +36,17 @@ export type RentStation = RentPoint & {
 }
 
 /**
- * 駅の見出し（0085）。
+ * 駅の見出し（0085 / 0087）。
  *
- * 「銀座線の上野広小路駅」と書く。上野広小路・上野御徒町・御徒町のように、
- * 名前が似た別の駅が隣り合っていることがある。駅名だけでは、どれを入れた
- * のか見分けが付かない。
+ * 「JR山手線 御徒町駅」のように、路線名と駅名を空白で並べる。上野広小路・
+ * 上野御徒町・御徒町のように、名前が似た別の駅が隣り合っていることがある。
+ * 駅名だけでは、どれを入れたのか見分けが付かない。
  *
  * 路線が取れなければ駅名だけにする。複数の路線が通っていても1つしか
  * 出さない。どれか1つ分かれば見分けは付く。
  */
 export function stationLabel(station: { name: string; line?: string }): string {
-  return station.line ? `${station.line}の${station.name}` : station.name
+  return station.line ? `${station.line} ${station.name}` : station.name
 }
 
 /** 駅ごとの徒歩分。measured は Google の徒歩ルートで実測したもの */
@@ -361,20 +361,32 @@ export function pairGaps(stations: RentStation[]): {
 }
 
 /**
- * もう入っている駅か（0081 / 0084）。
+ * もう入っている駅か（0081 / 0084 / 0087）。
  *
- * 同じ駅を2つ入れても、重なりは1つぶんのまま変わらない。5駅までの枠を
- * 無駄にするだけで、一覧にも同じ名前が並ぶ。
+ * 見るのは「名前と路線の組」。同じものを2つ入れても、重なりは1つぶんのまま
+ * 変わらず、一覧に同じ行が並ぶだけになる。
  *
- * 見るのは名前と、ほぼ同じ点かどうかだけ。はじめは120m以内を同じ駅と
- * していたが、上野広小路・上野御徒町・御徒町のように、別路線の別の駅が
- * 隣り合っている場所がある。近いという理由で断ると、入れたい駅が入らない。
+ * 名前が同じでも路線が違えば別として入れる。中野坂上駅には丸ノ内線と
+ * 都営大江戸線が通っていて、どちらで通うかは住む人の都合で変わる。
+ * 上野広小路・上野御徒町・御徒町のように、別路線の別の駅が隣り合って
+ * いる場所もあるので、近いという理由だけでも断らない。
+ *
+ * どちらかの路線が分からないときは、同じ名前なら同じ駅として断る。
+ * 見分けの付かない行が2つ並んでも、見るほうが選べない。
  */
 export function hasSameStation(
   stations: RentStation[],
-  point: RentPoint & { name: string }
+  point: RentPoint & { name: string; line?: string }
 ): boolean {
-  return stations.some((s) => s.name === point.name || haversine(s, point) < 30)
+  const line = point.line ?? ''
+
+  return stations.some((s) => {
+    const sameLine = (s.line ?? '') === line
+    const unknown = !s.line || !line
+    if (s.name === point.name) return sameLine || unknown
+    // 同じ駅の別の出口。名前が少し違っても、ほぼ同じ点なら同じ駅とみなす
+    return sameLine && haversine(s, point) < 30
+  })
 }
 
 /* ------------------------------------------------------------- 階数 ---- */

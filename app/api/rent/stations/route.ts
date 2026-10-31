@@ -71,10 +71,15 @@ export async function POST(request: Request) {
    * まとめて投げる。取れなければ駅名だけで使う。ここで待たせたくないので、
    * 候補は6件までにしてある。
    */
-  const lines = await Promise.all(hits.map((hit) => fetchStationLine(hit).catch(() => null)))
-  lines.forEach((line, index) => {
-    if (line) hits[index].line = line
+  const lines = await Promise.all(
+    hits.map((hit) => fetchStationLine(hit).catch(() => ({ line: null, reached: false })))
+  )
+  lines.forEach((found, index) => {
+    if (found.line) hits[index].line = found.line
   })
 
-  return NextResponse.json({ hits })
+  // 1件も届かなかったときだけ知らせる。路線名が無いのと、取りに行けな
+  // かったのとでは、見るほうの読み取りが変わる
+  const reached = lines.some((found) => found.reached)
+  return NextResponse.json({ hits, lineNote: reached ? null : '路線名を取れませんでした' })
 }

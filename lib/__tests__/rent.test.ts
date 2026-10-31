@@ -472,6 +472,31 @@ test('星の書き方と、覚えておいた条件の読み直し', () => {
 })
 
 
+test('同じ名前でも路線が違えば入れる', () => {
+  // 中野坂上には丸ノ内線と都営大江戸線が通っていて、どちらで通うかは
+  // 住む人の都合で変わる（0087）
+  const stations = [
+    station({ lat: 35.6975, lng: 139.6845, id: 'm', name: '中野坂上駅', minutes: 10 }),
+  ]
+  stations[0].line = '丸ノ内線'
+
+  assert.equal(
+    hasSameStation(stations, { lat: 35.6975, lng: 139.6845, name: '中野坂上駅', line: '都営大江戸線' }),
+    false
+  )
+  // 同じ路線の同じ駅は断る
+  assert.equal(
+    hasSameStation(stations, { lat: 35.6975, lng: 139.6845, name: '中野坂上駅', line: '丸ノ内線' }),
+    true
+  )
+  // 路線が分からないときは、同じ名前なら同じ駅として断る。
+  // 見分けの付かない行が2つ並んでも選べない
+  assert.equal(
+    hasSameStation(stations, { lat: 35.6975, lng: 139.6845, name: '中野坂上駅' }),
+    true
+  )
+})
+
 test('同じ駅は2つ入れない', () => {
   // 同じ駅を重ねても、重なりは1つぶんのまま変わらない
   const stations = [station({ ...EBISU, id: 'e', name: '恵比寿駅', minutes: 10 })]
@@ -537,9 +562,14 @@ test('階数で絞る。分からない建物も落ちる', () => {
 })
 
 
-test('駅は「〇〇線の〇〇駅」と書く', () => {
+test('駅は「路線名 駅名」と書く', () => {
   // 名前の似た駅が隣り合っていると、駅名だけでは見分けが付かない
-  assert.equal(stationLabel({ name: '上野広小路駅', line: '銀座線' }), '銀座線の上野広小路駅')
+  assert.equal(stationLabel({ name: '御徒町駅', line: 'JR山手線' }), 'JR山手線 御徒町駅')
+  assert.equal(
+    stationLabel({ name: '上野御徒町駅', line: '都営大江戸線' }),
+    '都営大江戸線 上野御徒町駅'
+  )
+  assert.equal(stationLabel({ name: '上野広小路駅', line: '銀座線' }), '銀座線 上野広小路駅')
   // 路線が取れなければ駅名だけ
   assert.equal(stationLabel({ name: '御徒町駅' }), '御徒町駅')
   assert.equal(stationLabel({ name: '御徒町駅', line: '' }), '御徒町駅')
