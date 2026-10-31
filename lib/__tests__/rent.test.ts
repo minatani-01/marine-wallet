@@ -574,3 +574,4 @@ test('駅は「路線名 駅名」と書く', () => {
   assert.equal(stationLabel({ name: '御徒町駅' }), '御徒町駅')
   assert.equal(stationLabel({ name: '御徒町駅', line: '' }), '御徒町駅')
 })
+

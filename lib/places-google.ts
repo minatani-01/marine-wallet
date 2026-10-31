@@ -52,7 +52,9 @@ type RawPlace = {
 export async function lookupPlaces(
   key: string,
   query: string,
-  max = 5
+  max = 5,
+  /** この辺りを優先する（0092）。同じ名前の駅が全国にあるので、都内を先に見る */
+  bias?: { lat: number; lng: number; radius: number }
 ): Promise<GooglePlace[] | null> {
   const res = await fetch(ENDPOINT, {
     method: 'POST',
@@ -66,6 +68,13 @@ export async function lookupPlaces(
       languageCode: 'ja',
       regionCode: 'JP',
       maxResultCount: max,
+      ...(bias
+        ? {
+            locationBias: {
+              circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: bias.radius },
+            },
+          }
+        : {}),
     }),
     cache: 'no-store',
   }).catch(() => null)
