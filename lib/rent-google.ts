@@ -378,6 +378,69 @@ export async function searchFacilities(
   return { items, attempts }
 }
 
+/**
+ * 駅の場所を名前で引く（0093）。
+ *
+ * lookupPlaces と同じ Text Search だが、駄目だったときに理由を持ち帰る。
+ * 「引けませんでした」だけでは、鍵なのか、Google の断りなのか、こちらの
+ * 聞き方なのかが分からない。
+ */
+export async function findStation(
+  key: string,
+  name: string,
+  bias?: RentPoint & { radius: number }
+): Promise<{ hit: RentPoint | null; reason: string }> {
+  const res = await fetch(TEXT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': 'places.displayName,places.location,places.types',
+    },
+    body: JSON.stringify({
+      textQuery: name,
+      languageCode: 'ja',
+      regionCode: 'JP',
+      maxResultCount: 5,
+      ...(bias
+        ? {
+            locationBias: {
+              circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius: bias.radius },
+            },
+          }
+        : {}),
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(10_000),
+  }).catch((e: unknown) => {
+    return { failed: failReason(e) } as const
+  })
+
+  if ('failed' in res) return { hit: null, reason: `Google: ${res.failed}` }
+  if (!res.ok) return { hit: null, reason: `Google: ${await failText(res)}` }
+
+  const body = (await res.json().catch(() => null)) as { places?: RawPlace[] } | null
+  const places = (body?.places ?? []).filter(
+    (p) => Number.isFinite(p.location?.latitude) && Number.isFinite(p.location?.longitude)
+  )
+  if (places.length === 0) return { hit: null, reason: 'Google: 該当なし' }
+
+  const stationTypes = ['train_station', 'subway_station', 'light_rail_station', 'transit_station']
+  const stations = places.filter((p) => (p.types ?? []).some((t) => stationTypes.includes(t)))
+  // 名前がぴったり合うものを先に。「御徒町駅」で「上野御徒町駅」を採らない。
+  // 駅の種類が付いていなくても、名前が合えば採る（Google の種類は揺れる）
+  const pick =
+    stations.find((p) => p.displayName?.text === name) ??
+    places.find((p) => p.displayName?.text === name) ??
+    stations[0] ??
+    places[0]
+
+  return {
+    hit: { lat: pick.location!.latitude as number, lng: pick.location!.longitude as number },
+    reason: `Google: ${places.length}件 → ${pick.displayName?.text ?? ''}`,
+  }
+}
+
 export type MatrixCell = { originIndex: number; destinationIndex: number; minutes: number }
 
 export type MatrixResult = { cells: MatrixCell[] | null; attempt: string }
