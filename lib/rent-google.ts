@@ -92,6 +92,11 @@ export type HousingResult = {
   items: RentBuilding[]
   /** どう聞いて、どうだったか。画面に出して原因を追えるようにする */
   attempts: string[]
+  /**
+   * Google に届かなかった、または 4xx で断られた（0098）。
+   * 断られた呼び出しは課金されないので、呼ぶ側で予算を戻す
+   */
+  failed: boolean
 }
 
 /** 失敗の中身を短くまとめる。Google は error.message に理由を入れてくる */
@@ -179,7 +184,7 @@ export async function searchHousing(
     const body = (await near.json().catch(() => null)) as { places?: RawPlace[] } | null
     const items = toBuildings(body?.places ?? [], stations)
     attempts.push(`Google 種別: ${items.length}件`)
-    if (items.length > 0) return { items, attempts }
+    if (items.length > 0) return { items, attempts, failed: false }
   } else if (near) {
     attempts.push(`Google 種別: ${await failText(near)}`)
   }
@@ -207,16 +212,19 @@ export async function searchHousing(
     return null
   })
 
-  if (!text) return { items: [], attempts }
+  // 種別の問い合わせが通っていれば、そちらは課金されている。両方とも
+  // 断られたときだけ「使っていない」と数える
+  const failed = !near?.ok
+  if (!text) return { items: [], attempts, failed }
   if (!text.ok) {
     attempts.push(`Google 言葉: ${await failText(text)}`)
-    return { items: [], attempts }
+    return { items: [], attempts, failed }
   }
 
   const body = (await text.json().catch(() => null)) as { places?: RawPlace[] } | null
   const items = toBuildings(body?.places ?? [], stations)
   attempts.push(`Google 言葉: ${items.length}件`)
-  return { items, attempts }
+  return { items, attempts, failed: false }
 }
 
 /**
@@ -231,7 +239,7 @@ export async function searchFood(
   center: RentPoint,
   radius: number,
   minRating: number
-): Promise<{ items: FoodPlace[]; attempts: string[] }> {
+): Promise<{ items: FoodPlace[]; attempts: string[]; failed: boolean }> {
   const attempts: string[] = []
 
   const res = await fetch(TEXT, {
@@ -261,10 +269,10 @@ export async function searchFood(
     return null
   })
 
-  if (!res) return { items: [], attempts }
+  if (!res) return { items: [], attempts, failed: true }
   if (!res.ok) {
     attempts.push(`飲食店: ${await failText(res)}`)
-    return { items: [], attempts }
+    return { items: [], attempts, failed: true }
   }
 
   const body = (await res.json().catch(() => null)) as
@@ -290,7 +298,7 @@ export async function searchFood(
     .filter((f): f is FoodPlace => f !== null && Boolean(f.name))
 
   attempts.push(`飲食店: ${items.length}件`)
-  return { items, attempts }
+  return { items, attempts, failed: false }
 }
 
 /**
@@ -327,7 +335,7 @@ export async function searchFacilities(
   key: string,
   center: RentPoint,
   radius: number
-): Promise<{ items: Facility[]; attempts: string[] }> {
+): Promise<{ items: Facility[]; attempts: string[]; failed: boolean }> {
   const attempts: string[] = []
 
   const res = await fetch(NEARBY, {
@@ -357,10 +365,10 @@ export async function searchFacilities(
     return null
   })
 
-  if (!res) return { items: [], attempts }
+  if (!res) return { items: [], attempts, failed: true }
   if (!res.ok) {
     attempts.push(`Google 施設: ${await failText(res)}`)
-    return { items: [], attempts }
+    return { items: [], attempts, failed: true }
   }
 
   const body = (await res.json().catch(() => null)) as { places?: RawPlace[] } | null
@@ -382,7 +390,7 @@ export async function searchFacilities(
     .filter((f): f is Facility => f !== null)
 
   attempts.push(`Google 施設: ${items.length}件`)
-  return { items, attempts }
+  return { items, attempts, failed: false }
 }
 
 /**

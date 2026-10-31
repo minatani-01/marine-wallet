@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { spendApiCalls } from '@/lib/api-budget'
+import { refundApiCalls, spendApiCalls } from '@/lib/api-budget'
 import { getProfile, getSessionUser } from '@/lib/queries'
 import {
   boundsOf,
@@ -158,6 +158,8 @@ export async function POST(request: Request) {
     const found = await Promise.all(
       circles.map((c) => searchHousing(key, c, NEARBY_RADIUS, stations))
     )
+    // 断られた呼び出しは課金されないので、そのぶんは予算に戻す（0098）
+    await refundApiCalls('places_nearby', found.filter((r) => r.failed).length)
     // 同じ聞き方の結果はまとめて1行にする。円の数だけ並べても読めない
     const lines = new Map<string, number>()
     for (const r of found) {
@@ -218,6 +220,7 @@ export async function POST(request: Request) {
     const found = await Promise.all(
       circles.map((c) => searchFood(key, c, NEARBY_RADIUS, minRating))
     )
+    await refundApiCalls('places_rating', found.filter((r) => r.failed).length)
     let total = 0
     for (const r of found) {
       total += r.items.length
@@ -249,6 +252,7 @@ export async function POST(request: Request) {
       debug.push(`Google 施設: 今日は上限（${spend.used_today}/${spend.daily}）`)
     } else {
       const found = await Promise.all(circles.map((c) => searchFacilities(key, c, NEARBY_RADIUS)))
+      await refundApiCalls('places_nearby', found.filter((r) => r.failed).length)
       let total = 0
       for (const r of found) {
         total += r.items.length
@@ -299,6 +303,8 @@ export async function POST(request: Request) {
       debug.push(attempt)
       if (cells === null) {
         notes.push('徒歩ルートを取れませんでした。直線距離からの概算です。')
+        // 測れなかったぶんは課金されない。予算に戻す（0098）
+        await refundApiCalls('routes_walk', elements)
       } else {
         for (const cell of cells) {
           const station = stations[cell.originIndex]
