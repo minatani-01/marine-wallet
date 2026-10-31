@@ -29,18 +29,29 @@ import {
  * 問い合わせ先。上から順に試す。
  *
  * 日本のミラー（osm.jp）を先に置く。日本の範囲しか聞かないうえ、本家より
- * 空いていることが多い。待つ時間も先に割り振っておく。1回の検索ぜんぶで
- * 60秒までなので、1か所で粘ると名前も徒歩時間も取りに行けなくなる。
+ * 空いていることが多い。
+ *
+ * 待つ時間は長めに取る（0083）。1km四方ぶんの建物と施設を一度に出すので、
+ * 混んでいるサーバーでは10秒では返らない。短く切って次へ回していたために、
+ * どこからも取れずに終わっていた。
  */
 const ENDPOINTS = [
-  { host: 'overpass.osm.jp', url: 'https://overpass.osm.jp/api/interpreter', ms: 14_000 },
-  { host: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', ms: 12_000 },
-  { host: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter', ms: 10_000 },
-  { host: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter', ms: 8_000 },
+  { host: 'overpass.osm.jp', url: 'https://overpass.osm.jp/api/interpreter', ms: 24_000 },
+  { host: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', ms: 16_000 },
+  { host: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter', ms: 12_000 },
+  { host: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter', ms: 10_000 },
 ]
 
+/**
+ * OSM に使ってよい時間の合計（0083）。
+ *
+ * 1回の検索ぜんぶで60秒まで。徒歩時間の実測をこのあとに回すので、ここで
+ * 使い切るわけにはいかない。残りが短ければ、次のサーバーは試さない。
+ */
+const OVERALL_MS = 36_000
+
 /** 1回で受け取る建物の数。多すぎると地図も一覧も読めない */
-const MAX_ELEMENTS = 1500
+const MAX_ELEMENTS = 1000
 
 /** まわりの施設の数。コンビニは密なので、建物ほどは要らないが少なすぎても困る */
 const MAX_FACILITIES = 600
@@ -129,8 +140,9 @@ function buildQuery(bounds: Bounds): string {
     '(',
     `  way["building"~"${homes}"](${box});`,
     `  relation["building"~"${homes}"](${box});`,
+    // 名前の付いた建物も拾う。マンションが building=yes で入っていることが
+    // 多い。relation まで見ると重くなるので way だけにする（0083）
     `  way["building"]["name"](${box});`,
-    `  relation["building"]["name"](${box});`,
     ');',
     `out tags center ${MAX_ELEMENTS};`,
     // まわりの施設（0077）。建物より広い四角で聞く。範囲のふちに建つ建物は、
@@ -188,8 +200,17 @@ export async function fetchOsmBuildings(
 ): Promise<OsmResult> {
   const query = buildQuery(bounds)
   const attempts: string[] = []
+  const started = Date.now()
+  const elapsed = () => ((Date.now() - started) / 1000).toFixed(1)
 
   for (const endpoint of ENDPOINTS) {
+    // 残り時間で切る。徒歩時間の実測をこのあとに回す（0083）
+    const left = OVERALL_MS - (Date.now() - started)
+    if (left < 6_000) {
+      attempts.push('OSM: 時間が足りず、ここで打ち切り')
+      break
+    }
+
     let res: Response | null = null
     try {
       res = await fetch(endpoint.url, {
@@ -201,15 +222,15 @@ export async function fetchOsmBuildings(
         },
         body: new URLSearchParams({ data: query }).toString(),
         cache: 'no-store',
-        signal: AbortSignal.timeout(endpoint.ms),
+        signal: AbortSignal.timeout(Math.min(endpoint.ms, left)),
       })
     } catch (e) {
-      attempts.push(`OSM ${endpoint.host}: ${failReason(e)}`)
+      attempts.push(`OSM ${endpoint.host}: ${failReason(e)}（${elapsed()}秒）`)
       continue
     }
 
     if (!res.ok) {
-      attempts.push(`OSM ${endpoint.host}: HTTP ${res.status}`)
+      attempts.push(`OSM ${endpoint.host}: HTTP ${res.status}（${elapsed()}秒）`)
       continue
     }
 
@@ -244,7 +265,9 @@ export async function fetchOsmBuildings(
       if (building) buildings.push(building)
     }
 
-    attempts.push(`OSM ${endpoint.host}: 建物${buildings.length}件・施設${facilities.length}件`)
+    attempts.push(
+      `OSM ${endpoint.host}: 建物${buildings.length}件・施設${facilities.length}件（${elapsed()}秒）`
+    )
     return { buildings, facilities, attempts }
   }
 

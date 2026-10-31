@@ -18,6 +18,8 @@
 
 import {
   straightWalk,
+  type Facility,
+  type FacilityKind,
   type FoodPlace,
   type RentBuilding,
   type RentPoint,
@@ -281,6 +283,98 @@ export async function searchFood(
     .filter((f): f is FoodPlace => f !== null && Boolean(f.name))
 
   attempts.push(`飲食店: ${items.length}件`)
+  return { items, attempts }
+}
+
+/**
+ * まわりの施設を Google に聞く（0083）。
+ *
+ * ふだんは OSM から取る（1回でまとめて取れて無料）。OSM から取れなかった
+ * ときだけここに来る。施設が1つも無いと、一覧が全部「なし」で埋まり、
+ * 調べたうえで無いのか、取れていないだけなのかが分からなくなる。
+ *
+ * 種類は1回の問い合わせにまとめて渡せる。種類ごとに呼ぶと、円の数 × 種類の
+ * 回数になって費用が跳ね上がる。
+ */
+const FACILITY_TYPES = [
+  'convenience_store',
+  'pharmacy',
+  'drugstore',
+  'dentist',
+  'doctor',
+  'hair_care',
+  'beauty_salon',
+]
+
+/** Google の種類を、こちらの区分に直す。先に見たものが勝つ */
+function toFacilityKind(types: string[]): FacilityKind | null {
+  if (types.includes('convenience_store')) return 'convenience'
+  if (types.includes('pharmacy') || types.includes('drugstore')) return 'pharmacy'
+  if (types.includes('dentist')) return 'dentist'
+  if (types.includes('doctor')) return 'clinic'
+  if (types.includes('hair_care') || types.includes('beauty_salon')) return 'hairdresser'
+  return null
+}
+
+export async function searchFacilities(
+  key: string,
+  center: RentPoint,
+  radius: number
+): Promise<{ items: Facility[]; attempts: string[] }> {
+  const attempts: string[] = []
+
+  const res = await fetch(NEARBY, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.types',
+    },
+    body: JSON.stringify({
+      includedTypes: FACILITY_TYPES,
+      maxResultCount: NEARBY_MAX,
+      rankPreference: 'DISTANCE',
+      languageCode: 'ja',
+      regionCode: 'JP',
+      locationRestriction: {
+        circle: {
+          center: { latitude: center.lat, longitude: center.lng },
+          radius: Math.max(1, Math.min(50_000, radius)),
+        },
+      },
+    }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(12_000),
+  }).catch((e: unknown) => {
+    attempts.push(`Google 施設: ${failReason(e)}`)
+    return null
+  })
+
+  if (!res) return { items: [], attempts }
+  if (!res.ok) {
+    attempts.push(`Google 施設: ${await failText(res)}`)
+    return { items: [], attempts }
+  }
+
+  const body = (await res.json().catch(() => null)) as { places?: RawPlace[] } | null
+
+  const items = (body?.places ?? [])
+    .map((p): Facility | null => {
+      const lat = p.location?.latitude
+      const lng = p.location?.longitude
+      const kind = toFacilityKind(p.types ?? [])
+      if (!kind || !Number.isFinite(lat) || !Number.isFinite(lng)) return null
+      return {
+        id: `gf-${p.id ?? `${lat},${lng}`}`,
+        kind,
+        name: (p.displayName?.text ?? '').trim(),
+        lat: lat as number,
+        lng: lng as number,
+      }
+    })
+    .filter((f): f is Facility => f !== null)
+
+  attempts.push(`Google 施設: ${items.length}件`)
   return { items, attempts }
 }
 
