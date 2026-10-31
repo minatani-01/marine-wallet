@@ -38,7 +38,8 @@ export const API_BUDGET: Record<ApiName, { daily: number; monthly: number }> = {
   // 賃貸さがしの徒歩時間（0075）。数えるのは呼び出し回数ではなく、
   // 課金の単位である element 数（駅数 × 建物数）。回数で数えると、
   // 1回の検索で200件ぶん使っても1と数えてしまい、止める意味が無くなる
-  routes_walk: { daily: 600, monthly: 8000 },
+  // 1回の検索で駅数 × 40件（3駅なら120）使う。600だと1日5回で止まる
+  routes_walk: { daily: 1200, monthly: 8000 },
 }
 
 export type Spend = {
@@ -55,7 +56,7 @@ export type Spend = {
  */
 type RpcClient = {
   rpc: (
-    fn: 'spend_api_call' | 'spend_api_calls',
+    fn: 'spend_api_call' | 'spend_api_calls' | 'refund_api_calls',
     args: Record<string, unknown>
   ) => PromiseLike<{ data: unknown; error: unknown }>
 }
@@ -108,4 +109,24 @@ export async function spendApiCalls(
     return { allowed: false, used_today: daily, used_month: monthly, daily, monthly }
   }
   return data as Spend
+}
+
+/**
+ * 使わなかったぶんを戻す（0098）。
+ *
+ * 予算は呼ぶ前に引く（引けなければ呼ばない）。だが Google が 429 や 403
+ * で断った呼び出しは課金されない。戻さないと、Google 側の割り当て切れや
+ * 鍵の設定ミスで何も取れなかった日に、こちらの予算まで空になる。
+ *
+ * 戻せなくても何もしない。数え間違いが少し残るだけで、止まるほうが困る。
+ */
+export async function refundApiCalls(
+  api: ApiName,
+  count: number,
+  client?: RpcClient
+): Promise<void> {
+  const n = Math.round(count)
+  if (!(n > 0)) return
+  const supabase = client ?? (await createClient())
+  await supabase.rpc('refund_api_calls', { p_api: api, p_count: n })
 }
