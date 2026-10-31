@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 
 import { spendApiCall } from '@/lib/api-budget'
-import { lookupPlaces } from '@/lib/places-google'
 import { getProfile, getSessionUser } from '@/lib/queries'
+import { findStation } from '@/lib/rent-google'
 import { createClient } from '@/lib/supabase/server'
 import type { RentStationRow } from '@/types'
 
@@ -19,15 +19,6 @@ import type { RentStationRow } from '@/types'
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
-
-/** Google の種類のうち、駅として扱うもの */
-const STATION_TYPES = [
-  'train_station',
-  'subway_station',
-  'light_rail_station',
-  'transit_station',
-  'bus_station',
-]
 
 /**
  * 都内を優先して引く。同じ名前の駅は全国にある（大手町は愛媛にも、
@@ -64,15 +55,14 @@ export async function POST(request: Request) {
   const spend = await spendApiCall('places_search')
   if (!spend.allowed) return NextResponse.json({ error: 'over_budget' }, { status: 429 })
 
-  const found = await lookupPlaces(key, row.name, 5, TOKYO)
-  if (!found) return NextResponse.json({ error: 'search_failed' }, { status: 502 })
-
-  const stations = found.filter(
-    (p) => p.types.some((t) => STATION_TYPES.includes(t)) && Number.isFinite(p.lat)
-  )
-  // 名前がぴったり合うものを先に。「御徒町駅」で「上野御徒町駅」を採らない
-  const hit = stations.find((p) => p.name === row.name) ?? stations[0]
-  if (!hit) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  // 都内優先で引き、駄目なら素で引き直す。優先の付け方で断られることが
+  // あっても、駅そのものは引ける
+  let found = await findStation(key, row.name, TOKYO)
+  if (!found.hit) found = await findStation(key, row.name)
+  if (!found.hit) {
+    return NextResponse.json({ error: 'not_found', reason: found.reason }, { status: 502 })
+  }
+  const hit = found.hit
 
   // 書き戻す。失敗しても今回の座標は返す（次回また引けばよい）
   await supabase

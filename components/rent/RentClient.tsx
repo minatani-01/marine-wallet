@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import RentMap, { STATION_COLORS } from '@/components/rent/RentMap'
 import {
   IconCheck,
+  IconChevronDown,
   IconClose,
   IconExternal,
   IconHome,
@@ -127,6 +128,14 @@ export default function RentClient({
 
   /** 建物の階数の下限（0084）。0 なら指定なし */
   const [minFloors, setMinFloors] = useState(0)
+
+  /**
+   * 条件を開いているか（0093）。
+   *
+   * 階数と施設は毎回触るものではない。ふだんは畳んでおき、駅 → 探す → 結果が
+   * 一直線に並ぶようにする。開いていなくても条件は効いている
+   */
+  const [showOptions, setShowOptions] = useState(false)
 
   /** 保存するときの名前。空のままなら駅名をつないだものにする（0080） */
   const [saveName, setSaveName] = useState('')
@@ -350,10 +359,12 @@ export default function RentClient({
       setResolving(null)
 
       if (!res || !res.ok) {
+        const body = res ? ((await res.json().catch(() => ({}))) as { reason?: string }) : {}
+        // 理由まで出す。master だけの画面なので、そのまま見せて差し支えない
         setError(
           res?.status === 429
             ? '今日は駅の場所を引ける回数を使い切りました'
-            : '駅の場所を引けませんでした。しばらく置いてからお試しください'
+            : `駅の場所を引けませんでした${body.reason ? `（${body.reason}）` : `（HTTP ${res?.status ?? '-'}）`}`
         )
         return
       }
@@ -411,26 +422,61 @@ export default function RentClient({
         />
       </div>
 
+      {/* 駅（0093）。残した組・絞り込み・入れた駅・範囲・保存・探す を1枚に
+          まとめる。カードが分かれていると、上下に行ったり来たりになる */}
       <div>
-        <SectionLabel>駅を足す</SectionLabel>
+        <SectionLabel>駅</SectionLabel>
         <Card>
-          {/* 登録してある駅から選ぶ（0092）。外に聞かないので、すぐ出るし
-              止まらない。無い駅は足してもらう */}
+          {/* 残した組は札で横に並べる。押せば開く。開いている札には × を出す */}
+          {searches.length > 0 ? (
+            <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1">
+              {searches.map((set) => {
+                const open = openSet?.id === set.id
+                return (
+                  <span key={set.id} className="flex shrink-0 items-center">
+                    <button
+                      type="button"
+                      aria-pressed={open}
+                      title={set.stations.map((x) => stationLabel(x)).join('・')}
+                      onClick={withTapFeedback(() => loadSet(set))}
+                      className={`max-w-[180px] truncate rounded-full border px-3 py-1.5 text-[12px] transition-colors ${
+                        open
+                          ? 'border-marine/60 bg-marine/10 text-marine'
+                          : 'border-line text-fg-dim hover:border-marine/40'
+                      }`}
+                    >
+                      {set.name}
+                    </button>
+                    {open ? (
+                      <button
+                        type="button"
+                        aria-label={`${set.name}を消す`}
+                        onClick={withTapFeedback(() => void removeSet(set))}
+                        className="ml-0.5 inline-flex h-7 w-6 items-center justify-center rounded-lg text-fg-mute hover:text-danger"
+                      >
+                        <IconClose size={12} />
+                      </button>
+                    ) : null}
+                  </span>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {/* 登録してある駅から選ぶ（0092）。外に聞かないので、すぐ出るし止まらない */}
           <input
             type="search"
             value={filter}
             aria-label="駅名で絞り込む"
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="例：御徒町、中野坂上、山手線"
+            placeholder="駅名か路線名（例：御徒町、山手線）"
             className={inputClass}
           />
 
           {needle ? (
             candidates.length === 0 ? (
-              <p className="mt-3 text-[12px] leading-relaxed text-fg-mute">
-                登録されていない駅です。地図の
-                <IconMap size={12} className="mx-1 inline align-[-1px]" />
-                から場所を直に指定するか、駅の追加を頼んでください。
+              <p className="mt-2 text-[12px] text-fg-mute">
+                登録にない駅です。地図のピンで地点を指定するか、駅の追加を頼んでください。
               </p>
             ) : (
               <ul className="mt-3 flex flex-col gap-1.5">
@@ -461,9 +507,6 @@ export default function RentClient({
           {stations.length === 0 ? (
             <p className="mt-3 text-[11px] leading-relaxed text-fg-mute">
               駅を2つ以上入れると、どちらからも歩ける範囲だけが残ります。
-              職場や実家など駅でない場所は、地図の
-              <IconMap size={12} className="mx-1 inline align-[-1px]" />
-              から足せます。
             </p>
           ) : (
             <ul className="mt-3 flex flex-col gap-2">
@@ -537,20 +580,38 @@ export default function RentClient({
             </ul>
           )}
 
-          {/* 駅の組み合わせを残す（0080）。候補を見比べているあいだ、
-              1駅ずつ入れ直すのでは続かない */}
+          {/* 範囲のようす（0093）。別のカードにせず、駅のすぐ下に1〜2行で出す。
+              分数を変えるたびにここが変わるので、探す前に広さを決められる */}
           {stations.length > 0 ? (
-            <div className="mt-3 flex gap-2 border-t border-line pt-3">
+            area ? (
+              <p className="mt-2.5 text-[12px] text-fg-dim">
+                {stations.length === 1
+                  ? `${stations[0].name}から徒歩${stations[0].minutes}分の範囲`
+                  : `${stations.length}駅すべてから歩ける範囲があります`}
+                <span className="tnum ml-1.5 text-fg-mute">{areaText(area.areaM2)}</span>
+              </p>
+            ) : (
+              <p className="mt-2.5 text-[12px] leading-relaxed text-warn">
+                すべてから歩ける範囲がありません。
+                {gaps.length > 0
+                  ? `${gaps[0].a.name}と${gaps[0].b.name}は${distText(gaps[0].meters)}離れていて、どちらも徒歩${gaps[0].needEach}分以上が要ります。`
+                  : 'どれかの徒歩時間を延ばしてください。'}
+              </p>
+            )
+          ) : null}
+
+          {/* 残す（0080 / 0090）。1行だけ。開いている組があれば上書き */}
+          {stations.length > 0 ? (
+            <div className="mt-3 flex gap-2">
               <input
                 type="text"
                 value={saveName}
                 aria-label="この組み合わせの名前"
                 onChange={(e) => setSaveName(e.target.value)}
-                placeholder={openSet ? openSet.name : '例：職場の近く'}
+                placeholder={openSet ? openSet.name : '名前を付けて残す（例：職場の近く）'}
                 maxLength={60}
                 className={inputClass}
               />
-              {/* 押す前にどちらになるかが分かるよう、字を変える（0090） */}
               <Button
                 className="shrink-0"
                 onClick={withTapFeedback(() => void saveSet())}
@@ -561,49 +622,10 @@ export default function RentClient({
               </Button>
             </div>
           ) : null}
-
-          {/* 何を入れる欄なのかを書いておく。駅名を例に出すと、駅を入れる欄に
-              見えてしまう（0081） */}
-          {stations.length > 0 ? (
-            <p className="mt-1.5 text-[11px] leading-relaxed text-fg-mute">
-              {openSet
-                ? overwrites
-                  ? `「${openSet.name}」を開いています。保存すると上書きします。別の名前を書くと、新しく残します。`
-                  : `「${openSet.name}」はそのまま残し、「${typed}」として新しく残します。`
-                : `あとで呼び出すときの名前です。空のままなら「${defaultName}」になります。`}
+          {openSet && !overwrites ? (
+            <p className="mt-1.5 text-[11px] text-fg-mute">
+              「{typed}」として新しく残します（「{openSet.name}」はそのまま）。
             </p>
-          ) : null}
-
-          {searches.length > 0 ? (
-            <ul className="mt-2.5 flex flex-col gap-1.5">
-              {searches.map((set) => (
-                <li key={set.id} className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={withTapFeedback(() => loadSet(set))}
-                    aria-pressed={openSet?.id === set.id}
-                    className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-left transition-colors hover:border-marine/60 ${
-                      openSet?.id === set.id ? 'border-marine/60 bg-marine/5' : 'border-line'
-                    }`}
-                  >
-                    <span className="block truncate text-[13px]">{set.name}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
-                      {set.stations
-                        .map((s) => `${stationLabel(s)} 徒歩${s.minutes}分`)
-                        .join('｜')}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`${set.name}を消す`}
-                    onClick={withTapFeedback(() => void removeSet(set))}
-                    className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-lg text-fg-mute transition-colors hover:text-danger"
-                  >
-                    <IconClose size={13} />
-                  </button>
-                </li>
-              ))}
-            </ul>
           ) : null}
 
           {error ? <p className="mt-2.5 text-[12px] text-danger">{error}</p> : null}
@@ -620,155 +642,111 @@ export default function RentClient({
         </Card>
       </div>
 
-      {/* 範囲のようす。探す前から出す。狭すぎ・広すぎがその場で分かる */}
+      {/* 条件（0084 / 0077 / 0079 / 0093）。ふだんは畳む。開いていなくても効く */}
       <div>
-        <SectionLabel>範囲</SectionLabel>
-        <Card>
-          {stations.length === 0 ? (
-            <p className="text-[13px] text-fg-dim">駅を入れると、歩ける範囲を出します。</p>
-          ) : area ? (
-            <>
-              <p className="text-[14px] font-semibold">
-                {stations.length === 1
-                  ? `${stations[0].name}から徒歩${stations[0].minutes}分の範囲`
-                  : `${stations.length}つすべてから歩ける範囲があります`}
-              </p>
-              <p className="mt-1 text-[12px] text-fg-mute">
-                広さは{areaText(area.areaM2)}
-                {stations.length > 1 ? '（直線距離での概算）' : ''}
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-[14px] font-semibold text-warn">
-                すべてから歩ける範囲がありません
-              </p>
-              {gaps.length > 0 ? (
-                <ul className="mt-2 flex flex-col gap-1.5">
-                  {gaps.map((g) => (
-                    <li key={`${g.a.id}-${g.b.id}`} className="text-[12px] text-fg-dim">
-                      {g.a.name}と{g.b.name}は{distText(g.meters)}離れています。重なるには
-                      どちらも徒歩{g.needEach}分以上が要ります。
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-1 text-[12px] text-fg-mute">
-                  2つずつなら重なりますが、全部に共通する範囲がありません。どれかの徒歩時間を
-                  延ばしてください。
-                </p>
-              )}
-            </>
-          )}
-        </Card>
-      </div>
-
-      {/* 建物の条件（0084）。階数は OSM に入っている建物にしか無いので、
-          指定すると「分からないもの」も落ちる。何件落としたかは出す */}
-      <div>
-        <SectionLabel>建物の条件</SectionLabel>
-        <Card>
-          <div className="flex items-center gap-2 text-[12px] text-fg-mute">
-            <span>階数</span>
-            <select
-              aria-label="階数の下限"
-              value={minFloors}
-              onChange={(e) => setMinFloors(Number(e.target.value))}
-              className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1.5 text-[12px] font-semibold text-fg"
-            >
-              <option value={0}>指定なし</option>
-              {FLOOR_STEPS.map((f) => (
-                <option key={f} value={f}>
-                  {f}階建て以上
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
-            階数は分かっている建物にしか入っていません。指定すると、階数が分からない建物も
-            一覧から外れます。
-            {minFloors > 0 && droppedByFloors > 0
-              ? `いまは${droppedByFloors}件を外しています。`
-              : ''}
-          </p>
-        </Card>
-      </div>
-
-      {/* まわりの施設（0077 / 0078）。建物は落とさない。あるか無いかを
-          一覧に出すだけ。歯科が無いからといって住めないわけではない */}
-      <div>
-        <SectionLabel>まわりの施設を見る</SectionLabel>
-        <Card>
-          <div className="flex flex-wrap gap-2">
-            {FACILITIES.map((f) => (
-              <Checkbox
-                key={f.id}
-                checked={wanted.includes(f.id)}
-                onChange={(on) =>
-                  setWanted((all) => (on ? [...all, f.id] : all.filter((x) => x !== f.id)))
-                }
-                label={f.label}
-              />
-            ))}
-          </div>
-
-          {/* 飲食店だけは Google に聞きに行く（0079）。口コミは Google に
-              しかなく、聞くたびに費用がかかる。探し直したときに調べる */}
-          <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-line pt-2.5">
-            <Checkbox
-              checked={wantFood}
-              onChange={setWantFood}
-              label={`飲食店（${ratingText(foodRating)}以上）`}
+        <button
+          type="button"
+          aria-expanded={showOptions}
+          onClick={withTapFeedback(() => setShowOptions((on) => !on))}
+          className="flex w-full items-center justify-between gap-3 py-1 text-left"
+        >
+          <span className="eyebrow">条件</span>
+          <span className="flex min-w-0 items-center gap-1 text-[11px] text-fg-mute">
+            <span className="truncate">
+              {minFloors > 0 ? `${minFloors}階建て以上・` : ''}
+              施設{wanted.length}種
+              {wantFood ? `・飲食店${ratingText(foodRating)}以上` : ''}
+            </span>
+            <IconChevronDown
+              size={14}
+              className={`shrink-0 transition-transform ${showOptions ? 'rotate-180' : ''}`}
             />
-            {wantFood ? (
+          </span>
+        </button>
+
+        {showOptions ? (
+          <Card className="mt-2">
+            <div className="flex items-center gap-2 text-[12px] text-fg-mute">
+              <span>階数</span>
               <select
-                aria-label="飲食店の評価"
-                value={foodRating}
-                onChange={(e) => setFoodRating(Number(e.target.value))}
+                aria-label="階数の下限"
+                value={minFloors}
+                onChange={(e) => setMinFloors(Number(e.target.value))}
                 className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1.5 text-[12px] font-semibold text-fg"
               >
-                {FOOD_RATINGS.map((r) => (
-                  <option key={r} value={r}>
-                    {ratingText(r)}以上
+                <option value={0}>指定なし</option>
+                {FLOOR_STEPS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}階建て以上
                   </option>
                 ))}
               </select>
-            ) : null}
-          </div>
+              {minFloors > 0 && droppedByFloors > 0 ? (
+                <span className="tnum">（{droppedByFloors}件を外しています）</span>
+              ) : null}
+            </div>
 
-          {wantFood && result && result.stats.food === null ? (
-            <p className="mt-2 text-[11px] leading-relaxed text-warn">
-              飲食店はまだ調べていません。「この範囲の建物を探す」をもう一度押してください。
-            </p>
-          ) : null}
-
-          <div className="mt-3 flex items-center gap-2 text-[12px] text-fg-mute">
-            <span>建物から徒歩</span>
-            <select
-              aria-label="施設までの徒歩時間"
-              value={facilityWalk}
-              onChange={(e) => setFacilityWalk(Number(e.target.value))}
-              className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1 text-[12px] font-semibold text-fg"
-            >
-              {FACILITY_WALKS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+              {FACILITIES.map((f) => (
+                <Checkbox
+                  key={f.id}
+                  checked={wanted.includes(f.id)}
+                  onChange={(on) =>
+                    setWanted((all) => (on ? [...all, f.id] : all.filter((x) => x !== f.id)))
+                  }
+                  label={f.label}
+                />
               ))}
-            </select>
-            <span>分以内にあること</span>
-          </div>
+              <Checkbox
+                checked={wantFood}
+                onChange={setWantFood}
+                label={`飲食店（${ratingText(foodRating)}以上）`}
+              />
+              {wantFood ? (
+                <select
+                  aria-label="飲食店の評価"
+                  value={foodRating}
+                  onChange={(e) => setFoodRating(Number(e.target.value))}
+                  className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1.5 text-[12px] font-semibold text-fg"
+                >
+                  {FOOD_RATINGS.map((r) => (
+                    <option key={r} value={r}>
+                      {ratingText(r)}以上
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
 
-          <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
-            チェックしたものが、建物から徒歩{facilityWalk}分以内にあるかを一覧に出します。
-            建物は減りません。時間は直線距離からの概算です。飲食店だけは Google の口コミを
-            見るため、探し直したときに調べます。
-            {result && result.stats.facilities === 0
-              ? 'いまはまわりの施設を取れていないため、「なし」と出ます。'
-              : ''}
-          </p>
-        </Card>
+            <div className="mt-3 flex items-center gap-2 text-[12px] text-fg-mute">
+              <span>建物から徒歩</span>
+              <select
+                aria-label="施設までの徒歩時間"
+                value={facilityWalk}
+                onChange={(e) => setFacilityWalk(Number(e.target.value))}
+                className="tnum rounded-lg border border-line bg-white/[0.04] px-2 py-1 text-[12px] font-semibold text-fg"
+              >
+                {FACILITY_WALKS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <span>分以内にあるかを一覧に出す</span>
+            </div>
+
+            {wantFood && result && result.stats.food === null ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-warn">
+                飲食店はまだ調べていません。「この範囲の建物を探す」をもう一度押してください。
+              </p>
+            ) : null}
+            {result && result.stats.facilities === 0 ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
+                いまはまわりの施設を取れていないため、「なし」と出ます。
+              </p>
+            ) : null}
+          </Card>
+        ) : null}
       </div>
 
       {result ? (
@@ -849,11 +827,8 @@ export default function RentClient({
         >
           © OpenStreetMap contributors
         </a>{' '}
-        と Google マップから集めています。空室かどうかは見ていないので、 住めるかどうかは
-        管理会社や募集情報で確かめてください。
-        {result?.stats.measured
-          ? '徒歩時間は Google の徒歩ルートでの実測です。'
-          : '徒歩時間は直線距離を80m＝1分で割った概算です。'}
+        と Google マップから。空室かどうかは見ていません。徒歩時間は
+        {result?.stats.measured ? '実測' : '直線距離からの概算'}です。
       </p>
     </div>
   )
