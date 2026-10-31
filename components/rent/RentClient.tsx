@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 
 import RentMap, { STATION_COLORS } from '@/components/rent/RentMap'
 import {
+  IconCheck,
   IconClose,
   IconExternal,
   IconHome,
@@ -130,6 +131,15 @@ export default function RentClient({
   /** 保存するときの名前。空のままなら駅名をつないだものにする（0080） */
   const [saveName, setSaveName] = useState('')
   const [savingSet, setSavingSet] = useState(false)
+
+  /**
+   * いま開いている組（0090）。
+   *
+   * 残しておいた組を読み込んだら、どれを開いているかを覚えておく。駅を1つ
+   * 足しただけで新しい組が増えるのでは、同じような組が並んで見分けが
+   * 付かなくなる。
+   */
+  const [openSet, setOpenSet] = useState<{ id: string; name: string } | null>(null)
 
   /** 前に入れた駅を出しておく。毎回入れ直すのでは続けて使えない */
   useEffect(() => {
@@ -290,38 +300,54 @@ export default function RentClient({
   const defaultName = stations.map((s) => stationLabel(s)).join('・').slice(0, 60)
 
   /**
+   * 上書きになるか（0090）。
+   *
+   * 開いている組があって、名前を変えていなければ上書き。別の名前を書けば
+   * 新しく残す。押す前にどちらになるかが分かるよう、ボタンの字も変える。
+   */
+  const typed = saveName.trim()
+  const overwrites = Boolean(openSet) && (typed === '' || typed === openSet?.name)
+
+  /**
    * いまの駅を残す。
    *
-   * 同じ名前なら上書きする（0080 の一意制約）。押し間違えて同じ組が並ぶと、
+   * 開いている組があれば上書き、無ければ新しく残す。名前が同じものも
+   * 上書きにする（0080 の一意制約）。押し間違えて同じ組が並ぶと、
    * どれが新しいのか分からなくなる。
    */
   const saveSet = async () => {
     if (stations.length === 0) return
-    const name = (saveName.trim() || defaultName).slice(0, 60)
+    const name = (overwrites ? (openSet?.name ?? '') : typed || defaultName).slice(0, 60)
     if (!name) return
 
     setSavingSet(true)
     setError(null)
     const supabase = createClient()
-    const { error: failed } = await supabase
-      .from('rent_searches')
-      .upsert(
-        { user_id: userId, name, stations, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,name' }
-      )
+    const row = { user_id: userId, name, stations, updated_at: new Date().toISOString() }
+
+    const { error: failed } =
+      overwrites && openSet
+        ? await supabase.from('rent_searches').update(row).eq('id', openSet.id)
+        : await supabase.from('rent_searches').upsert(row, { onConflict: 'user_id,name' })
 
     setSavingSet(false)
     if (failed) {
       setError('保存できませんでした')
       return
     }
+
+    // 別の名前で残したときは、そちらを開いている扱いにする。続けて直して
+    // もう一度押したときに、また新しい組が増えるのでは面倒である
     setSaveName('')
+    if (!overwrites) setOpenSet(null)
     router.refresh()
   }
 
   /** 残しておいた組を開く。前の結果は条件が変わるので捨てる */
   const loadSet = (set: RentSearch) => {
     setStations(set.stations)
+    setOpenSet({ id: set.id, name: set.name })
+    setSaveName('')
     setResult(null)
     setError(null)
     setHits(null)
@@ -336,6 +362,7 @@ export default function RentClient({
       setError('消せませんでした')
       return
     }
+    if (openSet?.id === set.id) setOpenSet(null)
     router.refresh()
   }
 
@@ -564,17 +591,18 @@ export default function RentClient({
                 value={saveName}
                 aria-label="この組み合わせの名前"
                 onChange={(e) => setSaveName(e.target.value)}
-                placeholder="例：職場の近く"
+                placeholder={openSet ? openSet.name : '例：職場の近く'}
                 maxLength={60}
                 className={inputClass}
               />
+              {/* 押す前にどちらになるかが分かるよう、字を変える（0090） */}
               <Button
                 className="shrink-0"
                 onClick={withTapFeedback(() => void saveSet())}
                 disabled={savingSet}
               >
-                <IconPlus size={15} />
-                {savingSet ? '保存中' : '保存'}
+                {overwrites ? <IconCheck size={15} /> : <IconPlus size={15} />}
+                {savingSet ? '保存中' : overwrites ? '上書き保存' : '保存'}
               </Button>
             </div>
           ) : null}
@@ -583,7 +611,11 @@ export default function RentClient({
               見えてしまう（0081） */}
           {stations.length > 0 ? (
             <p className="mt-1.5 text-[11px] leading-relaxed text-fg-mute">
-              あとで呼び出すときの名前です。空のままなら「{defaultName}」になります。
+              {openSet
+                ? overwrites
+                  ? `「${openSet.name}」を開いています。保存すると上書きします。別の名前を書くと、新しく残します。`
+                  : `「${openSet.name}」はそのまま残し、「${typed}」として新しく残します。`
+                : `あとで呼び出すときの名前です。空のままなら「${defaultName}」になります。`}
             </p>
           ) : null}
 
@@ -594,7 +626,10 @@ export default function RentClient({
                   <button
                     type="button"
                     onClick={withTapFeedback(() => loadSet(set))}
-                    className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-marine/60"
+                    aria-pressed={openSet?.id === set.id}
+                    className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-left transition-colors hover:border-marine/60 ${
+                      openSet?.id === set.id ? 'border-marine/60 bg-marine/5' : 'border-line'
+                    }`}
                   >
                     <span className="block truncate text-[13px]">{set.name}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-fg-mute">
