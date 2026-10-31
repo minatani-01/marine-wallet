@@ -61,6 +61,7 @@ import type {
   Task,
   TaskCalendar,
   TaskTag,
+  TaskTodoSettings,
 } from '@/types'
 
 export const LINK_RESOURCES: LinkResource[] = ['saving', 'saving_rules', 'monthly', 'split']
@@ -1101,6 +1102,18 @@ export async function getTaskCalendar(userId: string): Promise<TaskCalendar | nu
     supabase
       .from('task_calendars')
       .select('user_id, calendar_id, enabled, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle()
+  )
+  return data ?? null
+}
+
+export async function getTaskTodoSettings(userId: string): Promise<TaskTodoSettings | null> {
+  const supabase = await createClient()
+  const data = await read<TaskTodoSettings | null>('task_todo_settings', () =>
+    supabase
+      .from('task_todo_settings')
+      .select('user_id, tasklist_id, tasklist_title, enabled, updated_at')
       .eq('user_id', userId)
       .maybeSingle()
   )

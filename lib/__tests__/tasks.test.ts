@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   GCAL_TAG,
+  GTODO_TAG,
   addDays,
   addMinutes,
   countSummary,
@@ -20,8 +21,10 @@ import {
   tagTone,
   toPriority,
   toTaskSort,
+  todoBody,
   toggleTag,
   wantsEvent,
+  wantsTodo,
 } from '../tasks'
 import type { Task } from '../../types'
 
@@ -42,6 +45,9 @@ function task(over: Partial<Task> = {}): Task {
     gcal_event_id: null,
     gcal_synced_at: null,
     gcal_error: '',
+    gtask_id: null,
+    gtask_synced_at: null,
+    gtask_error: '',
     created_at: '2026-10-01T00:00:00Z',
     updated_at: '2026-10-01T00:00:00Z',
     ...over,
@@ -178,10 +184,11 @@ test('rejectTaskReason: 空・長すぎ・形の違う日付と時刻', () => {
 test('タグ: 付け外し・並び・色・検査', () => {
   assert.deepEqual(toggleTag(['仕事'], '買物'), ['仕事', '買物'])
   assert.deepEqual(toggleTag(['仕事', '買物'], '仕事'), ['買物'])
-  const order = ['買物', '仕事', GCAL_TAG, '金融']
+  const order = ['買物', '仕事', GCAL_TAG, GTODO_TAG, '金融']
   assert.deepEqual(orderTags(['金融', '消えた', '買物'], order), ['買物', '金融'])
   assert.equal(tagTone(GCAL_TAG, order), 'border-marine/60 text-marine')
-  // Google カレンダーを挟んでも、次のタグの色はひとつ進むだけ
+  assert.equal(tagTone(GTODO_TAG, order), 'border-blue-400/60 text-blue-300')
+  // 外に出す印のタグを挟んでも、次のタグの色はひとつ進むだけ
   assert.equal(tagTone('金融', order), tagTone('金融', ['買物', '仕事', '金融']))
   assert.equal(tagTone('知らない', order), 'border-line text-fg-mute')
   assert.equal(rejectTagReason(' ', []), 'タグの名前を入れてください')
@@ -222,4 +229,24 @@ test('eventBody: 終日は翌日が end、時刻ありは1時間', () => {
   assert.equal(timed?.summary, '済 家賃')
 
   assert.equal(eventBody({ ...base, due_on: null }), null)
+})
+
+test('wantsTodo / todoBody: 期限が無くても入る。日付だけ。済みは completed', () => {
+  assert.equal(wantsTodo({ tags: [GTODO_TAG] }), true)
+  assert.equal(wantsTodo({ tags: ['買物'] }), false)
+
+  const open = todoBody(task({ title: '牛乳', note: '低脂肪', priority: 3 }))
+  assert.deepEqual(open, {
+    title: '牛乳',
+    notes: '低脂肪\n重要度: 低\nMarine Wallet のタスク',
+    due: null,
+    status: 'needsAction',
+    completed: null,
+  })
+
+  const done = todoBody(task({ title: '家賃', due_on: '2026-11-01', due_time: '15:00', done: true, priority: 1 }))
+  assert.equal(done.due, '2026-11-01T00:00:00.000Z')
+  assert.equal(done.status, 'completed')
+  assert.equal(done.completed, undefined)
+  assert.equal(done.notes, '時刻: 15:00\n重要度: 高\nMarine Wallet のタスク')
 })

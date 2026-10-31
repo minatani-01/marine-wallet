@@ -15,11 +15,13 @@ import {
   DEFAULT_TAGS,
   DEFAULT_TASK_SORT,
   GCAL_TAG,
+  GTODO_TAG,
   TASK_SORTS,
   countSummary,
   dueText,
   groupTasks,
   isOverdue,
+  isSpecialTag,
   normalizeTitle,
   orderTags,
   priorityOf,
@@ -28,6 +30,7 @@ import {
   tagTone,
   toTaskSort,
   wantsEvent,
+  wantsTodo,
   type TaskSort,
 } from '@/lib/tasks'
 import type { Task, TaskTag } from '@/types'
@@ -53,6 +56,7 @@ export default function TasksClient({
   tasks,
   tags,
   calendarReady,
+  todoReady,
   today,
 }: {
   userId: string
@@ -60,6 +64,8 @@ export default function TasksClient({
   tags: TaskTag[]
   /** Google カレンダーにつないであるか。タグの横に印を出す */
   calendarReady: boolean
+  /** Google ToDo につないであるか（0100） */
+  todoReady: boolean
   /** サーバーが出した日本時間の今日 */
   today: string
 }) {
@@ -156,12 +162,11 @@ export default function TasksClient({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id }),
       })
-      const json = (await res.json().catch(() => ({}))) as { result?: string; reason?: string }
-      if (json.result === 'synced') setSyncNote('Google カレンダーに入れました')
-      else if (json.result === 'removed') setSyncNote('Google カレンダーから外しました')
-      else if (json.result === 'error') setSyncNote(`カレンダーに入れられませんでした（${json.reason}）`)
+      const json = (await res.json().catch(() => ({}))) as { notes?: string[]; errors?: string[] }
+      const lines = [...(json.notes ?? []), ...(json.errors ?? []).map((e) => `入れられませんでした（${e}）`)]
+      if (lines.length) setSyncNote(lines.join(' / '))
     } catch {
-      setSyncNote('カレンダーに届きませんでした')
+      setSyncNote('Google に届きませんでした')
     }
     router.refresh()
   }
@@ -196,7 +201,7 @@ export default function TasksClient({
       return
     }
     setQuick('')
-    if (data && tagsForNew.includes(GCAL_TAG)) await sync(data.id)
+    if (data && (tagsForNew.includes(GCAL_TAG) || tagsForNew.includes(GTODO_TAG))) await sync(data.id)
     else router.refresh()
   }
 
@@ -216,12 +221,12 @@ export default function TasksClient({
       return
     }
     // カレンダーに入れてあるものは、済の印を向こうにも付ける
-    if (wantsEvent(task) || task.gcal_event_id) await sync(task.id)
+    if (wantsEvent(task) || task.gcal_event_id || wantsTodo(task) || task.gtask_id) await sync(task.id)
     else router.refresh()
   }
 
   const purgeDone = async () => {
-    if (!window.confirm(`済んだ ${finished.length} 件を消しますか？\nカレンダーに入れた予定も消えます。`)) return
+    if (!window.confirm(`済んだ ${finished.length} 件を消しますか？\nGoogle に入れた予定・ToDo も消えます。`)) return
     const res = await fetch('/api/tasks/sync', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -325,6 +330,7 @@ export default function TasksClient({
                     order={order}
                     today={today}
                     calendarReady={calendarReady}
+                    todoReady={todoReady}
                     onToggle={() => void toggleDone(task)}
                     onOpen={() => setEditing(task)}
                   />
@@ -367,6 +373,7 @@ export default function TasksClient({
                     order={order}
                     today={today}
                     calendarReady={calendarReady}
+                    todoReady={todoReady}
                     onToggle={() => void toggleDone(task)}
                     onOpen={() => setEditing(task)}
                   />
@@ -377,23 +384,28 @@ export default function TasksClient({
         </div>
       ) : null}
 
-      {/* Google カレンダー */}
+      {/* Google との連携（0099 / 0100） */}
       <Link
-        href="/tasks/calendar"
+        href="/tasks/google"
         prefetch={false}
         className="glass flex items-center gap-3 rounded-2xl p-4 transition-colors hover:border-marine/50"
       >
         <IconCalendar size={18} className="shrink-0 text-fg-mute" />
         <div className="min-w-0 flex-1">
-          <p className="text-[13px]">Google カレンダー</p>
+          <p className="text-[13px]">Google ToDo・Google カレンダー</p>
           <p className="mt-0.5 text-[11px] text-fg-mute">
-            {calendarReady
-              ? `つないでいます。「${GCAL_TAG}」タグの付いた期限ありのタスクが予定になります`
-              : `まだつないでいません。つなぐと「${GCAL_TAG}」タグの付いたタスクが予定になります`}
+            ToDo: {todoReady ? 'つないでいます' : 'まだ'}・カレンダー: {calendarReady ? 'つないでいます' : 'まだ'}。
+            「{GTODO_TAG}」「{GCAL_TAG}」タグで出し先を決めます
           </p>
         </div>
         <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
       </Link>
+
+      {/* ホーム画面に置く（0099）。アプリの中にボタンは無いので、やり方だけ書く */}
+      <p className="px-1 text-[11px] leading-relaxed text-fg-mute">
+        ホーム画面に置くには: Chrome の「アプリをインストール」で入れた Marine Wallet の
+        アイコンを長押し →「タスク」をホーム画面へ。
+      </p>
 
       {editing !== undefined ? (
         <TaskSheet
@@ -402,6 +414,7 @@ export default function TasksClient({
           tagOrder={order}
           today={today}
           calendarReady={calendarReady}
+          todoReady={todoReady}
           onSynced={(note) => setSyncNote(note)}
           onClose={() => setEditing(undefined)}
         />
@@ -435,6 +448,7 @@ function TaskRow({
   order,
   today,
   calendarReady,
+  todoReady,
   onToggle,
   onOpen,
 }: {
@@ -442,6 +456,7 @@ function TaskRow({
   order: string[]
   today: string
   calendarReady: boolean
+  todoReady: boolean
   onToggle: () => void
   onOpen: () => void
 }) {
@@ -450,6 +465,8 @@ function TaskRow({
   const shown = orderTags(task.tags, order)
   const onCalendar = Boolean(task.gcal_event_id) && !task.gcal_error
   const calendarTrouble = task.tags.includes(GCAL_TAG) && Boolean(task.gcal_error)
+  const onTodo = Boolean(task.gtask_id) && !task.gtask_error
+  const todoTrouble = task.tags.includes(GTODO_TAG) && Boolean(task.gtask_error)
 
   return (
     <li className="flex items-start gap-3 border-b border-line-soft px-3 py-2.5 last:border-0">
@@ -492,10 +509,16 @@ function TaskRow({
               key={name}
               className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-[1px] text-[10px] ${tagTone(name, order)}`}
             >
-              {name === GCAL_TAG ? <IconCalendar size={10} /> : null}
+              {isSpecialTag(name) ? <IconCalendar size={10} /> : null}
               {name}
             </span>
           ))}
+          {onTodo && todoReady ? <span className="text-[10px] text-fg-mute">ToDo に入っています</span> : null}
+          {todoTrouble ? (
+            <span className="text-[10px] text-danger" title={task.gtask_error}>
+              ToDo に入っていません
+            </span>
+          ) : null}
           {onCalendar && calendarReady ? (
             <span className="text-[10px] text-fg-mute">予定に入っています</span>
           ) : null}

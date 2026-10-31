@@ -54,8 +54,22 @@ export function priorityOf(p: Priority) {
  */
 export const GCAL_TAG = 'Googleカレンダー'
 
+/**
+ * Google ToDo に入れる印のタグ（0100）。
+ *
+ * カレンダーと違って期限が無くても入れられる。買い物リストのように
+ * 「いつでもよいが忘れたくない」ものは、こちらのほうが合う。
+ */
+export const GTODO_TAG = 'GoogleToDo'
+
 /** 最初に用意しておくタグ。消しても足してもよい */
-export const DEFAULT_TAGS = ['買物', '仕事', '金融', 'その他', GCAL_TAG] as const
+export const DEFAULT_TAGS = ['買物', '仕事', '金融', 'その他', GCAL_TAG, GTODO_TAG] as const
+
+/** 外に出す印のタグ。色を固定し、他のタグの色を消費させない */
+const SPECIAL_TAGS: Record<string, string> = {
+  [GCAL_TAG]: 'border-marine/60 text-marine',
+  [GTODO_TAG]: 'border-blue-400/60 text-blue-300',
+}
 
 /** タグ名の長さの上限。札に収まる長さ */
 export const TAG_MAX = 20
@@ -76,12 +90,17 @@ const TAG_TONES = [
 ]
 
 export function tagTone(name: string, order: string[]): string {
-  if (name === GCAL_TAG) return 'border-marine/60 text-marine'
+  if (SPECIAL_TAGS[name]) return SPECIAL_TAGS[name]
   const at = order.indexOf(name)
   if (at < 0) return 'border-line text-fg-mute'
-  // Google カレンダーのぶんは色を消費させない。並びの前にあっても後ろにあっても同じ色になる
-  const index = order.slice(0, at).filter((n) => n !== GCAL_TAG).length
+  // 外に出す印のぶんは色を消費させない。並びの前にあっても後ろにあっても同じ色になる
+  const index = order.slice(0, at).filter((n) => !SPECIAL_TAGS[n]).length
   return TAG_TONES[index % TAG_TONES.length]
+}
+
+/** 外に出す印のタグか。タグの札に暦のアイコンを添えるかどうかに使う */
+export function isSpecialTag(name: string): boolean {
+  return Boolean(SPECIAL_TAGS[name])
 }
 
 export function toggleTag(tags: string[], name: string): string[] {
@@ -371,5 +390,47 @@ export function eventBody(
     start: { date: task.due_on },
     end: { date: addDays(task.due_on, 1) },
     extendedProperties,
+  }
+}
+
+// ------------------------------------------------------ Google ToDo ----
+
+/** ToDo として外に出すか。タグが付いていればよい。期限は無くてもよい */
+export function wantsTodo(task: Pick<Task, 'tags'>): boolean {
+  return task.tags.includes(GTODO_TAG)
+}
+
+export type TodoBody = {
+  title: string
+  notes: string
+  /** RFC3339。Google ToDo は日付しか見ない（時刻は捨てられる） */
+  due: string | null
+  status: 'needsAction' | 'completed'
+  /** 戻すときは completed を消す必要がある。null で送ると消える */
+  completed: null | undefined
+}
+
+/**
+ * Google ToDo に入れる中身。
+ *
+ * 期限は日付だけ。時刻を付けて送っても向こうで捨てられるので、メモに
+ * 書いておく。済ませると completed、戻すと needsAction + completed を消す。
+ * 重要度は項目が無いので、メモの先頭に入れる。
+ */
+export function todoBody(
+  task: Pick<Task, 'title' | 'note' | 'due_on' | 'due_time' | 'done' | 'priority'>
+): TodoBody {
+  const lines = [
+    task.note.trim(),
+    task.due_time ? `時刻: ${task.due_time}` : '',
+    `重要度: ${priorityOf(task.priority).label}`,
+    'Marine Wallet のタスク',
+  ]
+  return {
+    title: task.title,
+    notes: lines.filter(Boolean).join('\n'),
+    due: task.due_on ? `${task.due_on}T00:00:00.000Z` : null,
+    status: task.done ? 'completed' : 'needsAction',
+    completed: task.done ? undefined : null,
   }
 }

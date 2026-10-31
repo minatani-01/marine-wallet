@@ -1,7 +1,8 @@
-# タスク・ToDo（0099）
+# タスク・ToDo（0099 / 0100）
 
 仕事のやること、買い物、払うもの。期限と重要度を付けて並べ替え、タグで分ける。
-「Googleカレンダー」タグを付けた期限ありのものは Google カレンダーの予定になる。
+「GoogleToDo」タグを付けたものは Google ToDo に、「Googleカレンダー」タグを付けた
+期限ありのものは Google カレンダーの予定になる。
 全員の機能。入口はマイページの「やること」。URL は `/tasks`。
 
 ## 作り
@@ -10,13 +11,16 @@
 | --- | --- |
 | `lib/tasks.ts` | 純関数。重要度・タグ・期限の見せ方・並べ替え・区切り・入力の検査・カレンダーの予定の中身 |
 | `lib/google-calendar.ts` | サービスアカウントで Google カレンダーに入れる・直す・消す（サーバー専用） |
+| `lib/google-tasks.ts` | 本人の OAuth で Google ToDo に入れる・直す・消す。token の預かりと取り直し（サーバー専用） |
+| `app/api/google/todo/*` | ToDo の接続（connect → Google → callback）、切る、リスト一覧 |
 | `app/(app)/tasks/page.tsx` + `components/tasks/TasksClient.tsx` | 一覧。数・1行で入れる欄・並べ方・タグの絞り込み・区切り付きの一覧・済み |
 | `components/tasks/TaskSheet.tsx` | 足す・直す・消す |
 | `components/tasks/TagSheet.tsx` | タグを足す・消す |
-| `app/(app)/tasks/calendar/page.tsx` + `components/tasks/TaskCalendarClient.tsx` | Google カレンダーとの接続 |
-| `app/api/tasks/sync/route.ts` | タスクとカレンダーを合わせる（1件・全部・消す・済みを消す） |
+| `app/(app)/tasks/google/page.tsx` + `components/tasks/TaskGoogleClient.tsx` | Google ToDo・Google カレンダーとの接続（`/tasks/calendar` はここへ転送） |
+| `app/api/tasks/sync/route.ts` | タスクと ToDo・カレンダーを合わせる（1件・全部・消す・済みを消す） |
 | `app/api/tasks/calendar/route.ts` | つながるかを確かめる |
 | `supabase/migrations/0099_tasks.sql` | `tasks` / `task_tags` / `task_calendars` |
+| `supabase/migrations/0100_google_todo.sql` | `google_connections` / `task_todo_settings`、`tasks` に `gtask_*` |
 
 ## データ
 
@@ -25,8 +29,11 @@
 - `task_tags` … その人のタグ。最初に開いたときに 買物・仕事・金融・その他・Googleカレンダー を
   入れる。足す・消すは自由。消すと付いていたタスクからも外れる（タスクは残る）
 - `task_calendars` … 予定を入れる先のカレンダー ID と ON/OFF。1人1行
+- `task_todo_settings` … ToDo を入れる先のリスト ID と ON/OFF。1人1行
+- `google_connections` … ToDo 用に預かった refresh token とメール。**RLS を有効にしてポリシーを
+  張っていない**ので、ブラウザからは読めない。サーバーの service role だけが触る
 
-RLS はどれも自分の行だけ。
+RLS は（google_connections 以外）どれも自分の行だけ。
 
 ## 画面の決めごと
 
@@ -39,6 +46,44 @@ RLS はどれも自分の行だけ。
 - **絞り込みはタグ。** 絞っている間に上の欄から入れると、そのタグが付く。
 - **1行で入れられる。** 題名だけで入る（重要度 中・期限なし）。詳しくは行を押して直す。
 - **済みは畳む。** 消すのは「済みを消す」を押したときだけ。
+
+## Google ToDo（0100）
+
+### 仕組み
+
+ToDo リストはカレンダーと違って他のアカウントに共有できないので、サービスアカウントでは
+本人のリストに触れない。本人に Google でつないでもらい（OAuth、scope は
+`https://www.googleapis.com/auth/tasks`）、refresh token を預かる。
+
+同意画面を **「本番」** にしておくこと。「テスト」のままだと refresh token が 7 日で切れる。
+未審査でも動くが、つなぐときに「このアプリは Google で確認されていません」の警告が出る
+（「詳細」→「Marine Wallet（安全ではないページ）に移動」で進める）。利用者は 100 人まで。
+
+### 動き
+
+- 「GoogleToDo」タグ → 保存のたびに ToDo を入れる・直す。**期限が無くても入る**
+  - 期限は日付だけ（Tasks API は時刻を捨てる）。時刻と重要度はメモに書く
+  - 入れる先のリストは設定で選ぶ。既定は「@default」（マイタスク）
+- 済ませる → status を completed に。戻すと needsAction に戻し completed を消す
+- タグを外す → ToDo を消す。タスクを消す → ToDo を消してから行を消す
+- token が失効（invalid_grant）したら `google_connections.error` に残し、設定画面に
+  「つなぎ直す」を出す
+
+### 必要な設定（1回だけ）
+
+1. Google Cloud Console（marine-wallet プロジェクト）
+   - APIs & Services → ライブラリ → **Google Tasks API** を有効にする
+   - OAuth 同意画面 → スコープに `.../auth/tasks` を足す → 公開ステータスを **本番** にする
+   - 認証情報 → OAuth クライアント「Marine Wallet Web」→ 承認済みのリダイレクト URI に
+     `https://marine-wallet.vercel.app/api/google/todo/callback` を足す
+     （Supabase 用の URI はそのまま残す）
+2. Vercel → Settings → Environment Variables（Production）
+   - `GOOGLE_OAUTH_CLIENT_ID` … そのクライアントの ID
+   - `GOOGLE_OAUTH_CLIENT_SECRET` … そのクライアントのシークレット
+   - `SUPABASE_SERVICE_ROLE_KEY` はすでにある（token の預かりに使う）
+   - 入れたら再デプロイ
+3. 使う人それぞれ: `/tasks/google` の「Google でつなぐ」→ Google の画面で ToDo の権限に
+   チェック → 戻ってきたら「リストを選ぶ」→ 保存
 
 ## Google カレンダー
 
@@ -95,6 +140,7 @@ Web アプリなので、一覧がそのまま出るウィジェットは作れ�
 
 ## 分かっていること・限界
 
-- カレンダーは一方通行。カレンダー側で予定を動かしても、タスクの期限は変わらない
+- ToDo もカレンダーも一方通行。Google 側で直してもタスクには戻らない
+- ToDo の期限は日付だけ。カレンダー側で予定を動かしても、タスクの期限は変わらない
 - 時刻の長さは 1 時間で固定
 - タグを消すと、付いていたタスクを 1 件ずつ更新する。数百件を越えるなら SQL でまとめたほうがよい
