@@ -335,3 +335,56 @@ function addressOf(tags: Record<string, string>): string {
   ].filter(Boolean)
   return parts.join('')
 }
+
+
+/* ----------------------------------------------------------- 路線名 ---- */
+
+/**
+ * 駅の路線名を1つ取る（0085）。
+ *
+ * Google は駅の名前と場所は返すが、路線は持っていない。OSM では路線が
+ * route のまとまり（relation）になっていて、駅の近くを通るものを引けば
+ * 名前が分かる。
+ *
+ * 小さな問い合わせなので速い。取れなくても駅名だけで使えるので、
+ * 1か所試して駄目なら諦める。待たせるほうが困る。
+ */
+export async function fetchStationLine(point: { lat: number; lng: number }): Promise<string | null> {
+  const query = [
+    '[out:json][timeout:8];',
+    `rel(around:250,${point.lat},${point.lng})["route"~"^(subway|train|light_rail|monorail)$"]["name"];`,
+    'out tags 12;',
+  ].join('\n')
+
+  for (const endpoint of ENDPOINTS.slice(0, 2)) {
+    const res = await fetch(endpoint.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'user-agent': 'MarineWallet/1.0 (rent search; personal use)',
+      },
+      body: new URLSearchParams({ data: query }).toString(),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(7_000),
+    }).catch(() => null)
+
+    if (!res || !res.ok) continue
+
+    const body = (await res.json().catch(() => null)) as { elements?: OverpassElement[] } | null
+    if (!body) continue
+
+    const names = (body.elements ?? [])
+      .map((e) => (e.tags?.['name:ja'] || e.tags?.name || '').trim())
+      // 「〇〇線 上り」のような向きの付いたものは落とす
+      .map((n) => n.replace(/\s*[:：].*$/, '').trim())
+      .filter((n) => n.length > 0 && n.length <= 20)
+
+    if (names.length === 0) return null
+
+    // いちばん短い名前を採る。「東京メトロ銀座線」より「銀座線」のほうが
+    // 画面に収まるし、どの駅かは分かる
+    return names.sort((a, b) => a.length - b.length)[0]
+  }
+
+  return null
+}

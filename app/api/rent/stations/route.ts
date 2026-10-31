@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { spendApiCall } from '@/lib/api-budget'
 import { lookupPlaces } from '@/lib/places-google'
 import { getProfile, getSessionUser } from '@/lib/queries'
+import { fetchStationLine } from '@/lib/rent-osm'
 
 /**
  * 駅を名前で探す（0075）。
@@ -23,6 +24,8 @@ export type StationHit = {
   address: string
   lat: number
   lng: number
+  /** 路線名（0085）。OSM から引く。取れなければ空 */
+  line?: string
 }
 
 /** Google の種類のうち、駅として扱うもの */
@@ -59,7 +62,19 @@ export async function POST(request: Request) {
     .filter((p) => p.types.some((t) => STATION_TYPES.includes(t)))
     .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
     .map((p) => ({ name: p.name, address: p.address, lat: p.lat, lng: p.lng }))
-    .slice(0, 8)
+    .slice(0, 6)
+
+  /**
+   * 路線名を足す（0085）。
+   *
+   * Google は路線を持っていないので OSM に聞く。小さな問い合わせなので
+   * まとめて投げる。取れなければ駅名だけで使う。ここで待たせたくないので、
+   * 候補は6件までにしてある。
+   */
+  const lines = await Promise.all(hits.map((hit) => fetchStationLine(hit).catch(() => null)))
+  lines.forEach((line, index) => {
+    if (line) hits[index].line = line
+  })
 
   return NextResponse.json({ hits })
 }

@@ -31,6 +31,22 @@ export type RentStation = RentPoint & {
   name: string
   /** この駅から何分以内か */
   minutes: number
+  /** 路線名（0085）。取れたときだけ。複数あっても1つしか持たない */
+  line?: string
+}
+
+/**
+ * 駅の見出し（0085）。
+ *
+ * 「銀座線の上野広小路駅」と書く。上野広小路・上野御徒町・御徒町のように、
+ * 名前が似た別の駅が隣り合っていることがある。駅名だけでは、どれを入れた
+ * のか見分けが付かない。
+ *
+ * 路線が取れなければ駅名だけにする。複数の路線が通っていても1つしか
+ * 出さない。どれか1つ分かれば見分けは付く。
+ */
+export function stationLabel(station: { name: string; line?: string }): string {
+  return station.line ? `${station.line}の${station.name}` : station.name
 }
 
 /** 駅ごとの徒歩分。measured は Google の徒歩ルートで実測したもの */
@@ -345,15 +361,40 @@ export function pairGaps(stations: RentStation[]): {
 }
 
 /**
- * もう入っている駅か（0081）。
+ * もう入っている駅か（0081 / 0084）。
  *
  * 同じ駅を2つ入れても、重なりは1つぶんのまま変わらない。5駅までの枠を
  * 無駄にするだけで、一覧にも同じ名前が並ぶ。
  *
- * 名前が同じものと、ごく近い点（別の出口を選んだときなど）を同じとみなす。
+ * 見るのは名前と、ほぼ同じ点かどうかだけ。はじめは120m以内を同じ駅と
+ * していたが、上野広小路・上野御徒町・御徒町のように、別路線の別の駅が
+ * 隣り合っている場所がある。近いという理由で断ると、入れたい駅が入らない。
  */
-export function hasSameStation(stations: RentStation[], point: RentPoint & { name: string }): boolean {
-  return stations.some((s) => s.name === point.name || haversine(s, point) < 120)
+export function hasSameStation(
+  stations: RentStation[],
+  point: RentPoint & { name: string }
+): boolean {
+  return stations.some((s) => s.name === point.name || haversine(s, point) < 30)
+}
+
+/* ------------------------------------------------------------- 階数 ---- */
+
+/**
+ * 建物の階数で絞る（0084）。
+ *
+ * 高さは住み心地に直に効く。ただし OSM に階数が入っている建物は一部なので、
+ * 指定すると「分からないもの」も落ちる。何件落としたかは画面に出す。
+ */
+export const FLOOR_STEPS = [3, 5, 10, 20] as const
+
+export function meetsFloors(levels: number | null | undefined, min: number): boolean {
+  if (min <= 0) return true
+  return levels != null && levels >= min
+}
+
+/** 覚えておいた階数の条件を読み直す。知らない値なら指定なしに戻す */
+export function toFloorStep(value: unknown): number {
+  return FLOOR_STEPS.some((f) => f === value) ? (value as number) : 0
 }
 
 /** 入力を確かめる。駄目なら理由を返す */
