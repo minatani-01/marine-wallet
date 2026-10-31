@@ -144,6 +144,23 @@ OSM の `building:levels` で「3 / 5 / 10 / 20階建て以上」に絞れる。
   読み書きするだけなので分ける意味が無い。
 - RLS は `user_id`。master だけの画面だが、見えないことと読めないことは別。
 
+## 通っているかを確かめる（0088）
+
+`/api/rent/diagnose` をブラウザで開くと、Overpass の4か所・Places・Routes を1つずつ試して
+結果を文字で返す（master だけ）。検索の結果に紛れないので、どこが通っていないかがすぐ分かる。
+
+```
+[ OpenStreetMap ] 建物・まわりの施設・路線名
+  overpass.osm.jp: OK 2件 (0.9秒)
+  overpass-api.de: HTTP 429 (1.2秒)
+[ Google ] 建物名・飲食店・徒歩時間
+  鍵: あり
+  Places 種別: 12件 (0.6秒)
+  Routes 徒歩ルート: 1組 (0.4秒)
+```
+
+Google は1回ぶん数えてから呼ぶ（Places 1回・Routes 1 element）。Overpass は無料なので数えない。
+
 ## 使った回数の数え方（lib/api-budget.ts）
 
 | 名前 | 数えるもの | 1日 | 1か月 |
