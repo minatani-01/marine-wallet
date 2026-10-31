@@ -87,6 +87,8 @@ const HEADERS: Record<string, { title: string; back?: string }> = {
   '/body': { title: 'からだ' },
   '/shop': { title: 'RE:SELECT', back: '/me' },
   '/subs': { title: 'サブスク', back: '/me' },
+  '/tasks': { title: 'タスク', back: '/me' },
+  '/tasks/calendar': { title: 'Google カレンダー', back: '/tasks' },
   '/me': { title: 'マイページ' },
   '/me/members': { title: 'メンバー', back: '/me' },
 }

@@ -294,6 +294,26 @@ export default function MeClient({
         </Link>
       </div>
 
+      {/* タスク（0099）。全員に出す。やることは人それぞれで、共有もしない */}
+      <div>
+        <SectionLabel>やること</SectionLabel>
+        <Link
+          href="/tasks"
+          prefetch={false}
+          className="glass flex items-center gap-3 rounded-2xl p-4 transition-colors hover:border-marine/50"
+        >
+          <IconCheck size={18} className="shrink-0 text-fg-mute" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px]">タスク・ToDo</p>
+            <p className="mt-1 text-[11px] leading-relaxed text-fg-mute">
+              仕事のやること、買い物、払うもの。期限と重要度で並べ、タグで分けます。
+              Google カレンダーにも入れられます。
+            </p>
+          </div>
+          <IconChevronRight size={18} className="shrink-0 text-fg-mute" />
+        </Link>
+      </div>
+
       {/* サブスクは払っている本人のものなので、master だけに出す。
           割り勘や貯金の計算にも入れない */}
       {profile?.is_master ? (

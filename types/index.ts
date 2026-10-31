@@ -796,3 +796,41 @@ export type RentStationRow = {
   lat: number | null
   lng: number | null
 }
+
+/** タスク・ToDo（0099） */
+export type Task = {
+  id: string
+  user_id: string
+  title: string
+  note: string
+  /** 期限の日 'YYYY-MM-DD'。null なら期限なし */
+  due_on: string | null
+  /** 期限の時刻 'HH:MM'。null なら終日 */
+  due_time: string | null
+  /** 1 高 / 2 中 / 3 低 */
+  priority: 1 | 2 | 3
+  tags: string[]
+  done: boolean
+  done_at: string | null
+  gcal_event_id: string | null
+  gcal_synced_at: string | null
+  gcal_error: string
+  created_at: string
+  updated_at: string
+}
+
+/** タスクのタグ（0099） */
+export type TaskTag = {
+  id: string
+  user_id: string
+  name: string
+  sort_order: number
+}
+
+/** タスクを入れる Google カレンダー（0099） */
+export type TaskCalendar = {
+  user_id: string
+  calendar_id: string
+  enabled: boolean
+  updated_at: string
+}
