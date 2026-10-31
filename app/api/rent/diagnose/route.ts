@@ -143,7 +143,9 @@ export async function GET() {
   if (!key) {
     lines.push('  鍵（GOOGLE_MAPS_SERVER_KEY）が設定されていません')
   } else {
-    lines.push('  鍵: あり')
+    // どの鍵が入っているかを Google Cloud の一覧と突き合わせられるように、
+    // 先頭と末尾だけ出す（0097）。Vercel の sensitive 型は値を読み返せない
+    lines.push(`  鍵: あり（${key.slice(0, 6)}…${key.slice(-4)}・${key.length}文字）`)
 
     const spend = await spendApiCalls('places_nearby', 1)
     if (!spend.allowed) {
