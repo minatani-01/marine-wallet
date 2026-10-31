@@ -56,11 +56,19 @@ export async function proxy(request: NextRequest) {
   // /api/cron/* は Vercel Cron から呼ばれる。呼び出し元にブラウザはおらず
   // セッションも無いので、ここで弾くとログイン画面へ飛ばされて実行できない。
   // 代わりに Route Handler 側で CRON_SECRET を確かめる。
+  //
+  // /manifest.webmanifest と /sw.js はブラウザがクッキー無しで取りに来る
+  // （manifest の取得は既定で credentials を付けない）。ここを弾くと
+  // ログイン中でも /login へ転送され、Chrome が「このアプリはインストール
+  // できません」と言い、ホーム画面のショートカットも出ない（0101）。
+  // どちらも中身は公開してよいもので、個人の値は入っていない。
   const isPublic =
     pathname === '/login' ||
     pathname === '/auth' ||
     pathname.startsWith('/auth/') ||
-    pathname.startsWith('/api/cron/')
+    pathname.startsWith('/api/cron/') ||
+    pathname === '/manifest.webmanifest' ||
+    pathname === '/sw.js'
 
   if (!signedIn && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
