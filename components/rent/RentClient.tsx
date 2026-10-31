@@ -205,11 +205,13 @@ export default function RentClient({
     let alive = true
 
     const fill = async () => {
-      const targets = missing.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng }))
+      const targets = missing.map((s) => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng }))
       const res = await fetch('/api/rent/lines', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ points: targets.map((t) => ({ lat: t.lat, lng: t.lng })) }),
+        body: JSON.stringify({
+          points: targets.map((t) => ({ name: t.name, lat: t.lat, lng: t.lng })),
+        }),
       }).catch(() => null)
       if (!alive || !res || !res.ok) return
 

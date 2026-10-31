@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { spendApiCall } from '@/lib/api-budget'
 import { lookupPlaces } from '@/lib/places-google'
 import { getProfile, getSessionUser } from '@/lib/queries'
+import { fetchLineByName } from '@/lib/rent-lines'
 import { fetchStationLine } from '@/lib/rent-osm'
 
 /**
@@ -71,9 +72,7 @@ export async function POST(request: Request) {
    * まとめて投げる。取れなければ駅名だけで使う。ここで待たせたくないので、
    * 候補は6件までにしてある。
    */
-  const lines = await Promise.all(
-    hits.map((hit) => fetchStationLine(hit).catch(() => ({ line: null, reached: false })))
-  )
+  const lines = await Promise.all(hits.map((hit) => lineOf(hit.name, hit)))
   lines.forEach((found, index) => {
     if (found.line) hits[index].line = found.line
   })
@@ -82,4 +81,24 @@ export async function POST(request: Request) {
   // かったのとでは、見るほうの読み取りが変わる
   const reached = lines.some((found) => found.reached)
   return NextResponse.json({ hits, lineNote: reached ? null : '路線名を取れませんでした' })
+}
+
+/**
+ * 路線名を1つ取る（0089）。
+ *
+ * 駅データの API を先に試し、届かなければ OSM に回す。外の1か所に頼ると、
+ * そこが落ちた日に何も出なくなる。
+ */
+async function lineOf(
+  name: string,
+  point: { lat: number; lng: number }
+): Promise<{ line: string | null; reached: boolean }> {
+  const byName = await fetchLineByName(name, point).catch(() => ({
+    line: null,
+    reached: false,
+  }))
+  if (byName.line) return byName
+
+  const byMap = await fetchStationLine(point).catch(() => ({ line: null, reached: false }))
+  return { line: byMap.line, reached: byName.reached || byMap.reached }
 }

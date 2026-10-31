@@ -24,6 +24,40 @@ const OVERPASS = [
   { host: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter' },
   { host: 'overpass.kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter' },
   { host: 'overpass.private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
+  { host: 'overpass.osm.ch', url: 'https://overpass.osm.ch/api/interpreter' },
+  { host: 'maps.mail.ru', url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter' },
+]
+
+/**
+ * 路線名の取れそうな先（0089）。
+ *
+ * OSM が届かないので、ほかに何が通るのかを一度に見る。どれも鍵は要らない。
+ */
+const LINE_SOURCES = [
+  {
+    host: '駅データ（HeartRails）',
+    url: 'https://express.heartrails.com/api/json?method=getStations&name=秋葉原',
+    pick: (body: unknown) => {
+      const rows = (body as { response?: { station?: { line?: string }[] } })?.response?.station
+      return rows?.map((r) => r.line).filter(Boolean).slice(0, 3).join(' / ') ?? ''
+    },
+  },
+  {
+    host: 'Wikidata',
+    url: 'https://www.wikidata.org/w/api.php?action=wbsearchentities&search=秋葉原駅&language=ja&format=json&limit=1',
+    pick: (body: unknown) => {
+      const rows = (body as { search?: { label?: string }[] })?.search
+      return rows?.[0]?.label ?? ''
+    },
+  },
+  {
+    host: 'Nominatim（OSM検索）',
+    url: 'https://nominatim.openstreetmap.org/search?q=秋葉原駅&format=json&limit=1',
+    pick: (body: unknown) => {
+      const rows = body as { display_name?: string }[]
+      return rows?.[0]?.display_name?.slice(0, 40) ?? ''
+    },
+  },
 ]
 
 /** ごく小さな問い合わせ。混み具合ではなく、届くかどうかを見る */
@@ -70,6 +104,33 @@ export async function GET() {
       const cause = (e as { cause?: unknown })?.cause
       const why = cause instanceof Error ? cause.message : (e as Error)?.message
       lines.push(`  ${endpoint.host}: ${name} ${String(why).slice(0, 60)} (${seconds(started)})`)
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 路線名の取れそうな先（0089）
+  // ------------------------------------------------------------------
+  lines.push('')
+  lines.push('[ 路線名 ] ほかの取得先')
+  for (const source of LINE_SOURCES) {
+    const started = Date.now()
+    try {
+      const res = await fetch(source.url, {
+        headers: { 'user-agent': 'MarineWallet/1.0 (rent search; personal use)' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(12_000),
+      })
+      if (!res.ok) {
+        lines.push(`  ${source.host}: HTTP ${res.status} (${seconds(started)})`)
+        continue
+      }
+      const body = await res.json().catch(() => null)
+      lines.push(`  ${source.host}: OK ${source.pick(body)} (${seconds(started)})`)
+    } catch (e) {
+      const name = e instanceof Error ? e.name : 'error'
+      const cause = (e as { cause?: unknown })?.cause
+      const why = cause instanceof Error ? cause.message : (e as Error)?.message
+      lines.push(`  ${source.host}: ${name} ${String(why).slice(0, 50)} (${seconds(started)})`)
     }
   }
 
