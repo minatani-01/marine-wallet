@@ -1,6 +1,6 @@
 import { spendApiCalls } from '@/lib/api-budget'
 import { getProfile, getSessionUser } from '@/lib/queries'
-import { searchHousing, walkMatrix } from '@/lib/rent-google'
+import { geocodeStation, searchHousing, walkMatrix } from '@/lib/rent-google'
 
 /**
  * 賃貸さがしの通信を1つずつ試す（0088）。
@@ -152,6 +152,15 @@ export async function GET() {
       const started = Date.now()
       const found = await searchHousing(key, HERE, 400, [])
       for (const attempt of found.attempts) lines.push(`  Places ${attempt} (${seconds(started)})`)
+    }
+
+    const geo = await spendApiCalls('geocoding', 1)
+    if (!geo.allowed) {
+      lines.push(`  Geocoding: 今日の上限 (${geo.used_today}/${geo.daily})`)
+    } else {
+      const started = Date.now()
+      const found = await geocodeStation(key, '御徒町駅')
+      lines.push(`  ${found.reason} (${seconds(started)})`)
     }
 
     const routes = await spendApiCalls('routes_walk', 1)
