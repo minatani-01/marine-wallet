@@ -9,7 +9,9 @@ import { tapFeedback } from '@/lib/haptics'
 import { createClient } from '@/lib/supabase/client'
 import {
   GCAL_TAG,
+  GTODO_TAG,
   PRIORITIES,
+  isSpecialTag,
   normalizeTitle,
   priorityOf,
   rejectTaskReason,
@@ -17,6 +19,7 @@ import {
   toPriority,
   toggleTag,
   wantsEvent,
+  wantsTodo,
   type Priority,
 } from '@/lib/tasks'
 import type { Task } from '@/types'
@@ -37,6 +40,7 @@ export default function TaskSheet({
   tagOrder,
   today,
   calendarReady,
+  todoReady,
   onSynced,
   onClose,
 }: {
@@ -47,7 +51,8 @@ export default function TaskSheet({
   tagOrder: string[]
   today: string
   calendarReady: boolean
-  /** カレンダーと合わせた結果を一覧に知らせる */
+  todoReady: boolean
+  /** Google と合わせた結果を一覧に知らせる */
   onSynced: (note: string) => void
   onClose: () => void
 }) {
@@ -76,12 +81,11 @@ export default function TaskSheet({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id }),
       })
-      const json = (await res.json().catch(() => ({}))) as { result?: string; reason?: string }
-      if (json.result === 'synced') onSynced('Google カレンダーに入れました')
-      else if (json.result === 'removed') onSynced('Google カレンダーから外しました')
-      else if (json.result === 'error') onSynced(`カレンダーに入れられませんでした（${json.reason}）`)
+      const json = (await res.json().catch(() => ({}))) as { notes?: string[]; errors?: string[] }
+      const lines = [...(json.notes ?? []), ...(json.errors ?? []).map((e) => `入れられませんでした（${e}）`)]
+      if (lines.length) onSynced(lines.join(' / '))
     } catch {
-      onSynced('カレンダーに届きませんでした')
+      onSynced('Google に届きませんでした')
     }
   }
 
@@ -125,8 +129,13 @@ export default function TaskSheet({
     }
 
     // 予定にするもの、予定から外すもの（前は入っていた）だけ合わせに行く
-    const touchesCalendar = willSync || Boolean(task?.gcal_event_id) || Boolean(task && wantsEvent(task))
-    if (id && touchesCalendar) await sync(id)
+    const touches =
+      willSync ||
+      wantsTodo({ tags }) ||
+      Boolean(task?.gcal_event_id) ||
+      Boolean(task?.gtask_id) ||
+      Boolean(task && (wantsEvent(task) || wantsTodo(task)))
+    if (id && touches) await sync(id)
 
     setSaving(false)
     router.refresh()
@@ -149,7 +158,7 @@ export default function TaskSheet({
       return
     }
     const json = (await res.json().catch(() => ({}))) as { warning?: string }
-    if (json.warning) onSynced(`タスクは消しました。予定は残っています（${json.warning}）`)
+    if (json.warning) onSynced(`タスクは消しました。Google 側に残っています（${json.warning}）`)
     router.refresh()
     onClose()
   }
@@ -244,12 +253,19 @@ export default function TaskSheet({
                   tone={tagTone(name, tagOrder)}
                   onClick={() => setTags((prev) => toggleTag(prev, name))}
                 >
-                  {name === GCAL_TAG ? <IconCalendar size={12} /> : null}
+                  {isSpecialTag(name) ? <IconCalendar size={12} /> : null}
                   {name}
                 </ToneChip>
               ))}
             </div>
           )}
+          {tags.includes(GTODO_TAG) ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
+              {todoReady
+                ? `保存すると Google ToDo に入ります${hasDue ? '（期限は日付だけ。時刻はメモに入ります）' : ''}。`
+                : 'Google ToDo をまだつないでいません。つないだあとに「全部合わせる」で入ります。'}
+            </p>
+          ) : null}
           {tags.includes(GCAL_TAG) ? (
             <p className="mt-2 text-[11px] leading-relaxed text-fg-mute">
               {!hasDue
@@ -274,6 +290,9 @@ export default function TaskSheet({
         {error ? <p className="text-xs text-danger">{error}</p> : null}
         {task?.gcal_error && task.tags.includes(GCAL_TAG) ? (
           <p className="text-[11px] text-danger">前回のカレンダー連携: {task.gcal_error}</p>
+        ) : null}
+        {task?.gtask_error && task.tags.includes(GTODO_TAG) ? (
+          <p className="text-[11px] text-danger">前回の ToDo 連携: {task.gtask_error}</p>
         ) : null}
         {task ? (
           <p className="text-[11px] text-fg-mute">

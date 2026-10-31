@@ -815,6 +815,10 @@ export type Task = {
   gcal_event_id: string | null
   gcal_synced_at: string | null
   gcal_error: string
+  /** Google ToDo 側の ID（0100） */
+  gtask_id: string | null
+  gtask_synced_at: string | null
+  gtask_error: string
   created_at: string
   updated_at: string
 }
@@ -833,4 +837,20 @@ export type TaskCalendar = {
   calendar_id: string
   enabled: boolean
   updated_at: string
+}
+
+/** Google ToDo の入れ先（0100） */
+export type TaskTodoSettings = {
+  user_id: string
+  tasklist_id: string
+  tasklist_title: string
+  enabled: boolean
+  updated_at: string
+}
+
+/** Google とのつながり。画面に出すのはメールだけ（0100） */
+export type GoogleConnectionView = {
+  email: string
+  error: string
+  connected_at: string
 }

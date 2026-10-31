@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { IconCalendar, IconTrash } from '@/components/icons'
 import { Button, Sheet, inputClass } from '@/components/ui'
 import { createClient } from '@/lib/supabase/client'
-import { GCAL_TAG, normalizeTag, rejectTagReason, tagTone } from '@/lib/tasks'
+import { GCAL_TAG, GTODO_TAG, isSpecialTag, normalizeTag, rejectTagReason, tagTone } from '@/lib/tasks'
 import type { Task, TaskTag } from '@/types'
 
 /**
@@ -64,7 +64,7 @@ export default function TagSheet({
 
   const remove = async (tag: TaskTag) => {
     const used = usage(tag.name)
-    const extra = tag.name === GCAL_TAG ? '\nこのタグを消すと、予定として入れる手段が無くなります。' : ''
+    const extra = isSpecialTag(tag.name) ? '\nこのタグを消すと、Google に入れる手段が無くなります。' : ''
     if (!window.confirm(`「${tag.name}」を消しますか？\n${used}件のやることから外れます（やることは残ります）。${extra}`)) return
     setBusy(true)
     const supabase = createClient()
@@ -118,7 +118,7 @@ export default function TagSheet({
                 <span
                   className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[12px] ${tagTone(tag.name, order)}`}
                 >
-                  {tag.name === GCAL_TAG ? <IconCalendar size={12} /> : null}
+                  {isSpecialTag(tag.name) ? <IconCalendar size={12} /> : null}
                   {tag.name}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[11px] text-fg-mute">{usage(tag.name)}件で使用</span>
@@ -136,7 +136,8 @@ export default function TagSheet({
           </ul>
         )}
         <p className="text-[11px] leading-relaxed text-fg-mute">
-          「{GCAL_TAG}」を付けた期限ありのやることは、Google カレンダーの予定になります。
+          「{GTODO_TAG}」を付けたやることは Google ToDo に、「{GCAL_TAG}」を付けた期限ありのやることは
+          Google カレンダーの予定になります。
         </p>
       </div>
     </Sheet>

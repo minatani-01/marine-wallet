@@ -1,32 +1,72 @@
 import { NextResponse } from 'next/server'
 
 import { deleteEvent, isCalendarConfigured, upsertEvent } from '@/lib/google-calendar'
+import {
+  deleteTodo,
+  getConnectionView,
+  isTodoConfigured,
+  upsertTodo,
+  userAccessToken,
+} from '@/lib/google-tasks'
 import { getSessionUser } from '@/lib/queries'
 import { createClient } from '@/lib/supabase/server'
-import { GCAL_TAG, eventBody, wantsEvent } from '@/lib/tasks'
-import type { Task, TaskCalendar } from '@/types'
+import { GCAL_TAG, GTODO_TAG, eventBody, todoBody, wantsEvent, wantsTodo } from '@/lib/tasks'
+import type { Task, TaskCalendar, TaskTodoSettings } from '@/types'
 
 /**
- * タスクを Google カレンダーと合わせる（0099）。
+ * タスクを Google カレンダー・Google ToDo と合わせる（0099 / 0100）。
  *
- * 画面がタスクを書いたあとに呼ぶ。1件ずつで、やることは3つ。
- *   - タグと期限があれば、予定を入れる・直す
- *   - タグか期限が外れていて、予定が残っていれば消す
- *   - 消すとき（remove）は予定を消してから行を消す
+ * 画面がタスクを書いたあとに呼ぶ。1件ずつで、やることは出し先ごとに3つ。
+ *   - 印のタグ（と、カレンダーなら期限）があれば、入れる・直す
+ *   - 外れていて、向こうに残っていれば消す
+ *   - 消すとき（remove）は向こうを消してから行を消す
  *
- * 全部（all）は設定画面の「全部合わせる」から。タグの付いた期限ありを
- * 順に入れ、タグの外れた残りを消す。
+ * 全部（all）は設定画面の「全部合わせる」から。
  *
- * 失敗しても画面は止めない。何が起きたかは行の gcal_error に残し、
- * 一覧に小さく出す。
+ * 失敗しても画面は止めない。何が起きたかは行の gcal_error / gtask_error に
+ * 残し、一覧に小さく出す。
  */
 export const dynamic = 'force-dynamic'
-export const maxDuration = 30
+export const maxDuration = 60
 
 type Body = { id?: string; remove?: boolean; all?: boolean; purgeDone?: boolean }
 
 const TASK_COLS =
-  'id, user_id, title, note, due_on, due_time, priority, tags, done, done_at, gcal_event_id, gcal_synced_at, gcal_error, created_at, updated_at'
+  'id, user_id, title, note, due_on, due_time, priority, tags, done, done_at, gcal_event_id, gcal_synced_at, gcal_error, gtask_id, gtask_synced_at, gtask_error, created_at, updated_at'
+
+type Client = Awaited<ReturnType<typeof createClient>>
+
+/** 出し先。つないでいなければ null */
+type Targets = {
+  calendar: { calendarId: string } | null
+  todo: { userId: string; listId: string } | null
+}
+
+async function resolveTargets(supabase: Client, userId: string): Promise<Targets> {
+  const [{ data: calendar }, { data: todo }, connection] = await Promise.all([
+    supabase
+      .from('task_calendars')
+      .select('user_id, calendar_id, enabled, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle<TaskCalendar>(),
+    supabase
+      .from('task_todo_settings')
+      .select('user_id, tasklist_id, tasklist_title, enabled, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle<TaskTodoSettings>(),
+    isTodoConfigured() ? getConnectionView(userId) : Promise.resolve(null),
+  ])
+  return {
+    calendar:
+      calendar?.enabled && calendar.calendar_id && isCalendarConfigured()
+        ? { calendarId: calendar.calendar_id }
+        : null,
+    todo:
+      connection && (todo?.enabled ?? true)
+        ? { userId, listId: todo?.tasklist_id || '@default' }
+        : null,
+  }
+}
 
 export async function POST(request: Request) {
   const user = await getSessionUser()
@@ -34,13 +74,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => ({}))) as Body
   const supabase = await createClient()
-
-  const { data: calendar } = await supabase
-    .from('task_calendars')
-    .select('user_id, calendar_id, enabled, updated_at')
-    .eq('user_id', user.id)
-    .maybeSingle<TaskCalendar>()
-  const ready = Boolean(calendar?.enabled && calendar.calendar_id && isCalendarConfigured())
+  const targets = await resolveTargets(supabase, user.id)
 
   // ---------------------------------------------------------- 済みを消す
   if (body.purgeDone) {
@@ -52,12 +86,8 @@ export async function POST(request: Request) {
       .returns<Task[]>()
     const done = rows ?? []
     const errors: string[] = []
-    if (ready && calendar) {
-      for (const t of done) {
-        if (!t.gcal_event_id) continue
-        const r = await deleteEvent(calendar.calendar_id, t.gcal_event_id)
-        if (!r.ok) errors.push(`${t.title}: ${r.reason}`)
-      }
+    for (const t of done) {
+      for (const e of await removeRemote(targets, t)) errors.push(`${t.title}: ${e}`)
     }
     const { error } = await supabase.from('tasks').delete().eq('user_id', user.id).eq('done', true)
     if (error) return NextResponse.json({ error: 'delete_failed' }, { status: 500 })
@@ -66,7 +96,7 @@ export async function POST(request: Request) {
 
   // --------------------------------------------------------------- 全部
   if (body.all) {
-    if (!ready || !calendar) return NextResponse.json({ skipped: 'no_calendar' })
+    if (!targets.calendar && !targets.todo) return NextResponse.json({ skipped: 'no_target' })
     const { data: rows } = await supabase
       .from('tasks')
       .select(TASK_COLS)
@@ -76,10 +106,10 @@ export async function POST(request: Request) {
     let removed = 0
     const errors: string[] = []
     for (const t of rows ?? []) {
-      const r = await syncOne(supabase, calendar, t)
-      if (r === 'synced') synced++
-      else if (r === 'removed') removed++
-      else if (r) errors.push(`${t.title}: ${r}`)
+      const r = await syncOne(supabase, targets, t)
+      synced += r.synced
+      removed += r.removed
+      for (const e of r.errors) errors.push(`${t.title}: ${e}`)
     }
     return NextResponse.json({ synced, removed, errors })
   }
@@ -95,70 +125,115 @@ export async function POST(request: Request) {
   if (!task) return NextResponse.json({ error: 'not_found' }, { status: 404 })
 
   if (body.remove) {
-    let warning = ''
-    if (task.gcal_event_id && ready && calendar) {
-      const r = await deleteEvent(calendar.calendar_id, task.gcal_event_id)
-      if (!r.ok) warning = r.reason
-    }
+    const warnings = await removeRemote(targets, task)
     const { error } = await supabase.from('tasks').delete().eq('id', task.id).eq('user_id', user.id)
     if (error) return NextResponse.json({ error: 'delete_failed' }, { status: 500 })
-    return NextResponse.json({ removed: 1, warning })
+    return NextResponse.json({ removed: 1, warning: warnings.join(' / ') })
   }
 
-  if (!ready || !calendar) {
-    // つないでいない人がタグを付けたとき。入れずに、理由だけ残す
-    if (task.tags.includes(GCAL_TAG)) {
-      await supabase
-        .from('tasks')
-        .update({ gcal_error: 'Google カレンダーをつないでいません' })
-        .eq('id', task.id)
-    }
-    return NextResponse.json({ skipped: 'no_calendar' })
-  }
-  const r = await syncOne(supabase, calendar, task)
-  if (r === 'synced' || r === 'removed' || r === null) return NextResponse.json({ result: r ?? 'none' })
-  return NextResponse.json({ result: 'error', reason: r })
+  const r = await syncOne(supabase, targets, task)
+  return NextResponse.json({ notes: r.notes, errors: r.errors })
 }
 
-type Client = Awaited<ReturnType<typeof createClient>>
+type SyncResult = { synced: number; removed: number; notes: string[]; errors: string[] }
 
 /**
- * 1件ぶん。戻り値は 'synced' | 'removed' | null（何もしない）| 失敗の理由。
+ * 1件ぶん。カレンダーと ToDo をそれぞれ見る。
+ *
+ * つないでいない出し先の印が付いていたら、入れずに理由だけ残す。
+ * つないだあとに「全部合わせる」で入る。
  */
-async function syncOne(
-  supabase: Client,
-  calendar: TaskCalendar,
-  task: Task
-): Promise<'synced' | 'removed' | string | null> {
+async function syncOne(supabase: Client, targets: Targets, task: Task): Promise<SyncResult> {
+  const out: SyncResult = { synced: 0, removed: 0, notes: [], errors: [] }
   const stamp = new Date().toISOString()
-  if (wantsEvent(task)) {
-    const ev = eventBody(task)
-    if (!ev) return null
-    const r = await upsertEvent(calendar.calendar_id, task.gcal_event_id, ev)
-    if (!r.ok) {
-      await supabase.from('tasks').update({ gcal_error: r.reason }).eq('id', task.id)
-      return r.reason
+  const patch: Record<string, unknown> = {}
+
+  // ----------------------------------------------------- カレンダー
+  if (targets.calendar) {
+    if (wantsEvent(task)) {
+      const ev = eventBody(task)
+      const r = ev
+        ? await upsertEvent(targets.calendar.calendarId, task.gcal_event_id, ev)
+        : ({ ok: false, reason: '期限がありません' } as const)
+      if (r.ok) {
+        Object.assign(patch, { gcal_event_id: r.eventId, gcal_synced_at: stamp, gcal_error: '' })
+        out.synced++
+        out.notes.push('Google カレンダーに入れました')
+      } else {
+        patch.gcal_error = r.reason
+        out.errors.push(`カレンダー: ${r.reason}`)
+      }
+    } else if (task.gcal_event_id) {
+      const r = await deleteEvent(targets.calendar.calendarId, task.gcal_event_id)
+      if (r.ok) {
+        Object.assign(patch, { gcal_event_id: null, gcal_synced_at: stamp, gcal_error: '' })
+        out.removed++
+        out.notes.push('Google カレンダーから外しました')
+      } else {
+        patch.gcal_error = r.reason
+        out.errors.push(`カレンダー: ${r.reason}`)
+      }
+    } else if (task.gcal_error) {
+      patch.gcal_error = ''
     }
-    await supabase
-      .from('tasks')
-      .update({ gcal_event_id: r.eventId, gcal_synced_at: stamp, gcal_error: '' })
-      .eq('id', task.id)
-    return 'synced'
+  } else if (task.tags.includes(GCAL_TAG) && task.gcal_error !== 'Google カレンダーをつないでいません') {
+    patch.gcal_error = 'Google カレンダーをつないでいません'
   }
-  if (task.gcal_event_id) {
-    const r = await deleteEvent(calendar.calendar_id, task.gcal_event_id)
-    if (!r.ok) {
-      await supabase.from('tasks').update({ gcal_error: r.reason }).eq('id', task.id)
-      return r.reason
+
+  // ----------------------------------------------------------- ToDo
+  if (targets.todo) {
+    const need = wantsTodo(task) || Boolean(task.gtask_id)
+    const auth = need ? await userAccessToken(targets.todo.userId) : null
+    if (auth && 'failed' in auth) {
+      patch.gtask_error = auth.failed
+      out.errors.push(`ToDo: ${auth.failed}`)
+    } else if (auth && wantsTodo(task)) {
+      const r = await upsertTodo(auth.token, targets.todo.listId, task.gtask_id, todoBody(task))
+      if (r.ok) {
+        Object.assign(patch, { gtask_id: r.taskId, gtask_synced_at: stamp, gtask_error: '' })
+        out.synced++
+        out.notes.push('Google ToDo に入れました')
+      } else {
+        patch.gtask_error = r.reason
+        out.errors.push(`ToDo: ${r.reason}`)
+      }
+    } else if (auth && task.gtask_id) {
+      const r = await deleteTodo(auth.token, targets.todo.listId, task.gtask_id)
+      if (r.ok) {
+        Object.assign(patch, { gtask_id: null, gtask_synced_at: stamp, gtask_error: '' })
+        out.removed++
+        out.notes.push('Google ToDo から外しました')
+      } else {
+        patch.gtask_error = r.reason
+        out.errors.push(`ToDo: ${r.reason}`)
+      }
+    } else if (task.gtask_error) {
+      patch.gtask_error = ''
     }
-    await supabase
-      .from('tasks')
-      .update({ gcal_event_id: null, gcal_synced_at: stamp, gcal_error: '' })
-      .eq('id', task.id)
-    return 'removed'
+  } else if (task.tags.includes(GTODO_TAG) && task.gtask_error !== 'Google ToDo をつないでいません') {
+    patch.gtask_error = 'Google ToDo をつないでいません'
   }
-  if (task.gcal_error) {
-    await supabase.from('tasks').update({ gcal_error: '' }).eq('id', task.id)
+
+  if (Object.keys(patch).length > 0) {
+    await supabase.from('tasks').update(patch).eq('id', task.id)
   }
-  return null
+  return out
+}
+
+/** 向こうに残っているぶんを消す。消せなかった理由を返す（行は呼ぶ側で消す） */
+async function removeRemote(targets: Targets, task: Task): Promise<string[]> {
+  const errors: string[] = []
+  if (targets.calendar && task.gcal_event_id) {
+    const r = await deleteEvent(targets.calendar.calendarId, task.gcal_event_id)
+    if (!r.ok) errors.push(`カレンダー: ${r.reason}`)
+  }
+  if (targets.todo && task.gtask_id) {
+    const auth = await userAccessToken(targets.todo.userId)
+    if ('failed' in auth) errors.push(`ToDo: ${auth.failed}`)
+    else {
+      const r = await deleteTodo(auth.token, targets.todo.listId, task.gtask_id)
+      if (!r.ok) errors.push(`ToDo: ${r.reason}`)
+    }
+  }
+  return errors
 }
