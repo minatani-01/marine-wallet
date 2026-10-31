@@ -26,29 +26,32 @@ import {
 } from '@/lib/rent'
 
 /**
- * 問い合わせ先。上から順に試す。
+ * 問い合わせ先。全部に同時に投げて、最初に答えたところを採る（0095）。
  *
- * 日本のミラー（osm.jp）を先に置く。日本の範囲しか聞かないうえ、本家より
- * 空いていることが多い。
+ * 順番に試していたときは、1か所目が時間切れになるまで次へ行けず、4か所
+ * 目に回る頃には残り時間が無くなっていた。本番のログでは osm.jp が証明書
+ * 切れで即死し、残りは順に 16秒・28秒・36秒で全部時間切れになっていた。
+ * 同時に投げれば、どこか1か所でも間に合えばそれで足りる。
  *
- * 待つ時間は長めに取る（0083）。1km四方ぶんの建物と施設を一度に出すので、
- * 混んでいるサーバーでは10秒では返らない。短く切って次へ回していたために、
- * どこからも取れずに終わっていた。
+ * 公開サーバーの負荷は増えるが、同じ問い合わせを 4〜5か所に1回ずつなので
+ * 許される範囲と考える。答えが返った時点で残りは打ち切る。
  */
 const ENDPOINTS = [
-  { host: 'overpass.osm.jp', url: 'https://overpass.osm.jp/api/interpreter', ms: 24_000 },
-  { host: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter', ms: 16_000 },
-  { host: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter', ms: 12_000 },
-  { host: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter', ms: 10_000 },
+  { host: 'overpass.osm.jp', url: 'https://overpass.osm.jp/api/interpreter' },
+  { host: 'overpass-api.de', url: 'https://overpass-api.de/api/interpreter' },
+  { host: 'kumi.systems', url: 'https://overpass.kumi.systems/api/interpreter' },
+  { host: 'private.coffee', url: 'https://overpass.private.coffee/api/interpreter' },
+  { host: 'maps.mail.ru', url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter' },
 ]
 
 /**
- * OSM に使ってよい時間の合計（0083）。
+ * OSM に使ってよい時間（0083）。
  *
  * 1回の検索ぜんぶで60秒まで。徒歩時間の実測をこのあとに回すので、ここで
- * 使い切るわけにはいかない。残りが短ければ、次のサーバーは試さない。
+ * 使い切るわけにはいかない。同時に投げるので、この時間がそのまま各サーバー
+ * の持ち時間になる。
  */
-const OVERALL_MS = 36_000
+const OVERALL_MS = 40_000
 
 /** 1回で受け取る建物の数。多すぎると地図も一覧も読めない */
 const MAX_ELEMENTS = 1000
@@ -136,7 +139,7 @@ function buildQuery(bounds: Bounds): string {
   const fbox = `${wide.south},${wide.west},${wide.north},${wide.east}`
   const homes = 'apartments|residential|dormitory|house|detached|semidetached_house|terrace'
   return [
-    '[out:json][timeout:20];',
+    '[out:json][timeout:30];',
     '(',
     `  way["building"~"${homes}"](${box});`,
     `  relation["building"~"${homes}"](${box});`,
@@ -203,15 +206,12 @@ export async function fetchOsmBuildings(
   const started = Date.now()
   const elapsed = () => ((Date.now() - started) / 1000).toFixed(1)
 
-  for (const endpoint of ENDPOINTS) {
-    // 残り時間で切る。徒歩時間の実測をこのあとに回す（0083）
-    const left = OVERALL_MS - (Date.now() - started)
-    if (left < 6_000) {
-      attempts.push('OSM: 時間が足りず、ここで打ち切り')
-      break
-    }
+  // 1か所が答えたら残りを止める。公開サーバーに無駄な仕事をさせない
+  const stop = new AbortController()
+  const settled = new Set<string>()
 
-    let res: Response | null = null
+  const ask = async (endpoint: (typeof ENDPOINTS)[number]): Promise<OsmResult> => {
+    let res: Response
     try {
       res = await fetch(endpoint.url, {
         method: 'POST',
@@ -222,22 +222,28 @@ export async function fetchOsmBuildings(
         },
         body: new URLSearchParams({ data: query }).toString(),
         cache: 'no-store',
-        signal: AbortSignal.timeout(Math.min(endpoint.ms, left)),
+        signal: AbortSignal.any([stop.signal, AbortSignal.timeout(OVERALL_MS)]),
       })
     } catch (e) {
+      // 勝者が決まったあとの打ち切りは、失敗として数えない
+      if (stop.signal.aborted) throw new Error('cut')
+      settled.add(endpoint.host)
       attempts.push(`OSM ${endpoint.host}: ${failReason(e)}（${elapsed()}秒）`)
-      continue
+      throw e
     }
 
     if (!res.ok) {
+      settled.add(endpoint.host)
       attempts.push(`OSM ${endpoint.host}: HTTP ${res.status}（${elapsed()}秒）`)
-      continue
+      throw new Error(`HTTP ${res.status}`)
     }
 
     const body = (await res.json().catch(() => null)) as { elements?: OverpassElement[] } | null
     if (!body) {
-      attempts.push(`OSM ${endpoint.host}: 返事を読めず`)
-      continue
+      if (stop.signal.aborted) throw new Error('cut')
+      settled.add(endpoint.host)
+      attempts.push(`OSM ${endpoint.host}: 返事を読めず（${elapsed()}秒）`)
+      throw new Error('unreadable')
     }
 
     const buildings: RentBuilding[] = []
@@ -265,13 +271,23 @@ export async function fetchOsmBuildings(
       if (building) buildings.push(building)
     }
 
+    settled.add(endpoint.host)
     attempts.push(
       `OSM ${endpoint.host}: 建物${buildings.length}件・施設${facilities.length}件（${elapsed()}秒）`
     )
     return { buildings, facilities, attempts }
   }
 
-  return { buildings: null, facilities: [], attempts }
+  try {
+    const won = await Promise.any(ENDPOINTS.map(ask))
+    stop.abort()
+    const cut = ENDPOINTS.filter((e) => !settled.has(e.host)).map((e) => e.host)
+    if (cut.length) attempts.push(`OSM: 先に答えが返ったので ${cut.join('・')} は打ち切り`)
+    return won
+  } catch {
+    // どこも答えなかった。理由は attempts に1行ずつ残っている
+    return { buildings: null, facilities: [], attempts }
+  }
 }
 
 /** 点の位置。way と relation は center、node はそのまま */
