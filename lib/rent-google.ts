@@ -95,12 +95,19 @@ export type HousingResult = {
 }
 
 /** 失敗の中身を短くまとめる。Google は error.message に理由を入れてくる */
+/**
+ * Google の失敗を1行にする。
+ *
+ * Places は { error: { message } } で返す。Routes の行列は返事を流すので、
+ * 失敗も [ { error: { message } } ] と配列で来る（0096）。配列を読めずに
+ * 「HTTP 403」だけになり、API が無効なのか鍵の制限なのかが分からなかった。
+ */
 async function failText(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as
-    | { error?: { status?: string; message?: string } }
-    | null
+  type Fail = { error?: { status?: string; message?: string } }
+  const raw = (await res.json().catch(() => null)) as Fail | Fail[] | null
+  const body = Array.isArray(raw) ? raw[0] : raw
   const detail = body?.error?.message ?? body?.error?.status ?? ''
-  return `HTTP ${res.status}${detail ? ` ${detail.slice(0, 120)}` : ''}`
+  return `HTTP ${res.status}${detail ? ` ${detail.slice(0, 160)}` : ''}`
 }
 
 function toBuildings(places: RawPlace[], stations: RentStation[]): RentBuilding[] {
