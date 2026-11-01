@@ -26,7 +26,11 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      // maskable は OS が丸や角丸に切り抜く。通常のアイコンをそのまま渡すと
+      // 文字が縁で切れる（起動画面で実際に切れた）。中央 60% にロゴを収めた
+      // 専用の画像を渡す（0101）
+      { src: '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
     /**
      * ショートカット（0099）。
